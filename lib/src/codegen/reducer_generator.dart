@@ -255,7 +255,6 @@ class ReducerGenerator {
     }
   }
 
-  /// Check if a type is a primitive (built-in BsatnDecoder method exists)
   bool _isPrimitive(Map<String, dynamic> algebraicType) {
     const primitiveKeys = [
       'U8',
@@ -272,7 +271,12 @@ class ReducerGenerator {
       'String'
     ];
 
-    return primitiveKeys.any((key) => algebraicType.containsKey(key));
+    if (primitiveKeys.any((key) => algebraicType.containsKey(key))) return true;
+    if (TypeMapper.isIdentityProduct(algebraicType)) return true;
+    if (TypeMapper.isTimestampProduct(algebraicType)) return true;
+    if (TypeMapper.isByteArray(algebraicType)) return true;
+
+    return false;
   }
 
   /// Get the Dart class name for a complex type

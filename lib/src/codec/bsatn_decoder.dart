@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:fixnum/fixnum.dart';
+import 'package:spacetimedb_dart_sdk/src/auth/identity.dart';
 
 /// Decodes BSATN (Binary Spacetime Algebraic Type Notation) format into Dart values
 ///
@@ -189,6 +190,15 @@ class BsatnDecoder {
     final bytes = Uint8List.fromList(_bytes.sublist(_offset, _offset + length));
     _offset += length;
     return bytes;
+  }
+
+  Identity readIdentity() {
+    return Identity(readBytes(32));
+  }
+
+  List<int> readByteArray() {
+    final length = readU32();
+    return readBytes(length).toList();
   }
 
   /// Decodes an optional value

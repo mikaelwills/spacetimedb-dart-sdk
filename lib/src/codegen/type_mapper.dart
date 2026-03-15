@@ -50,6 +50,35 @@ class TypeMapper {
     'Timestamp': 'readU64',
   };
 
+  static bool isIdentityProduct(Map<String, dynamic> algebraicType) {
+    if (!algebraicType.containsKey('Product')) return false;
+    final product = algebraicType['Product'];
+    if (product is! Map || !product.containsKey('elements')) return false;
+    final elements = product['elements'] as List;
+    if (elements.length != 1) return false;
+    final element = elements[0];
+    final name = element['name'];
+    return name != null && name['some'] == '__identity__';
+  }
+
+  static bool isTimestampProduct(Map<String, dynamic> algebraicType) {
+    if (!algebraicType.containsKey('Product')) return false;
+    final product = algebraicType['Product'];
+    if (product is! Map || !product.containsKey('elements')) return false;
+    final elements = product['elements'] as List;
+    if (elements.length != 1) return false;
+    final element = elements[0];
+    final name = element['name'];
+    return name != null &&
+        name['some'] == '__timestamp_micros_since_unix_epoch__';
+  }
+
+  static bool isByteArray(Map<String, dynamic> algebraicType) {
+    if (!algebraicType.containsKey('Array')) return false;
+    final inner = algebraicType['Array'];
+    return inner is Map && inner.containsKey('U8');
+  }
+
   /// Map algebraic type to Dart type string
   /// Pass typeSpace and typeDefs to resolve Ref types
   static String toDartType(
@@ -57,19 +86,14 @@ class TypeMapper {
     TypeSpace? typeSpace,
     List<TypeDef>? typeDefs,
   }) {
-    // 1. Handle Timestamp (Product with __timestamp_micros_since_unix_epoch__)
-    if (algebraicType.containsKey('Product')) {
-      final product = algebraicType['Product'];
-      if (product is Map && product.containsKey('elements')) {
-        final elements = product['elements'] as List;
-        if (elements.length == 1) {
-          final element = elements[0];
-          if (element['name'] != null &&
-              element['name']['some'] == '__timestamp_micros_since_unix_epoch__') {
-            return 'Int64';
-          }
-        }
-      }
+    // 1. Handle Identity (Product with __identity__)
+    if (isIdentityProduct(algebraicType)) {
+      return 'Identity';
+    }
+
+    // 2. Handle Timestamp (Product with __timestamp_micros_since_unix_epoch__)
+    if (isTimestampProduct(algebraicType)) {
+      return 'Int64';
     }
 
     if (algebraicType.containsKey('Ref')) {
@@ -111,20 +135,9 @@ class TypeMapper {
   }
 
   static String getEncoderMethod(Map<String, dynamic> algebraicType) {
-    // Handle Timestamp
-    if (algebraicType.containsKey('Product')) {
-      final product = algebraicType['Product'];
-      if (product is Map && product.containsKey('elements')) {
-        final elements = product['elements'] as List;
-        if (elements.length == 1) {
-          final element = elements[0];
-          if (element['name'] != null &&
-              element['name']['some'] == '__timestamp_micros_since_unix_epoch__') {
-            return 'writeI64';
-          }
-        }
-      }
-    }
+    if (isIdentityProduct(algebraicType)) return 'writeIdentity';
+    if (isTimestampProduct(algebraicType)) return 'writeI64';
+    if (isByteArray(algebraicType)) return 'writeByteArray';
 
     for (final key in _encoderMethodMap.keys) {
       if (algebraicType.containsKey(key)) {
@@ -135,20 +148,9 @@ class TypeMapper {
   }
 
   static String getDecoderMethod(Map<String, dynamic> algebraicType) {
-    // Handle Timestamp
-    if (algebraicType.containsKey('Product')) {
-      final product = algebraicType['Product'];
-      if (product is Map && product.containsKey('elements')) {
-        final elements = product['elements'] as List;
-        if (elements.length == 1) {
-          final element = elements[0];
-          if (element['name'] != null &&
-              element['name']['some'] == '__timestamp_micros_since_unix_epoch__') {
-            return 'readI64';
-          }
-        }
-      }
-    }
+    if (isIdentityProduct(algebraicType)) return 'readIdentity';
+    if (isTimestampProduct(algebraicType)) return 'readI64';
+    if (isByteArray(algebraicType)) return 'readByteArray';
 
     for (final key in _decoderMethodMap.keys) {
       if (algebraicType.containsKey(key)) {

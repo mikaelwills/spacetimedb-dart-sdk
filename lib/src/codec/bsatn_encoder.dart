@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:fixnum/fixnum.dart';
+import 'package:spacetimedb_dart_sdk/src/auth/identity.dart';
 
 /// Encodes Dart values into BSATN (Binary Spacetime Algebraic Type Notation) format
 ///
@@ -190,6 +191,15 @@ class BsatnEncoder {
 
   void writeBytes(Uint8List bytes) {
     _buffer.add(bytes);
+  }
+
+  void writeIdentity(Identity value) {
+    writeBytes(value.bytes);
+  }
+
+  void writeByteArray(List<int> value) {
+    writeU32(value.length);
+    _buffer.add(value);
   }
 
   /// Encodes an optional value
