@@ -11,6 +11,7 @@ class TableSchema {
   final Map<String, dynamic> schedule;
   final Map<String, dynamic> tableType;
   final Map<String, dynamic> tableAccess;
+  final bool isEvent;
 
   TableSchema({
     required this.name,
@@ -22,6 +23,7 @@ class TableSchema {
     required this.schedule,
     required this.tableType,
     required this.tableAccess,
+    this.isEvent = false,
   });
 
   factory TableSchema.fromJson(Map<String, dynamic> json) {
@@ -31,7 +33,7 @@ class TableSchema {
     final sequencesJson = json['sequences'];
 
     return TableSchema(
-      name: json['name'] ?? '',
+      name: json['source_name'] ?? json['name'] ?? '',
       productTypeRef: json['product_type_ref'] ?? 0,
       primaryKey: primaryKeyJson is List
           ? primaryKeyJson.whereType<int>().toList()
@@ -46,6 +48,7 @@ class TableSchema {
       schedule: json['schedule'] ?? {},
       tableType: json['table_type'] ?? {},
       tableAccess: json['table_access'] ?? {},
+      isEvent: json['is_event'] ?? false,
     );
   }
 }
@@ -59,10 +62,10 @@ class IndexSchema {
   IndexSchema({this.name, this.accessorName, required this.algorithm});
 
   factory IndexSchema.fromJson(Map<String, dynamic> json) {
-    final nameJson = json['name'];
+    final nameJson = json['source_name'] ?? json['name'];
     final accessorJson = json['accessor_name'];
-    final indexName = nameJson['some'] ?? "";
-    final accessor = accessorJson['some'] ?? "";
+    final indexName = nameJson is Map ? (nameJson['some'] ?? "") : (nameJson ?? "");
+    final accessor = accessorJson is Map ? (accessorJson['some'] ?? "") : (accessorJson ?? "");
 
     return IndexSchema(
       name: indexName,
@@ -80,8 +83,8 @@ class ConstraintSchema {
   ConstraintSchema({this.name, required this.data});
 
   factory ConstraintSchema.fromJson(Map<String, dynamic> json) {
-    final nameJson = json['name'];
-    final constraintName = nameJson['some'] ?? "";
+    final nameJson = json['source_name'] ?? json['name'];
+    final constraintName = nameJson is Map ? (nameJson['some'] ?? "") : (nameJson ?? "");
 
     return ConstraintSchema(
       name: constraintName,

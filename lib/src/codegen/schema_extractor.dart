@@ -203,24 +203,124 @@ class SchemaExtractor {
   /// Unwrap version envelope from schema JSON
   ///
   /// SpacetimeDB wraps schemas in version envelopes like:
-  /// {"V9": {...schema...}} or {"V10": {...schema...}}
+  /// {"V9": {...schema...}} or {"V10": {"sections": [...]}}
   ///
-  /// This method extracts the actual schema, supporting any version.
+  /// V9 and earlier: flat structure with top-level keys (tables, reducers, etc.)
+  /// V10+: sections-based structure that needs conversion to flat format
   static Map<String, dynamic> _unwrapVersionEnvelope(Map<String, dynamic> json) {
-    // If there's only one top-level key starting with 'V' followed by digits,
-    // assume it's a version wrapper and unwrap it
-    if (json.length == 1) {
-      final key = json.keys.first;
-      if (RegExp(r'^V\d+$').hasMatch(key)) {
-        final value = json[key];
-        if (value is! Map<String, dynamic>) {
-          throw StateError(
-              'Expected version envelope to contain Map, got ${value.runtimeType}');
-        }
-        return value;
+    if (json.length != 1) return json;
+
+    final key = json.keys.first;
+    if (!RegExp(r'^V\d+$').hasMatch(key)) return json;
+
+    final value = json[key];
+    if (value is! Map<String, dynamic>) {
+      throw StateError(
+          'Expected version envelope to contain Map, got ${value.runtimeType}');
+    }
+
+    if (value.containsKey('sections')) {
+      return _flattenSections(value['sections'] as List);
+    }
+
+    return _deepCast(value);
+  }
+
+  /// Convert V10+ sections array to flat schema map
+  ///
+  /// V10 format: {"sections": [{"Typespace": {...}}, {"Tables": [...]}, ...]}
+  /// Output: {"typespace": {...}, "tables": [...], "reducers": [...], "types": [...]}
+  static Map<String, dynamic> _flattenSections(List sections) {
+    final result = <String, dynamic>{
+      'typespace': <String, dynamic>{},
+      'tables': <dynamic>[],
+      'reducers': <dynamic>[],
+      'types': <dynamic>[],
+      'misc_exports': <dynamic>[],
+    };
+
+    for (final rawSection in sections) {
+      final section = rawSection is Map
+          ? Map<String, dynamic>.from(rawSection)
+          : null;
+      if (section == null || section.length != 1) continue;
+
+      final sectionKey = section.keys.first;
+      final sectionValue = section.values.first;
+
+      switch (sectionKey) {
+        case 'Typespace':
+          result['typespace'] = sectionValue is Map
+              ? Map<String, dynamic>.from(sectionValue)
+              : sectionValue;
+        case 'Tables':
+          result['tables'] = sectionValue is List ? sectionValue : [];
+        case 'Reducers':
+          result['reducers'] = sectionValue is List
+              ? _filterClientCallableReducers(sectionValue)
+              : [];
+        case 'Types':
+          result['types'] = sectionValue is List
+              ? _convertV10Types(sectionValue)
+              : [];
+        case 'MiscExports':
+          result['misc_exports'] = sectionValue is List ? sectionValue : [];
       }
     }
 
-    return json;
+    return _deepCast(result);
+  }
+
+  /// Filter reducers to only client-callable ones and normalize field names
+  static List<dynamic> _filterClientCallableReducers(List<dynamic> reducers) {
+    return reducers
+        .where((r) {
+          if (r is! Map) return false;
+          final vis = r['visibility'];
+          return vis is Map && vis.containsKey('ClientCallable');
+        })
+        .map((r) {
+          final map = r as Map;
+          return <String, dynamic>{
+            'name': map['source_name'] ?? map['name'] ?? '',
+            'params': map['params'] ?? {},
+            'lifecycle': {},
+          };
+        })
+        .toList();
+  }
+
+  /// Convert V10 type definitions to the format expected by TypeDef.fromJson
+  ///
+  /// V10: {"source_name": {"scope": [], "source_name": "Foo"}, "ty": 3, ...}
+  /// Expected: {"name": {"scope": [], "name": "Foo"}, "ty": 3, ...}
+  static List<dynamic> _convertV10Types(List<dynamic> types) {
+    return types.map((t) {
+      if (t is! Map) return t;
+      final sourceName = t['source_name'];
+      if (sourceName is Map && sourceName.containsKey('source_name')) {
+        return <String, dynamic>{
+          ...Map<String, dynamic>.from(t),
+          'name': <String, dynamic>{
+            'name': sourceName['source_name'],
+            'scope': sourceName['scope'] ?? [],
+          },
+        };
+      }
+      return t;
+    }).toList();
+  }
+
+  /// Recursively cast all Maps to Map<String, dynamic>
+  static dynamic _deepCast(dynamic value) {
+    if (value is Map) {
+      return Map<String, dynamic>.fromEntries(
+        value.entries.map((e) => MapEntry(e.key.toString(), _deepCast(e.value))),
+      );
+    }
+    if (value is List) {
+      return value.map(_deepCast).toList();
+    }
+    return value;
   }
 }

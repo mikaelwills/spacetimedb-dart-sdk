@@ -195,6 +195,10 @@ class SubscriptionManager {
 
   void _updateSyncState(SyncState state) {
     if (_disposed) return;
+    final prev = _currentSyncState;
+    if (prev.status != state.status || prev.pendingCount != state.pendingCount) {
+      SdkLogger.d('SyncState: ${prev.status}(${prev.pendingCount}) -> ${state.status}(${state.pendingCount})');
+    }
     _currentSyncState = state;
     _syncStateController.add(state);
   }
@@ -840,8 +844,12 @@ class SubscriptionManager {
       SdkLogger.d('Sync already in progress, skipping');
       return;
     }
-    if (_connection.status != ConnectionStatus.connected) return;
+    if (_connection.status != ConnectionStatus.connected) {
+      SdkLogger.d('syncPendingMutations: not connected, skipping');
+      return;
+    }
 
+    SdkLogger.d('syncPendingMutations: starting');
     _isSyncing = true;
 
     try {
@@ -849,6 +857,7 @@ class SubscriptionManager {
 
       final pending = await storage.getPendingMutations();
       if (pending.isEmpty) {
+        SdkLogger.d('syncPendingMutations: no pending mutations, setting idle');
         _cachedPendingCount = 0;
         _updateSyncState(_currentSyncState.copyWith(
           status: SyncStatus.idle,
@@ -932,12 +941,17 @@ class SubscriptionManager {
       }
     } finally {
       _isSyncing = false;
+      SdkLogger.d('syncPendingMutations: finished (isSyncing=false)');
     }
 
-    if (_disposed) return;
+    if (_disposed) {
+      SdkLogger.d('syncPendingMutations: disposed, skipping final state update');
+      return;
+    }
 
     final remaining = await storage.getPendingMutations();
     _cachedPendingCount = remaining.length;
+    SdkLogger.d('syncPendingMutations: remaining=$_cachedPendingCount, setting idle');
     _updateSyncState(_currentSyncState.copyWith(
       status: SyncStatus.idle,
       pendingCount: _cachedPendingCount,
