@@ -54,6 +54,16 @@ class Identity {
     return (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
   }
 
+  String toJson() => toHexString;
+
+  static Identity fromJson(String hex) {
+    final bytes = Uint8List(32);
+    for (int i = 0; i < 32; i++) {
+      bytes[i] = int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16);
+    }
+    return Identity(bytes);
+  }
+
   @override
   String toString() => toAbbreviated;
 }

@@ -66,6 +66,16 @@ class TransactionResult {
     );
   }
 
+  factory TransactionResult.dropped({
+    required String reducerName,
+  }) {
+    return TransactionResult(
+      status: Dropped(),
+      timestamp: DateTime.now(),
+      reducerName: reducerName,
+    );
+  }
+
   /// Create result from a full TransactionUpdate message
   factory TransactionResult.fromTransactionUpdate(
       TransactionUpdateMessage message) {
@@ -113,6 +123,8 @@ class TransactionResult {
 
   /// Whether the transaction ran out of energy
   bool get isOutOfEnergy => status is OutOfEnergy;
+
+  bool get isDropped => status is Dropped;
 
   /// Get error message if failed, otherwise null
   String? get errorMessage {

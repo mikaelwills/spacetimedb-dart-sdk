@@ -47,6 +47,7 @@ class TableCache<T> {
   final int tableId;
   final String tableName;
   final RowDecoder<T> decoder;
+  final bool isEvent;
 
   final Map<dynamic, T> _rowsByPrimaryKey = {};
   final List<T> _rows = [];
@@ -72,7 +73,7 @@ class TableCache<T> {
       StreamController<TableEvent<T>>.broadcast();
 
   TableCache(
-      {required this.tableId, required this.tableName, required this.decoder});
+      {required this.tableId, required this.tableName, required this.decoder, this.isEvent = false});
 
   /// Stream of inserted rows
   ///
@@ -278,7 +279,9 @@ class TableCache<T> {
       eventStream.where((e) => e.context.isMyTransaction);
 
   void _emitChanges(_RowChanges<T> changes, EventContext context) {
-    SdkLogger.i('EMIT_CHANGES[$tableName]: inserts=${changes.inserted.length}, updates=${changes.updated.length}, deletes=${changes.deleted.length}');
+    if (!isEvent) {
+      SdkLogger.i('EMIT_CHANGES[$tableName]: inserts=${changes.inserted.length}, updates=${changes.updated.length}, deletes=${changes.deleted.length}');
+    }
     for (final row in changes.inserted) {
       _insertController.add(row);
       _changeController.add(TableChange.insert(row));
@@ -321,6 +324,11 @@ class TableCache<T> {
   ) {
     final changes = _applyChanges(deletes, inserts);
     _emitChanges(changes, context);
+
+    if (isEvent) {
+      _rowsByPrimaryKey.clear();
+      _rows.clear();
+    }
   }
 
   /// Apply transaction update and return the set of touched primary keys
@@ -334,6 +342,11 @@ class TableCache<T> {
   ) {
     final changes = _applyChanges(deletes, inserts);
     _emitChanges(changes, context);
+
+    if (isEvent) {
+      _rowsByPrimaryKey.clear();
+      _rows.clear();
+    }
 
     final touchedKeys = <dynamic>{};
     for (final row in changes.inserted) {

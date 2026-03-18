@@ -49,6 +49,8 @@ class ClientCache {
   // Convenience: Reverse lookup name → server table ID
   final Map<String, int> _nameToId = {};
 
+  final Set<String> _eventTableNames = {};
+
   /// Register a decoder for a table or view (Phase 1: Static Registration).
   ///
   /// Call this before connecting to declare: "I know how to decode table X".
@@ -65,17 +67,21 @@ class ClientCache {
   /// cache.registerDecoder<Note>('note', NoteDecoder());
   /// cache.registerDecoder<Note>('all_notes', NoteDecoder()); // View using same type
   /// ```
-  void registerDecoder<T>(String tableName, RowDecoder<T> decoder) {
+  bool isEventTable(String tableName) => _eventTableNames.contains(tableName);
+
+  void registerDecoder<T>(String tableName, RowDecoder<T> decoder, {bool isEvent = false}) {
     if (_builders.containsKey(tableName)) {
       throw ArgumentError('Decoder for "$tableName" is already registered');
     }
-    // Create a builder closure that captures T
-    // Even though stored in Map<String, Function>, the closure "remembers" T
+    if (isEvent) {
+      _eventTableNames.add(tableName);
+    }
     _builders[tableName] = (int tableId, String name) {
       return TableCache<T>(
         tableId: tableId,
         tableName: name,
         decoder: decoder,
+        isEvent: isEvent,
       );
     };
   }

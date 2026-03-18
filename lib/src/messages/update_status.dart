@@ -33,3 +33,8 @@ class Pending extends UpdateStatus {
   @override
   String toString() => 'Pending()';
 }
+
+class Dropped extends UpdateStatus {
+  @override
+  String toString() => 'Dropped()';
+}

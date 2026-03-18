@@ -95,7 +95,7 @@ class ReducerGenerator {
     buf.write('  Future<TransactionResult> $methodName(');
 
     if (reducer.params.elements.isEmpty) {
-      buf.writeln('{List<OptimisticChange>? optimisticChanges}) async {');
+      buf.writeln('{List<OptimisticChange>? optimisticChanges, bool isEventTable = false}) async {');
     } else {
       buf.writeln('{');
       for (final param in reducer.params.elements) {
@@ -104,6 +104,7 @@ class ReducerGenerator {
         buf.writeln('    required $dartType $paramName,');
       }
       buf.writeln('    List<OptimisticChange>? optimisticChanges,');
+      buf.writeln('    bool isEventTable = false,');
       buf.writeln('  }) async {');
     }
 
@@ -115,7 +116,7 @@ class ReducerGenerator {
     }
     buf.writeln();
 
-    buf.writeln("    return await _reducerCaller.call('${reducer.name}', encoder.toBytes(), optimisticChanges: optimisticChanges);");
+    buf.writeln("    return await _reducerCaller.call('${reducer.name}', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable);");
     buf.writeln('  }');
   }
   /// Generate completion callback method for a reducer

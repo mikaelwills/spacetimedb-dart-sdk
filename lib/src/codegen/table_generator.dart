@@ -178,6 +178,9 @@ class TableGenerator {
   }
 
   String _getToJsonExpression(String fieldName, Map<String, dynamic> algebraicType) {
+    if (TypeMapper.isIdentityProduct(algebraicType)) {
+      return '$fieldName.toJson()';
+    }
     if (_isTimestamp(algebraicType)) {
       return '$fieldName.toInt()';
     }
@@ -206,6 +209,9 @@ class TableGenerator {
       typeDefs: schema.types,
     );
 
+    if (TypeMapper.isIdentityProduct(algebraicType)) {
+      return "Identity.fromJson(json['$fieldName'] as String)";
+    }
     if (_isTimestamp(algebraicType)) {
       return "Int64((json['$fieldName'] as int?) ?? 0)";
     }

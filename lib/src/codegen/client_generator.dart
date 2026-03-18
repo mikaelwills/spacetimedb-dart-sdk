@@ -185,7 +185,8 @@ class ClientGenerator {
     buf.writeln('    // Auto-register table decoders');
     for (final table in schema.tables) {
       final className = _toPascalCase(table.name);
-      buf.writeln("    subscriptionManager.cache.registerDecoder<$className>('${table.name}', ${className}Decoder());");
+      final eventArg = table.isEvent ? ', isEvent: true' : '';
+      buf.writeln("    subscriptionManager.cache.registerDecoder<$className>('${table.name}', ${className}Decoder()$eventArg);");
     }
     buf.writeln();
 

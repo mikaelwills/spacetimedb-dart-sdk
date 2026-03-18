@@ -61,8 +61,16 @@ class ReducerCaller {
     Uint8List args, {
     Duration? timeout,
     bool queueIfOffline = true,
+    bool isEventTable = false,
     List<OptimisticChange>? optimisticChanges,
   }) async {
+    if (isEventTable) {
+      if (!_isOnline) {
+        return TransactionResult.dropped(reducerName: reducerName);
+      }
+      return _sendDirectly(reducerName, args, timeout, optimisticChanges);
+    }
+
     SdkLogger.d('$reducerName: status=${_connection.status}, isOnline=$_isOnline, hasOfflineStorage=${_offlineStorage != null}');
 
     if (_offlineStorage != null) {
@@ -156,6 +164,7 @@ class ReducerCaller {
     String? requestId,
   }) async {
     final numericRequestId = _nextRequestId++;
+    SdkLogger.d('callWithBytes: $reducerName, numericId=$numericRequestId, uuidId=$requestId');
     if (requestId != null) {
       _requestIdByUuid[requestId] = numericRequestId;
     }
