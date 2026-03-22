@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
+import 'package:spacetimedb_dart_sdk/src/reducers/mutation_handler.dart';
 
 const _timeout = Duration(seconds: 5);
 
@@ -102,16 +103,43 @@ class MockOfflineConnection implements SpacetimeDbConnection {
   }
 }
 
+class MockMutationHandler implements MutationHandler {
+  bool syncTriggered = false;
+  final List<String> queuedRequestIds = [];
+  final List<String> optimisticRequestIds = [];
+  final List<String> rolledBackRequestIds = [];
+
+  @override
+  void trySyncNow() => syncTriggered = true;
+
+  @override
+  void onMutationQueued(String requestId, List<OptimisticChange>? changes) {
+    queuedRequestIds.add(requestId);
+  }
+
+  @override
+  void onOptimisticChanges(String requestId, List<OptimisticChange>? changes) {
+    optimisticRequestIds.add(requestId);
+  }
+
+  @override
+  void onRollbackOptimistic(String requestId) {
+    rolledBackRequestIds.add(requestId);
+  }
+}
+
 void main() {
   group('ReducerCaller Offline Queue', () {
     late MockOfflineConnection connection;
     late InMemoryOfflineStorage storage;
+    late MockMutationHandler handler;
     late ReducerCaller caller;
 
     setUp(() {
       connection = MockOfflineConnection();
       storage = InMemoryOfflineStorage();
-      caller = ReducerCaller(connection, offlineStorage: storage);
+      handler = MockMutationHandler();
+      caller = ReducerCaller(connection, offlineStorage: storage, mutationHandler: handler);
     });
 
     tearDown(() async {
@@ -123,13 +151,10 @@ void main() {
     test('queues first then triggers sync when online (offline-first)', () async {
       connection.setOnline();
 
-      var syncTriggered = false;
-      caller.onTrySyncNow = () => syncTriggered = true;
-
       final result = await caller.call('create_note', Uint8List.fromList([1, 2, 3]));
 
       expect(result.isPending, isTrue);
-      expect(syncTriggered, isTrue);
+      expect(handler.syncTriggered, isTrue);
       final pending = await storage.getPendingMutations().timeout(_timeout);
       expect(pending.length, equals(1));
     });

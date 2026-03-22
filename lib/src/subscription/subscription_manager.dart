@@ -11,6 +11,7 @@ import '../messages/message_decoder.dart';
 import '../messages/server_messages.dart';
 import '../messages/client_messages.dart';
 import '../reducers/reducer_caller.dart';
+import '../reducers/mutation_handler.dart';
 import '../reducers/reducer_registry.dart';
 import '../reducers/reducer_emitter.dart';
 import '../reducers/transaction_result.dart';
@@ -63,7 +64,7 @@ import '../messages/update_status.dart';
 ///   encoder.writeString('Content here');
 /// });
 /// ```
-class SubscriptionManager {
+class SubscriptionManager implements MutationHandler {
   final SpacetimeDbConnection _connection;
   final ClientCache cache = ClientCache();
   late final ReducerCaller reducers;
@@ -123,18 +124,19 @@ class SubscriptionManager {
   SubscriptionManager(this._connection, {OfflineStorage? offlineStorage})
       : _offlineStorage = offlineStorage {
     _optimisticState = OptimisticStateManager(cache);
-    reducers = ReducerCaller(_connection, offlineStorage: offlineStorage);
-    reducers.onMutationQueued = _onMutationQueued;
-    reducers.onOptimisticChanges = _onOptimisticChanges;
-    reducers.onRollbackOptimistic = _onRollbackOptimistic;
-    reducers.onTrySyncNow = _trySyncNow;
+    reducers = ReducerCaller(
+      _connection,
+      offlineStorage: offlineStorage,
+      mutationHandler: this,
+    );
     _startListening();
     _startConnectionMonitoring();
   }
 
   bool _isSyncing = false;
 
-  void _trySyncNow() {
+  @override
+  void trySyncNow() {
     if (_isSyncing) {
       SdkLogger.d('Sync already in progress, skipping duplicate trigger');
       return;
@@ -143,20 +145,23 @@ class SubscriptionManager {
     syncPendingMutations();
   }
 
-  void _onMutationQueued(String requestId, List<OptimisticChange>? changes) {
-    SdkLogger.d('_onMutationQueued called: requestId=$requestId, changes=${changes?.length ?? 0}');
+  @override
+  void onMutationQueued(String requestId, List<OptimisticChange>? changes) {
+    SdkLogger.d('onMutationQueued called: requestId=$requestId, changes=${changes?.length ?? 0}');
     _cachedPendingCount++;
     _updateSyncState(_currentSyncState.copyWith(
       pendingCount: _cachedPendingCount,
     ));
   }
 
-  void _onOptimisticChanges(String requestId, List<OptimisticChange>? changes) {
+  @override
+  void onOptimisticChanges(String requestId, List<OptimisticChange>? changes) {
     _optimisticState.applyOptimisticChanges(requestId, changes);
     _persistTableSnapshots();
   }
 
-  void _onRollbackOptimistic(String requestId) {
+  @override
+  void onRollbackOptimistic(String requestId) {
     SdkLogger.w('Rolling back optimistic changes for request $requestId due to timeout/failure');
     _optimisticState.rollbackOptimisticChanges(requestId);
     _persistTableSnapshots();

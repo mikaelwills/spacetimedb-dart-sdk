@@ -10,6 +10,7 @@ import 'package:spacetimedb_dart_sdk/src/offline/offline_storage.dart';
 import 'package:spacetimedb_dart_sdk/src/offline/pending_mutation.dart';
 import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
 
+import 'package:spacetimedb_dart_sdk/src/reducers/mutation_handler.dart';
 export 'package:spacetimedb_dart_sdk/src/offline/optimistic_change.dart';
 import 'package:uuid/uuid.dart';
 
@@ -36,6 +37,7 @@ class _PendingRequest {
 class ReducerCaller {
   final SpacetimeDbConnection _connection;
   final OfflineStorage? _offlineStorage;
+  final MutationHandler? _mutationHandler;
   int _nextRequestId = 1;
   final _uuid = const Uuid();
 
@@ -44,15 +46,12 @@ class ReducerCaller {
 
   Duration defaultTimeout = const Duration(seconds: 10);
 
-  void Function(String requestId, List<OptimisticChange>? changes)?
-      onMutationQueued;
-  void Function(String requestId, List<OptimisticChange>? changes)?
-      onOptimisticChanges;
-  void Function(String requestId)? onRollbackOptimistic;
-  void Function()? onTrySyncNow;
-
-  ReducerCaller(this._connection, {OfflineStorage? offlineStorage})
-      : _offlineStorage = offlineStorage;
+  ReducerCaller(
+    this._connection, {
+    OfflineStorage? offlineStorage,
+    MutationHandler? mutationHandler,
+  })  : _offlineStorage = offlineStorage,
+        _mutationHandler = mutationHandler;
 
   bool get _isOnline => _connection.status == ConnectionStatus.connected;
 
@@ -91,7 +90,7 @@ class ReducerCaller {
 
     if (optimisticChanges != null && optimisticChanges.isNotEmpty) {
       SdkLogger.d('Applying optimistic changes immediately...');
-      onOptimisticChanges?.call(requestId, optimisticChanges);
+      _mutationHandler?.onOptimisticChanges(requestId, optimisticChanges);
     }
 
     SdkLogger.d('Queuing $reducerName to disk (requestId=$requestId)');
@@ -104,11 +103,11 @@ class ReducerCaller {
     );
 
     await _offlineStorage!.enqueueMutation(mutation);
-    onMutationQueued?.call(requestId, optimisticChanges);
+    _mutationHandler?.onMutationQueued(requestId, optimisticChanges);
 
     if (_isOnline) {
       SdkLogger.d('Online, triggering immediate sync...');
-      onTrySyncNow?.call();
+      _mutationHandler?.trySyncNow();
     } else {
       SdkLogger.d('Offline, mutation queued for later sync');
     }
@@ -144,7 +143,7 @@ class ReducerCaller {
 
     if (hasOptimistic) {
       SdkLogger.d('Applying optimistic changes: ${optimisticChanges.length}');
-      onOptimisticChanges?.call(requestId.toString(), optimisticChanges);
+      _mutationHandler?.onOptimisticChanges(requestId.toString(), optimisticChanges);
     }
 
     final message = CallReducerMessage(
@@ -257,7 +256,7 @@ class ReducerCaller {
         _requestIdByUuid.remove(pending.uuidRequestId);
       }
       if (pending.hasOptimisticChanges) {
-        onRollbackOptimistic?.call(requestId.toString());
+        _mutationHandler?.onRollbackOptimistic(requestId.toString());
       }
       pending.completer.completeError(
         TimeoutException(
@@ -275,7 +274,7 @@ class ReducerCaller {
       final pending = entry.value;
       pending.dispose();
       if (pending.hasOptimisticChanges) {
-        onRollbackOptimistic?.call(requestId.toString());
+        _mutationHandler?.onRollbackOptimistic(requestId.toString());
       }
       pending.completer.completeError(
         ConnectionException(

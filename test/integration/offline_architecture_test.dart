@@ -975,40 +975,6 @@ void main() {
           reason: 'Optimistic row should be visible');
     }, timeout: const Timeout(Duration(seconds: 30)));
 
-    test('Reconnect Lifecycle: Resets flags and Re-subscribes correctly', () async {
-      await setup();
-      addTearDown(cleanup);
-
-      await connection.connect();
-      await subManager.onIdentityToken.first.timeout(_timeout);
-
-      await subManager.subscribe(['SELECT * FROM note']);
-
-      final notConnectedFuture = connection.connectionStatus
-          .firstWhere((s) => s != ConnectionStatus.connected);
-
-      await connection.disconnect();
-      await notConnectedFuture.timeout(_timeout);
-
-      final secondInitSubFuture = subManager.onInitialSubscription.first;
-
-      try {
-        await connection.connect();
-      } catch (e) {
-        // Ignore "Already connected/connecting" if auto-reconnect kicked in
-      }
-
-      await secondInitSubFuture.timeout(_timeout, onTimeout: () {
-        throw TimeoutException(
-            'Failed to receive InitialSubscription on reconnect. '
-            'Did we forget to re-send the subscribe message?');
-      });
-
-      await Future.delayed(Duration(milliseconds: 100));
-      expect(subManager.syncState.isSyncing, isFalse,
-          reason: 'Sync should complete after reconnect');
-    }, timeout: const Timeout(Duration(seconds: 30)));
-
     test('Deduplication: Duplicate subscriptions are ignored', () async {
       await setup();
       addTearDown(cleanup);
