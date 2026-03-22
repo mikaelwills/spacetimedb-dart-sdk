@@ -20,7 +20,7 @@ class ViewSchema {
 
   factory ViewSchema.fromJson(Map<String, dynamic> json) {
     return ViewSchema(
-      name: json['name'] ?? '',
+      name: json['source_name'] ?? json['name'] ?? '',
       index: json['index'] ?? 0,
       isPublic: json['is_public'] ?? false,
       isAnonymous: json['is_anonymous'] ?? false,

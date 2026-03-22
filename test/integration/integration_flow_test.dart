@@ -8,6 +8,8 @@ import 'package:spacetimedb_dart_sdk/src/subscription/subscription_manager.dart'
 import 'package:spacetimedb_dart_sdk/src/offline/impl/json_file_storage.dart';
 import 'package:spacetimedb_dart_sdk/src/cache/table_cache.dart';
 import 'package:spacetimedb_dart_sdk/src/offline/pending_mutation.dart';
+import 'package:spacetimedb_dart_sdk/src/offline/optimistic_state_manager.dart';
+import 'package:spacetimedb_dart_sdk/src/offline/optimistic_change.dart';
 
 import '../generated/note.dart';
 import '../generated/note_status.dart';
@@ -208,6 +210,7 @@ void main() {
         manager.cache.activateEmptyTable('note');
 
         final table = manager.cache.getTableByName('note')! as TableCache<Note>;
+        final optimistic = OptimisticStateManager(manager.cache);
 
         final insertEvents = <Note>[];
         final deleteEvents = <Note>[];
@@ -215,13 +218,15 @@ void main() {
         final sub2 = table.deleteStream.listen(deleteEvents.add);
 
         final note = createNote(1, 'Stream Test');
-        table.applyOptimisticInsert('req-1', note);
+        optimistic.applyOptimisticChanges(
+            'req-1', [OptimisticChange.insert('note', note.toJson())]);
 
         await Future.delayed(const Duration(milliseconds: 10));
         expect(insertEvents.length, equals(1));
         expect(insertEvents.first.title, equals('Stream Test'));
 
-        table.applyOptimisticDelete('req-2', note);
+        optimistic.applyOptimisticChanges(
+            'req-2', [OptimisticChange.delete('note', note.toJson())]);
 
         await Future.delayed(const Duration(milliseconds: 10));
         expect(deleteEvents.length, equals(1));
@@ -239,10 +244,6 @@ void main() {
         final manager =
             SubscriptionManager(failingConnection, offlineStorage: storage);
         manager.cache.registerDecoder<Note>('note', NoteDecoder());
-        manager.cache.activateEmptyTable('note');
-
-        await failingConnection.connect();
-        failingConnection.setStatusSilently(ConnectionStatus.connected);
 
         final noteId = 999;
         final note = createNote(noteId, 'Bad Note');
@@ -257,13 +258,15 @@ void main() {
         );
 
         await storage.enqueueMutation(mutation);
+        await manager.loadFromOfflineCache();
+
+        await failingConnection.connect();
+        failingConnection.setStatusSilently(ConnectionStatus.connected);
 
         final table = manager.cache.getTableByName('note')! as TableCache<Note>;
-        table.applyOptimisticInsert('fail-req-1', note);
 
         expect(table.find(noteId), isNotNull,
             reason: 'Optimistic row should exist before sync');
-        expect(table.hasOptimisticChange('fail-req-1'), isTrue);
 
         await manager.syncPendingMutations();
 

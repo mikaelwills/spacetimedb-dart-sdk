@@ -132,7 +132,7 @@ void main() {
       // The error proves the server processed our request - the error IS the pong
       expect(response.error, isNotNull,
           reason: 'Server should report table not found');
-      expect(response.error, contains('not a valid table'),
+      expect(response.error, anyOf(contains('not a valid table'), contains('no such table')),
           reason: 'Error should indicate table does not exist');
 
       // If we got here, the Round Trip was successful

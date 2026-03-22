@@ -1,7 +1,10 @@
 // ignore_for_file: avoid_print
 import 'dart:io';
 
-const _testServerUrl = 'http://localhost:3000';
+const _testServerHost = 'localhost:3000';
+const _testServerUrl = 'http://$_testServerHost';
+const _markerPath = '.test_setup_done';
+const _lockPath = '.test_setup_lock';
 
 Future<bool> _isServerReachable() async {
   try {
@@ -16,32 +19,61 @@ Future<bool> _isServerReachable() async {
   }
 }
 
-/// Global test setup that runs once before all tests
-///
-/// This ensures SpacetimeDB is running and the test module is published.
-/// Call this from dart_test.yaml's setupAll hook.
+bool _isMarkerFresh() {
+  final marker = File(_markerPath);
+  if (!marker.existsSync()) return false;
+  try {
+    final timestamp = marker.readAsStringSync();
+    final setupTime = DateTime.parse(timestamp);
+    return DateTime.now().difference(setupTime).inMinutes < 5;
+  } catch (_) {
+    return false;
+  }
+}
+
+Future<void> _waitForSetup() async {
+  for (var i = 0; i < 120; i++) {
+    await Future.delayed(const Duration(seconds: 1));
+    if (_isMarkerFresh()) return;
+  }
+  throw Exception('Timed out waiting for test environment setup');
+}
+
+Future<void> _killExistingServer() async {
+  if (Platform.isMacOS || Platform.isLinux) {
+    await Process.run('pkill', ['-f', 'spacetimedb-standalone.*3000']);
+    await Future.delayed(const Duration(seconds: 2));
+  }
+}
+
+Future<ProcessResult> _run(String executable, List<String> args, {String? workingDirectory}) async {
+  final result = await Process.run(executable, args, workingDirectory: workingDirectory);
+  return result;
+}
+
 Future<void> setupTestEnvironment() async {
-  final marker = File('.test_setup_done');
+  if (_isMarkerFresh() && await _isServerReachable()) {
+    return;
+  }
 
-  // First, check if server is already reachable (fast path)
-  if (await _isServerReachable()) {
-    print('✅ SpacetimeDB server is reachable at $_testServerUrl');
+  final lockFile = File(_lockPath);
+  RandomAccessFile? lock;
+  try {
+    lock = lockFile.openSync(mode: FileMode.write);
+    lock.lockSync(FileLock.exclusive);
+  } catch (_) {
+    print('Another process is setting up test environment, waiting...');
+    await _waitForSetup();
+    return;
+  }
 
-    // Check marker for full setup (build/publish/generate)
-    if (await marker.exists()) {
-      final timestamp = await marker.readAsString();
-      final setupTime = DateTime.parse(timestamp);
-      if (DateTime.now().difference(setupTime).inMinutes < 5) {
-        print('✅ Test environment already set up ($setupTime)');
-        return;
-      }
+  try {
+    if (_isMarkerFresh() && await _isServerReachable()) {
+      return;
     }
-  } else {
-    print('⚠️ SpacetimeDB server not reachable at $_testServerUrl');
 
-    // Check if spacetime CLI is installed
     try {
-      final result = await Process.run('spacetime', ['--version']);
+      final result = await _run('spacetime', ['version', 'list']);
       if (result.exitCode != 0) throw Exception('CLI check failed');
     } catch (e) {
       throw Exception(
@@ -49,83 +81,98 @@ Future<void> setupTestEnvironment() async {
       );
     }
 
-    // Try to start the server
-    print('Starting SpacetimeDB server...');
-    Process.start('spacetime', ['start'], mode: ProcessStartMode.detached);
+    print('Killing any existing server on port 3000...');
+    await _killExistingServer();
 
-    // Wait for server to become reachable
-    for (var i = 0; i < 10; i++) {
+    print('Starting fresh in-memory SpacetimeDB server...');
+    Process.start(
+      'spacetime',
+      ['start', '--in-memory', '--listen-addr', '0.0.0.0:3000'],
+      mode: ProcessStartMode.detached,
+    );
+
+    for (var i = 0; i < 15; i++) {
       await Future.delayed(const Duration(seconds: 1));
       if (await _isServerReachable()) {
-        print('✅ SpacetimeDB server started');
+        print('SpacetimeDB server started on port 3000');
         break;
       }
-      if (i == 9) {
-        throw Exception(
-          'SpacetimeDB server failed to start. Run "spacetime start" manually.'
-        );
+      if (i == 14) {
+        throw Exception('SpacetimeDB server failed to start after 15s');
       }
     }
+
+    print('Logging into local server...');
+    final loginResult = await _run(
+      'spacetime',
+      ['login', '--server-issued-login', _testServerUrl],
+    );
+    if (loginResult.exitCode != 0) {
+      print('Warning: Login failed: ${loginResult.stderr}');
+    }
+
+    final testModuleDir = Directory('spacetime_test_module');
+    if (!await testModuleDir.exists()) {
+      throw Exception('Test module directory not found: ${testModuleDir.path}');
+    }
+
+    print('Building test module...');
+    final buildResult = await _run(
+      'spacetime', ['build'],
+      workingDirectory: testModuleDir.path,
+    );
+    if (buildResult.exitCode != 0) {
+      throw Exception('Build failed: ${buildResult.stderr}');
+    }
+
+    print('Publishing test module to $_testServerUrl...');
+    final publishResult = await _run(
+      'spacetime',
+      ['publish', '-s', _testServerUrl, '-y', 'notesdb'],
+      workingDirectory: testModuleDir.path,
+    );
+    if (publishResult.exitCode != 0) {
+      final stderr = publishResult.stderr.toString();
+      if (!stderr.contains('wasm-opt')) {
+        print('Publish stdout: ${publishResult.stdout}');
+        print('Publish stderr: $stderr');
+        throw Exception('Publish failed (exit code ${publishResult.exitCode})');
+      }
+    }
+    print('Published notesdb');
+
+    print('Generating test code from local project...');
+    final generateResult = await _run(
+      'dart',
+      ['run', 'spacetimedb_dart_sdk:generate', '--project-path', 'spacetime_test_module', '--output', 'test/generated'],
+    );
+    if (generateResult.exitCode != 0) {
+      print('Generate stdout: ${generateResult.stdout}');
+      print('Generate stderr: ${generateResult.stderr}');
+      throw Exception('Code generation failed: ${generateResult.stderr}');
+    }
+    print('Generated test code in test/generated/');
+
+    File(_markerPath).writeAsStringSync(DateTime.now().toIso8601String());
+    print('Test environment ready\n');
+  } finally {
+    lock?.unlockSync();
+    lock?.closeSync();
   }
+}
 
-  print('🚀 Setting up SpacetimeDB test environment...');
+Future<void> teardownTestEnvironment() async {
+  print('Tearing down test environment...');
 
-  // Login to local server (required for publish and schema fetch)
-  print('Logging into local server...');
-  final loginResult = await Process.run(
-    'spacetime',
-    ['login', '--server-issued-login', 'http://localhost:3000'],
-  );
-  if (loginResult.exitCode != 0) {
-    print('Warning: Login failed: ${loginResult.stderr}');
-  }
+  await _run('spacetime', ['delete', 'notesdb', '-s', _testServerUrl, '--yes']);
+  await _killExistingServer();
 
-  // Build and publish test module
-  final testModuleDir = Directory('spacetime_test_module');
-  if (!await testModuleDir.exists()) {
-    throw Exception('Test module directory not found: ${testModuleDir.path}');
-  }
+  try {
+    File(_markerPath).deleteSync();
+  } catch (_) {}
+  try {
+    File(_lockPath).deleteSync();
+  } catch (_) {}
 
-  // Build
-  print('Building test module...');
-  final buildResult = await Process.run(
-    'spacetime',
-    ['build'],
-    workingDirectory: testModuleDir.path,
-  );
-  if (buildResult.exitCode != 0) {
-    throw Exception('Build failed: ${buildResult.stderr}');
-  }
-
-  // Publish (use --clear-database to reset if it exists)
-  print('Publishing test module...');
-  final publishResult = await Process.run(
-    'spacetime',
-    ['publish', '--clear-database', 'notesdb'],
-    workingDirectory: testModuleDir.path,
-  );
-  if (publishResult.exitCode != 0) {
-    print('Publish stdout: ${publishResult.stdout}');
-    print('Publish stderr: ${publishResult.stderr}');
-    throw Exception('Publish failed: ${publishResult.stderr}');
-  }
-  print('✅ Published notesdb');
-
-  // Generate test code from local project (no network auth needed)
-  print('Generating test code from local project...');
-  final generateResult = await Process.run(
-    'dart',
-    ['run', 'spacetimedb_dart_sdk:generate', '--project-path', 'spacetime_test_module', '--output', 'test/generated'],
-  );
-  if (generateResult.exitCode != 0) {
-    print('Generate stdout: ${generateResult.stdout}');
-    print('Generate stderr: ${generateResult.stderr}');
-    throw Exception('Code generation failed: ${generateResult.stderr}');
-  }
-  print('✅ Generated test code in test/generated/');
-
-  // Mark setup as done
-  await marker.writeAsString(DateTime.now().toIso8601String());
-
-  print('✅ Test environment ready\n');
+  print('Test environment torn down');
 }

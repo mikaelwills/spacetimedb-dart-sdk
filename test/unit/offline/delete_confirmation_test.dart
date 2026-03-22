@@ -2,8 +2,11 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 import 'package:spacetimedb_dart_sdk/src/cache/table_cache.dart';
+import 'package:spacetimedb_dart_sdk/src/cache/client_cache.dart';
 import 'package:spacetimedb_dart_sdk/src/messages/shared_types.dart';
 import 'package:spacetimedb_dart_sdk/src/events/event_context.dart';
+import 'package:spacetimedb_dart_sdk/src/offline/optimistic_state_manager.dart';
+import 'package:spacetimedb_dart_sdk/src/offline/optimistic_change.dart';
 
 import '../../generated/note.dart';
 import '../../generated/note_status.dart';
@@ -50,15 +53,17 @@ BsatnRowList createRowList(List<Note> notes) {
 
 void main() {
   group('Delete Confirmation Bug Fix', () {
+    late ClientCache clientCache;
     late TableCache<Note> cache;
+    late OptimisticStateManager optimistic;
     late EventContext dummyContext;
 
     setUp(() {
-      cache = TableCache<Note>(
-        tableId: 1,
-        tableName: 'note',
-        decoder: NoteDecoder(),
-      );
+      clientCache = ClientCache();
+      clientCache.registerDecoder<Note>('note', NoteDecoder());
+      clientCache.activateEmptyTable('note');
+      cache = clientCache.getTableByTypedName<Note>('note');
+      optimistic = OptimisticStateManager(clientCache);
       dummyContext = EventContext.optimistic(requestId: 'dummy');
     });
 
@@ -72,10 +77,11 @@ void main() {
         cache.insertRow(note);
         expect(cache.find(100)?.id, equals(100), reason: 'Setup: note exists');
 
-        cache.applyOptimisticDelete('req-delete-100', note);
+        optimistic.applyOptimisticChanges(
+            'req-delete-100', [OptimisticChange.delete('note', note.toJson())]);
         expect(cache.find(100), isNull,
             reason: 'Row should be removed immediately by optimistic delete');
-        expect(cache.hasOptimisticChange('req-delete-100'), isTrue);
+        expect(optimistic.hasOptimisticChange('req-delete-100'), isTrue);
 
         final deletes = createRowList([note]);
         final inserts = BsatnRowList.empty();
@@ -86,26 +92,25 @@ void main() {
             reason:
                 'CRITICAL: Delete PK must be in touchedKeys even though row was already gone from cache');
 
-        cache.confirmOrRollbackOptimisticChange('req-delete-100', touchedKeys);
+        optimistic.confirmOrRollbackWithTouchedKeys(
+            'req-delete-100', {'note': touchedKeys});
 
         await Future.delayed(Duration(milliseconds: 10));
 
         expect(cache.find(100), isNull,
             reason:
-                'CRITICAL: Row must NOT reappear after server confirmation. '
-                'This is the bug we fixed - touchedKeys must be extracted from server message, not local cache.');
+                'CRITICAL: Row must NOT reappear after server confirmation.');
       });
 
       test('without fix, row would be incorrectly restored', () {
         final note = createNote(101, 'Ghost Note');
         cache.insertRow(note);
 
-        cache.applyOptimisticDelete('req-delete-101', note);
+        optimistic.applyOptimisticChanges(
+            'req-delete-101', [OptimisticChange.delete('note', note.toJson())]);
         expect(cache.find(101), isNull);
 
-        final emptyTouchedKeys = <dynamic>{};
-        cache.confirmOrRollbackOptimisticChange(
-            'req-delete-101', emptyTouchedKeys);
+        optimistic.confirmOrRollbackWithTouchedKeys('req-delete-101', {});
 
         expect(cache.find(101)?.id, equals(101),
             reason:
@@ -118,9 +123,9 @@ void main() {
         final note = createNote(200, 'Keep Me');
         cache.insertRow(note);
 
-        cache.applyOptimisticDelete('req-delete-200', note);
-        expect(cache.find(200), isNull,
-            reason: 'Optimistically removed');
+        optimistic.applyOptimisticChanges(
+            'req-delete-200', [OptimisticChange.delete('note', note.toJson())]);
+        expect(cache.find(200), isNull, reason: 'Optimistically removed');
 
         final emptyDeletes = BsatnRowList.empty();
         final emptyInserts = BsatnRowList.empty();
@@ -130,7 +135,8 @@ void main() {
         expect(touchedKeys.isEmpty, isTrue,
             reason: 'Server did nothing - empty transaction');
 
-        cache.confirmOrRollbackOptimisticChange('req-delete-200', touchedKeys);
+        optimistic.confirmOrRollbackWithTouchedKeys(
+            'req-delete-200', {'note': touchedKeys});
 
         expect(cache.find(200)?.id, equals(200),
             reason: 'Row should be restored since server did not confirm delete');
@@ -147,9 +153,11 @@ void main() {
         cache.insertRow(noteB);
         cache.insertRow(noteC);
 
-        cache.applyOptimisticDelete('req-batch', noteA);
-        cache.applyOptimisticDelete('req-batch', noteB);
-        cache.applyOptimisticDelete('req-batch', noteC);
+        optimistic.applyOptimisticChanges('req-batch', [
+          OptimisticChange.delete('note', noteA.toJson()),
+          OptimisticChange.delete('note', noteB.toJson()),
+          OptimisticChange.delete('note', noteC.toJson()),
+        ]);
 
         expect(cache.find(301), isNull);
         expect(cache.find(302), isNull);
@@ -164,16 +172,14 @@ void main() {
         expect(touchedKeys.contains(302), isTrue);
         expect(touchedKeys.contains(303), isTrue);
 
-        cache.confirmOrRollbackOptimisticChange('req-batch', touchedKeys);
+        optimistic.confirmOrRollbackWithTouchedKeys(
+            'req-batch', {'note': touchedKeys});
 
         await Future.delayed(Duration(milliseconds: 10));
 
-        expect(cache.find(301), isNull,
-            reason: 'Note A must stay deleted');
-        expect(cache.find(302), isNull,
-            reason: 'Note B must stay deleted');
-        expect(cache.find(303), isNull,
-            reason: 'Note C must stay deleted');
+        expect(cache.find(301), isNull, reason: 'Note A must stay deleted');
+        expect(cache.find(302), isNull, reason: 'Note B must stay deleted');
+        expect(cache.find(303), isNull, reason: 'Note C must stay deleted');
       });
 
       test('partial batch - some confirmed, some rolled back', () {
@@ -183,8 +189,10 @@ void main() {
         cache.insertRow(noteA);
         cache.insertRow(noteB);
 
-        cache.applyOptimisticDelete('req-partial', noteA);
-        cache.applyOptimisticDelete('req-partial', noteB);
+        optimistic.applyOptimisticChanges('req-partial', [
+          OptimisticChange.delete('note', noteA.toJson()),
+          OptimisticChange.delete('note', noteB.toJson()),
+        ]);
 
         final deletes = createRowList([noteA]);
         final inserts = BsatnRowList.empty();
@@ -194,7 +202,8 @@ void main() {
         expect(touchedKeys.contains(304), isTrue);
         expect(touchedKeys.contains(305), isFalse);
 
-        cache.confirmOrRollbackOptimisticChange('req-partial', touchedKeys);
+        optimistic.confirmOrRollbackWithTouchedKeys(
+            'req-partial', {'note': touchedKeys});
 
         expect(cache.find(304), isNull,
             reason: 'Note A was confirmed deleted');
@@ -220,16 +229,17 @@ void main() {
       test('offline sync with pending delete - row stays deleted', () async {
         final note = createNote(401, 'Offline Delete');
 
-        cache.applyOptimisticInsert('req-create', note);
+        optimistic.applyOptimisticChanges(
+            'req-create', [OptimisticChange.insert('note', note.toJson())]);
         expect(cache.find(401)?.id, equals(401));
 
-        cache.applyOptimisticDelete('req-delete', note);
-        expect(cache.find(401), isNull,
-            reason: 'Optimistically deleted');
+        optimistic.applyOptimisticChanges(
+            'req-delete', [OptimisticChange.delete('note', note.toJson())]);
+        expect(cache.find(401), isNull, reason: 'Optimistically deleted');
 
         cache.loadFromSerializable([]);
 
-        expect(cache.hasOptimisticChange('req-delete'), isTrue,
+        expect(optimistic.hasOptimisticChange('req-delete'), isTrue,
             reason: 'Optimistic change should survive cache reload');
 
         final deletes = createRowList([note]);
@@ -237,7 +247,8 @@ void main() {
         final touchedKeys =
             cache.applyTransactionUpdateAndCollectKeys(deletes, inserts, dummyContext);
 
-        cache.confirmOrRollbackOptimisticChange('req-delete', touchedKeys);
+        optimistic.confirmOrRollbackWithTouchedKeys(
+            'req-delete', {'note': touchedKeys});
 
         await Future.delayed(Duration(milliseconds: 10));
 
@@ -253,10 +264,12 @@ void main() {
 
         cache.insertRow(note);
 
-        cache.applyOptimisticUpdate('req-update', note, updated);
+        optimistic.applyOptimisticChanges('req-update',
+            [OptimisticChange.update('note', note.toJson(), updated.toJson())]);
         expect(cache.find(500)?.title, equals('Updated'));
 
-        cache.applyOptimisticDelete('req-delete', updated);
+        optimistic.applyOptimisticChanges('req-delete',
+            [OptimisticChange.delete('note', updated.toJson())]);
         expect(cache.find(500), isNull);
 
         final deletes = createRowList([updated]);
@@ -264,7 +277,8 @@ void main() {
         final touchedKeys =
             cache.applyTransactionUpdateAndCollectKeys(deletes, inserts, dummyContext);
 
-        cache.confirmOrRollbackOptimisticChange('req-delete', touchedKeys);
+        optimistic.confirmOrRollbackWithTouchedKeys(
+            'req-delete', {'note': touchedKeys});
 
         expect(cache.find(500), isNull,
             reason: 'Delete should win over update');
@@ -275,7 +289,8 @@ void main() {
         final serverNote = createNote(600, 'Server Version');
 
         cache.insertRow(clientNote);
-        cache.applyOptimisticDelete('req-delete', clientNote);
+        optimistic.applyOptimisticChanges('req-delete',
+            [OptimisticChange.delete('note', clientNote.toJson())]);
 
         final deletes = createRowList([serverNote]);
         final touchedKeys = cache.applyTransactionUpdateAndCollectKeys(
@@ -284,7 +299,8 @@ void main() {
         expect(touchedKeys.contains(600), isTrue,
             reason: 'PK 600 should be touched regardless of title mismatch');
 
-        cache.confirmOrRollbackOptimisticChange('req-delete', touchedKeys);
+        optimistic.confirmOrRollbackWithTouchedKeys(
+            'req-delete', {'note': touchedKeys});
 
         expect(cache.find(600), isNull,
             reason: 'Row should stay deleted');

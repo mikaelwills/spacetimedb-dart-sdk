@@ -237,6 +237,7 @@ class SchemaExtractor {
       'reducers': <dynamic>[],
       'types': <dynamic>[],
       'misc_exports': <dynamic>[],
+      'views': <dynamic>[],
     };
 
     for (final rawSection in sections) {
@@ -265,6 +266,8 @@ class SchemaExtractor {
               : [];
         case 'MiscExports':
           result['misc_exports'] = sectionValue is List ? sectionValue : [];
+        case 'Views':
+          result['views'] = sectionValue is List ? sectionValue : [];
       }
     }
 

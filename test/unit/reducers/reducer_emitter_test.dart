@@ -286,6 +286,7 @@ void main() {
             }
           case OutOfEnergy():
           case Pending():
+          case Dropped():
             break;
         }
       });

@@ -1,6 +1,9 @@
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 import 'package:spacetimedb_dart_sdk/src/cache/table_cache.dart';
+import 'package:spacetimedb_dart_sdk/src/cache/client_cache.dart';
+import 'package:spacetimedb_dart_sdk/src/offline/optimistic_state_manager.dart';
+import 'package:spacetimedb_dart_sdk/src/offline/optimistic_change.dart';
 
 import '../../generated/note.dart';
 import '../../generated/note_status.dart';
@@ -13,142 +16,183 @@ Note createNote(int id, String title) => Note(
       status: const NoteStatusDraft(),
     );
 
+OptimisticChange insertChange(int id, String title) =>
+    OptimisticChange.insert('note', createNote(id, title).toJson());
+
+OptimisticChange updateChange(int id, String oldTitle, String newTitle) =>
+    OptimisticChange.update(
+      'note',
+      createNote(id, oldTitle).toJson(),
+      createNote(id, newTitle).toJson(),
+    );
+
+OptimisticChange deleteChange(int id, String title) =>
+    OptimisticChange.delete('note', createNote(id, title).toJson());
+
 void main() {
-  group('TableCache Optimistic Changes', () {
-    late TableCache<Note> cache;
+  group('OptimisticStateManager', () {
+    late ClientCache clientCache;
+    late OptimisticStateManager manager;
+    late TableCache<Note> table;
 
     setUp(() {
-      cache = TableCache<Note>(
-        tableId: 1,
-        tableName: 'note',
-        decoder: NoteDecoder(),
-      );
+      clientCache = ClientCache();
+      clientCache.registerDecoder<Note>('note', NoteDecoder());
+      clientCache.activateEmptyTable('note');
+      table = clientCache.getTableByTypedName<Note>('note');
+      manager = OptimisticStateManager(clientCache);
     });
 
-    tearDown(() => cache.dispose());
+    tearDown(() => table.dispose());
 
     test('optimistic insert adds row and tracks change', () {
-      final note = createNote(1, 'Test');
+      manager.applyOptimisticChanges('req-1', [insertChange(1, 'Test')]);
 
-      cache.applyOptimisticInsert('req-1', note);
-
-      expect(cache.find(1)?.id, equals(1));
-      expect(cache.hasOptimisticChange('req-1'), isTrue);
+      expect(table.find(1)?.id, equals(1));
+      expect(manager.hasOptimisticChange('req-1'), isTrue);
     });
 
     test('optimistic update replaces row and tracks old value', () {
-      final oldNote = createNote(1, 'Old');
-      final newNote = createNote(1, 'New');
+      table.insertRow(createNote(1, 'Old'));
+      manager.applyOptimisticChanges('req-1', [updateChange(1, 'Old', 'New')]);
 
-      cache.insertRow(oldNote);
-      cache.applyOptimisticUpdate('req-1', oldNote, newNote);
-
-      expect(cache.find(1)?.title, equals('New'));
-      expect(cache.hasOptimisticChange('req-1'), isTrue);
+      expect(table.find(1)?.title, equals('New'));
+      expect(manager.hasOptimisticChange('req-1'), isTrue);
     });
 
     test('optimistic delete removes row and tracks deleted value', () {
-      final note = createNote(1, 'Test');
+      table.insertRow(createNote(1, 'Test'));
+      manager.applyOptimisticChanges('req-1', [deleteChange(1, 'Test')]);
 
-      cache.insertRow(note);
-      cache.applyOptimisticDelete('req-1', note);
-
-      expect(cache.find(1), isNull);
-      expect(cache.hasOptimisticChange('req-1'), isTrue);
+      expect(table.find(1), isNull);
+      expect(manager.hasOptimisticChange('req-1'), isTrue);
     });
 
     test('confirm removes tracking but keeps changes', () {
-      final note = createNote(1, 'Test');
+      manager.applyOptimisticChanges('req-1', [insertChange(1, 'Test')]);
+      manager.confirmOptimisticChange('req-1');
 
-      cache.applyOptimisticInsert('req-1', note);
-      cache.confirmOptimisticChange('req-1');
-
-      expect(cache.find(1)?.id, equals(1));
-      expect(cache.hasOptimisticChange('req-1'), isFalse);
+      expect(table.find(1)?.id, equals(1));
+      expect(manager.hasOptimisticChange('req-1'), isFalse);
     });
 
     group('rollback', () {
       test('rollback insert removes row', () {
-        final note = createNote(1, 'Test');
+        manager.applyOptimisticChanges('req-1', [insertChange(1, 'Test')]);
+        manager.rollbackOptimisticChanges('req-1');
 
-        cache.applyOptimisticInsert('req-1', note);
-        cache.rollbackOptimisticChange('req-1');
-
-        expect(cache.find(1), isNull);
-        expect(cache.hasOptimisticChange('req-1'), isFalse);
+        expect(table.find(1), isNull);
+        expect(manager.hasOptimisticChange('req-1'), isFalse);
       });
 
       test('rollback update restores old value', () {
-        final oldNote = createNote(1, 'Old');
-        final newNote = createNote(1, 'New');
+        table.insertRow(createNote(1, 'Old'));
+        manager.applyOptimisticChanges('req-1', [updateChange(1, 'Old', 'New')]);
+        manager.rollbackOptimisticChanges('req-1');
 
-        cache.insertRow(oldNote);
-        cache.applyOptimisticUpdate('req-1', oldNote, newNote);
-        cache.rollbackOptimisticChange('req-1');
-
-        expect(cache.find(1)?.title, equals('Old'));
+        expect(table.find(1)?.title, equals('Old'));
       });
 
       test('rollback delete restores row', () {
-        final note = createNote(1, 'Test');
+        table.insertRow(createNote(1, 'Test'));
+        manager.applyOptimisticChanges('req-1', [deleteChange(1, 'Test')]);
+        manager.rollbackOptimisticChanges('req-1');
 
-        cache.insertRow(note);
-        cache.applyOptimisticDelete('req-1', note);
-        cache.rollbackOptimisticChange('req-1');
-
-        expect(cache.find(1)?.id, equals(1));
+        expect(table.find(1)?.id, equals(1));
       });
 
       test('rollback multiple changes in reverse order', () {
-        final note1 = createNote(1, 'Note 1');
-        final note2 = createNote(2, 'Note 2');
-        final note3 = createNote(3, 'Note 3');
+        manager.applyOptimisticChanges('req-1', [
+          insertChange(1, 'Note 1'),
+          insertChange(2, 'Note 2'),
+          insertChange(3, 'Note 3'),
+        ]);
 
-        cache.applyOptimisticInsert('req-1', note1);
-        cache.applyOptimisticInsert('req-1', note2);
-        cache.applyOptimisticInsert('req-1', note3);
+        manager.rollbackOptimisticChanges('req-1');
 
-        cache.rollbackOptimisticChange('req-1');
-
-        expect(cache.count(), equals(0));
+        expect(table.count(), equals(0));
       });
 
       test('rollback only affects specified request', () {
-        final note1 = createNote(1, 'Note 1');
-        final note2 = createNote(2, 'Note 2');
+        manager.applyOptimisticChanges('req-1', [insertChange(1, 'Note 1')]);
+        manager.applyOptimisticChanges('req-2', [insertChange(2, 'Note 2')]);
 
-        cache.applyOptimisticInsert('req-1', note1);
-        cache.applyOptimisticInsert('req-2', note2);
+        manager.rollbackOptimisticChanges('req-1');
 
-        cache.rollbackOptimisticChange('req-1');
-
-        expect(cache.find(1), isNull);
-        expect(cache.find(2)?.id, equals(2));
-        expect(cache.hasOptimisticChange('req-2'), isTrue);
+        expect(table.find(1), isNull);
+        expect(table.find(2)?.id, equals(2));
+        expect(manager.hasOptimisticChange('req-2'), isTrue);
       });
     });
 
-    test('loadFromSerializable preserves optimistic changes', () {
-      final note = createNote(1, 'Optimistic');
-      cache.applyOptimisticInsert('req-1', note);
+    group('touch-based confirm/rollback', () {
+      test('touched keys are confirmed, untouched are rolled back', () {
+        manager.applyOptimisticChanges('req-1', [
+          insertChange(1, 'Note 1'),
+          insertChange(2, 'Note 2'),
+        ]);
 
-      cache.loadFromSerializable([
+        manager.confirmOrRollbackWithTouchedKeys('req-1', {
+          'note': {1},
+        });
+
+        expect(table.find(1)?.id, equals(1));
+        expect(table.find(2), isNull);
+        expect(manager.hasOptimisticChange('req-1'), isFalse);
+      });
+
+      test('tables not in touchedKeys map get fully rolled back', () {
+        manager.applyOptimisticChanges('req-1', [insertChange(1, 'Test')]);
+
+        manager.confirmOrRollbackWithTouchedKeys('req-1', {});
+
+        expect(table.find(1), isNull);
+      });
+    });
+
+    group('clearNonOptimisticRows', () {
+      test('clears non-optimistic rows, preserves optimistic ones', () {
+        table.insertRow(createNote(1, 'Server'));
+        table.insertRow(createNote(2, 'Also Server'));
+        manager.applyOptimisticChanges('req-1', [insertChange(3, 'Optimistic')]);
+
+        manager.clearNonOptimisticRows('note');
+
+        expect(table.find(1), isNull);
+        expect(table.find(2), isNull);
+        expect(table.find(3)?.title, equals('Optimistic'));
+      });
+
+      test('clears all rows when no optimistic changes exist', () {
+        table.insertRow(createNote(1, 'Server'));
+        table.insertRow(createNote(2, 'Also Server'));
+
+        manager.clearNonOptimisticRows('note');
+
+        expect(table.count(), equals(0));
+      });
+    });
+
+    test('loadFromSerializable no longer needs to preserve optimistic state', () {
+      manager.applyOptimisticChanges('req-1', [insertChange(1, 'Optimistic')]);
+
+      table.loadFromSerializable([
         createNote(2, 'Server Note').toJson(),
       ]);
 
-      expect(cache.hasOptimisticChange('req-1'), isTrue);
+      expect(manager.hasOptimisticChange('req-1'), isTrue);
+      expect(table.find(2)?.title, equals('Server Note'));
     });
 
-    test('optimisticChangeCount reflects total changes', () {
-      cache.applyOptimisticInsert('req-1', createNote(1, 'A'));
-      cache.applyOptimisticInsert('req-1', createNote(2, 'B'));
-      cache.applyOptimisticInsert('req-2', createNote(3, 'C'));
+    test('optimisticPrimaryKeysForTable returns correct keys', () {
+      manager.applyOptimisticChanges('req-1', [
+        insertChange(1, 'A'),
+        insertChange(2, 'B'),
+      ]);
+      manager.applyOptimisticChanges('req-2', [insertChange(3, 'C')]);
 
-      expect(cache.optimisticChangeCount, equals(3));
-
-      cache.confirmOptimisticChange('req-1');
-
-      expect(cache.optimisticChangeCount, equals(1));
+      final keys = manager.optimisticPrimaryKeysForTable('note');
+      expect(keys, containsAll([1, 2, 3]));
     });
   });
 }

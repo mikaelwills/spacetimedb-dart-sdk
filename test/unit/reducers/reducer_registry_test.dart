@@ -185,6 +185,7 @@ void main() {
           Failed(message: final msg) => 'failed: $msg',
           OutOfEnergy(budgetInfo: final info) => 'out of energy: $info',
           Pending() => 'pending',
+          Dropped() => 'dropped',
         };
       }
 

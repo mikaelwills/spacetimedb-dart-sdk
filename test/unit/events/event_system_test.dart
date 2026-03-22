@@ -84,6 +84,7 @@ void main() {
           Failed(:final message) => 'failed: $message',
           OutOfEnergy(:final budgetInfo) => 'out of energy: $budgetInfo',
           Pending() => 'pending',
+          Dropped() => 'dropped',
         };
       }
 

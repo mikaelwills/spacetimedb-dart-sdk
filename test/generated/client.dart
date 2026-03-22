@@ -64,21 +64,6 @@ class SpacetimeDbClient {
     return subscriptions.cache.getTableByTypedName<Note>('note');
   }
 
-  TableCache<Note> get allNotes {
-    return subscriptions.cache.getTableByTypedName<Note>('all_notes');
-  }
-
-  /// Access singleton view 'first_note'
-  Note? get firstNote {
-    final cache = subscriptions.cache.getTableByTypedName<Note>('first_note');
-    // Optimization: Don't convert to list, just check the iterator
-    final iterator = cache.iter().iterator;
-    if (iterator.moveNext()) {
-      return iterator.current;
-    }
-    return null;
-  }
-
   SpacetimeDbClient._({
     required this.connection,
     required this.subscriptions,
@@ -123,8 +108,6 @@ class SpacetimeDbClient {
     subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
 
     // Auto-register view decoders
-    subscriptionManager.cache.registerDecoder<Note>('all_notes', NoteDecoder());
-    subscriptionManager.cache.registerDecoder<Note>('first_note', NoteDecoder());
 
     // Auto-register reducer argument decoders
     subscriptionManager.reducerRegistry.registerDecoder('create_folder', CreateFolderArgsDecoder());

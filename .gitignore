@@ -28,6 +28,7 @@ migrate_working_dir/
 .dart_tool/
 build/
 .test_setup_done
+.test_setup_lock
 
 # Development notes
 show_failed_tests

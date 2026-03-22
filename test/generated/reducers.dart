@@ -33,12 +33,13 @@ class Reducers {
     required String path,
     required String name,
     List<OptimisticChange>? optimisticChanges,
+    bool isEventTable = false,
   }) async {
     final encoder = BsatnEncoder();
     encoder.writeString(path);
     encoder.writeString(name);
 
-    return await _reducerCaller.call('create_folder', encoder.toBytes(), optimisticChanges: optimisticChanges);
+    return await _reducerCaller.call('create_folder', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable);
   }
 
   /// Call the create_note reducer
@@ -57,12 +58,13 @@ class Reducers {
     required String title,
     required String content,
     List<OptimisticChange>? optimisticChanges,
+    bool isEventTable = false,
   }) async {
     final encoder = BsatnEncoder();
     encoder.writeString(title);
     encoder.writeString(content);
 
-    return await _reducerCaller.call('create_note', encoder.toBytes(), optimisticChanges: optimisticChanges);
+    return await _reducerCaller.call('create_note', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable);
   }
 
   /// Call the delete_all_folders reducer
@@ -77,10 +79,10 @@ class Reducers {
   ///
   /// Throws [ReducerException] if the reducer fails or runs out of energy.
   /// Throws [TimeoutException] if the reducer doesn't complete within the timeout.
-  Future<TransactionResult> deleteAllFolders({List<OptimisticChange>? optimisticChanges}) async {
+  Future<TransactionResult> deleteAllFolders({List<OptimisticChange>? optimisticChanges, bool isEventTable = false}) async {
     final encoder = BsatnEncoder();
 
-    return await _reducerCaller.call('delete_all_folders', encoder.toBytes(), optimisticChanges: optimisticChanges);
+    return await _reducerCaller.call('delete_all_folders', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable);
   }
 
   /// Call the delete_all_notes reducer
@@ -95,10 +97,10 @@ class Reducers {
   ///
   /// Throws [ReducerException] if the reducer fails or runs out of energy.
   /// Throws [TimeoutException] if the reducer doesn't complete within the timeout.
-  Future<TransactionResult> deleteAllNotes({List<OptimisticChange>? optimisticChanges}) async {
+  Future<TransactionResult> deleteAllNotes({List<OptimisticChange>? optimisticChanges, bool isEventTable = false}) async {
     final encoder = BsatnEncoder();
 
-    return await _reducerCaller.call('delete_all_notes', encoder.toBytes(), optimisticChanges: optimisticChanges);
+    return await _reducerCaller.call('delete_all_notes', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable);
   }
 
   /// Call the delete_folder reducer
@@ -116,11 +118,12 @@ class Reducers {
   Future<TransactionResult> deleteFolder({
     required String path,
     List<OptimisticChange>? optimisticChanges,
+    bool isEventTable = false,
   }) async {
     final encoder = BsatnEncoder();
     encoder.writeString(path);
 
-    return await _reducerCaller.call('delete_folder', encoder.toBytes(), optimisticChanges: optimisticChanges);
+    return await _reducerCaller.call('delete_folder', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable);
   }
 
   /// Call the delete_note reducer
@@ -138,11 +141,12 @@ class Reducers {
   Future<TransactionResult> deleteNote({
     required int noteId,
     List<OptimisticChange>? optimisticChanges,
+    bool isEventTable = false,
   }) async {
     final encoder = BsatnEncoder();
     encoder.writeU32(noteId);
 
-    return await _reducerCaller.call('delete_note', encoder.toBytes(), optimisticChanges: optimisticChanges);
+    return await _reducerCaller.call('delete_note', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable);
   }
 
   /// Call the init reducer
@@ -157,10 +161,10 @@ class Reducers {
   ///
   /// Throws [ReducerException] if the reducer fails or runs out of energy.
   /// Throws [TimeoutException] if the reducer doesn't complete within the timeout.
-  Future<TransactionResult> init({List<OptimisticChange>? optimisticChanges}) async {
+  Future<TransactionResult> init({List<OptimisticChange>? optimisticChanges, bool isEventTable = false}) async {
     final encoder = BsatnEncoder();
 
-    return await _reducerCaller.call('init', encoder.toBytes(), optimisticChanges: optimisticChanges);
+    return await _reducerCaller.call('init', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable);
   }
 
   /// Call the update_note reducer
@@ -180,13 +184,14 @@ class Reducers {
     required String title,
     required String content,
     List<OptimisticChange>? optimisticChanges,
+    bool isEventTable = false,
   }) async {
     final encoder = BsatnEncoder();
     encoder.writeU32(noteId);
     encoder.writeString(title);
     encoder.writeString(content);
 
-    return await _reducerCaller.call('update_note', encoder.toBytes(), optimisticChanges: optimisticChanges);
+    return await _reducerCaller.call('update_note', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable);
   }
 
   StreamSubscription<void> onCreateFolder(void Function(EventContext ctx, String path, String name) callback) {

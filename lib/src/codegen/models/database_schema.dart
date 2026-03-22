@@ -28,10 +28,16 @@ class DatabaseSchema {
     final reducersJson = json['reducers'];
     final typesJson = json['types'];
     final miscExportsJson = json['misc_exports'];
+    final viewsJson = json['views'];
 
-    // Parse views from misc_exports array
     List<ViewSchema> views = [];
-    if (miscExportsJson is List) {
+    if (viewsJson is List && viewsJson.isNotEmpty) {
+      for (final item in viewsJson) {
+        if (item is Map<String, dynamic>) {
+          views.add(ViewSchema.fromJson(item));
+        }
+      }
+    } else if (miscExportsJson is List) {
       for (final item in miscExportsJson) {
         if (item is Map<String, dynamic> && item.containsKey('View')) {
           views.add(ViewSchema.fromJson(item['View']));

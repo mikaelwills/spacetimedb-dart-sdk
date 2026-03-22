@@ -1,86 +1,73 @@
 #!/bin/bash
 # Setup script for SpacetimeDB test environment
-# This script sets up a local SpacetimeDB instance and publishes the test module
+# Starts a local in-memory server and publishes the test module
 
-set -e  # Exit on error
+set -e
 
-echo "🚀 Setting up SpacetimeDB test environment..."
+TEST_SERVER="http://localhost:3000"
 
-# Check if spacetime CLI is installed
+echo "Setting up SpacetimeDB test environment..."
+
 if ! command -v spacetime &> /dev/null; then
-    echo "❌ Error: spacetime CLI not found"
-    echo "Please install SpacetimeDB from https://spacetimedb.com/install"
+    echo "Error: spacetime CLI not found"
+    echo "Install from https://spacetimedb.com/install"
     exit 1
 fi
 
-echo "✅ SpacetimeDB CLI found"
+echo "SpacetimeDB CLI found"
 
-# Ensure we're logged into local server (creates persistent identity)
-echo "🔑 Ensuring local server authentication..."
-echo "n" | spacetime list --server http://localhost:3000 > /dev/null 2>&1 || true
-echo "✅ Local identity configured"
-
-# Check if SpacetimeDB is running by checking for the process
-if pgrep -x "spacetimedb-standalone" > /dev/null; then
-    echo "✅ SpacetimeDB already running"
+# Check if server is already running on localhost:3000
+if curl -s -o /dev/null -w "%{http_code}" "$TEST_SERVER/database" 2>/dev/null | grep -q "^[0-4]"; then
+    echo "SpacetimeDB already running at $TEST_SERVER"
 else
-    echo "⚠️  SpacetimeDB not running, starting server..."
-    spacetime start &
-    sleep 3
-    echo "✅ SpacetimeDB started"
+    echo "Starting SpacetimeDB server (in-memory)..."
+    spacetime start --in-memory --listen-addr 0.0.0.0:3000 &
+    for i in $(seq 1 15); do
+        sleep 1
+        if curl -s -o /dev/null "$TEST_SERVER/database" 2>/dev/null; then
+            echo "SpacetimeDB server started"
+            break
+        fi
+        if [ "$i" -eq 15 ]; then
+            echo "Error: Server failed to start after 15s"
+            exit 1
+        fi
+    done
 fi
 
-# Navigate to test module directory
+# Login to local server
+echo "Logging into local server..."
+spacetime login --server-issued-login "$TEST_SERVER" || true
+
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 TEST_MODULE_DIR="$SCRIPT_DIR/../spacetime_test_module"
 
 if [ ! -d "$TEST_MODULE_DIR" ]; then
-    echo "❌ Error: Test module directory not found at $TEST_MODULE_DIR"
+    echo "Error: Test module directory not found at $TEST_MODULE_DIR"
     exit 1
 fi
 
 cd "$TEST_MODULE_DIR"
 
-# Build the test module
-echo "🔨 Building test module..."
+echo "Building test module..."
 spacetime build
 
-# Delete existing database if it exists (to start fresh)
-echo "🗑️  Cleaning up existing test database..."
-spacetime delete notesdb --server http://localhost:3000 --yes 2>/dev/null || {
-    echo "⚠️  Could not delete existing database (may be owned by different identity)"
-    echo "   If publish fails, manually delete with: spacetime delete notesdb --server http://localhost:3000 --yes"
+echo "Publishing test module to $TEST_SERVER..."
+spacetime publish --delete-data=always -s "$TEST_SERVER" notesdb || {
+    echo "Publish failed - trying delete + republish..."
+    spacetime delete notesdb -s "$TEST_SERVER" --yes 2>/dev/null || true
+    spacetime publish -s "$TEST_SERVER" notesdb
 }
 
-# Publish the test module
-echo "📦 Publishing test module to 'notesdb'..."
-if ! spacetime publish notesdb --server http://localhost:3000; then
-    echo ""
-    echo "❌ Publish failed - likely due to identity mismatch"
-    echo ""
-    echo "To fix this, manually delete the database and re-run setup:"
-    echo "  spacetime delete notesdb --server http://localhost:3000 --yes"
-    echo "  ./tool/setup_test_db.sh"
-    exit 1
-fi
-
-# Generate test code from notesdb schema
-echo "🔧 Generating test code from notesdb schema..."
+echo "Generating test code from local project..."
 cd "$SCRIPT_DIR/.."
 dart run spacetimedb_dart_sdk:generate \
-    -d notesdb \
-    -s http://localhost:3000 \
-    -o test/generated
-
-if [ $? -ne 0 ]; then
-    echo "❌ Code generation failed"
-    exit 1
-fi
-echo "✅ Generated test code in test/generated/"
+    --project-path spacetime_test_module \
+    --output test/generated
 
 echo ""
-echo "✅ Test environment setup complete!"
+echo "Test environment setup complete!"
 echo ""
-echo "You can now run tests with:"
+echo "Run tests with:"
 echo "  dart test"
 echo ""
