@@ -52,6 +52,9 @@ export 'src/offline/offline_storage.dart';
 export 'src/offline/pending_mutation.dart';
 export 'src/offline/sync_state.dart';
 export 'src/offline/impl/json_file_storage.dart';
+export 'src/offline/mutation_syncer.dart';
+export 'src/offline/offline_cache_coordinator.dart';
+export 'src/offline/optimistic_state_manager.dart';
 
 // Utils
 export 'src/utils/sdk_logger.dart';
