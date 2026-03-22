@@ -327,13 +327,4 @@ class ClientCache {
 
   Iterable<TableCache> get allTables => _tables.values;
 
-  bool anyTableHasOptimisticChange(String requestId) {
-    return _tables.values.any((table) => table.hasOptimisticChange(requestId));
-  }
-
-  void confirmAllOptimisticChanges(String requestId) {
-    for (final table in _tables.values) {
-      table.confirmOptimisticChange(requestId);
-    }
-  }
 }

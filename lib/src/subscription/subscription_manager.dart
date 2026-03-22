@@ -20,6 +20,7 @@ import '../auth/identity.dart';
 import '../offline/offline_storage.dart';
 import '../offline/sync_state.dart';
 import '../offline/pending_mutation.dart';
+import '../offline/optimistic_state_manager.dart';
 import '../messages/update_status.dart';
 
 /// Manages table subscriptions and processes real-time updates from SpacetimeDB
@@ -77,6 +78,7 @@ class SubscriptionManager {
   final Set<String> _activeSubscriptionQueries = {};
 
   final OfflineStorage? _offlineStorage;
+  late final OptimisticStateManager _optimisticState;
   bool _offlineStorageInitialized = false;
   bool _disposed = false;
   bool _initialSubscriptionReceived = false;
@@ -120,6 +122,7 @@ class SubscriptionManager {
 
   SubscriptionManager(this._connection, {OfflineStorage? offlineStorage})
       : _offlineStorage = offlineStorage {
+    _optimisticState = OptimisticStateManager(cache);
     reducers = ReducerCaller(_connection, offlineStorage: offlineStorage);
     reducers.onMutationQueued = _onMutationQueued;
     reducers.onOptimisticChanges = _onOptimisticChanges;
@@ -149,13 +152,13 @@ class SubscriptionManager {
   }
 
   void _onOptimisticChanges(String requestId, List<OptimisticChange>? changes) {
-    _applyOptimisticChanges(requestId, changes);
+    _optimisticState.applyOptimisticChanges(requestId, changes);
     _persistTableSnapshots();
   }
 
   void _onRollbackOptimistic(String requestId) {
     SdkLogger.w('Rolling back optimistic changes for request $requestId due to timeout/failure');
-    _rollbackOptimisticChanges(requestId, null);
+    _optimisticState.rollbackOptimisticChanges(requestId);
     _persistTableSnapshots();
   }
 
@@ -359,7 +362,7 @@ class SubscriptionManager {
     final serverTableNames = message.tableUpdates.map((t) => t.tableName).toSet();
     for (final table in cache.allTables) {
       if (!serverTableNames.contains(table.tableName)) {
-        table.clearNonOptimisticRows();
+        _optimisticState.clearNonOptimisticRows(table.tableName);
       }
     }
 
@@ -372,7 +375,7 @@ class SubscriptionManager {
       final table = cache.getTable(tableUpdate.tableId);
       SdkLogger.i('  Table ${tableUpdate.tableId} ("${tableUpdate.tableName}"): ${tableUpdate.updates.length} updates');
 
-      table.clearNonOptimisticRows();
+      _optimisticState.clearNonOptimisticRows(tableUpdate.tableName);
 
       for (final update in tableUpdate.updates) {
         final rows = update.update.inserts.getRows();
@@ -481,14 +484,14 @@ class SubscriptionManager {
 
     final isOurTransaction = uuidRequestId != null;
     final isCommitted = message.status is Committed;
-    final hasOptimistic = cache.anyTableHasOptimisticChange(effectiveRequestId);
+    final hasOptimistic = _optimisticState.hasOptimisticChange(effectiveRequestId);
 
     SdkLogger.d('TXN: numericRequestId=$numericRequestId, uuidRequestId=$uuidRequestId');
     SdkLogger.d('TXN: isOurTransaction=$isOurTransaction, isCommitted=$isCommitted, hasOptimistic=$hasOptimistic');
 
     if (isOurTransaction && isCommitted && hasOptimistic) {
-      SdkLogger.i('✅ Our transaction confirmed - keeping optimistic state');
-      cache.confirmAllOptimisticChanges(effectiveRequestId);
+      SdkLogger.i('Our transaction confirmed - keeping optimistic state');
+      _optimisticState.confirmOptimisticChange(effectiveRequestId);
       _persistTableSnapshots();
       return;
     }
@@ -511,9 +514,9 @@ class SubscriptionManager {
     }
 
     if (isCommitted) {
-      _confirmOptimisticChangesWithTouchedKeys(effectiveRequestId, touchedKeysByTable);
+      _optimisticState.confirmOrRollbackWithTouchedKeys(effectiveRequestId, touchedKeysByTable);
     } else {
-      _rollbackOptimisticChanges(effectiveRequestId, null);
+      _optimisticState.rollbackOptimisticChanges(effectiveRequestId);
     }
 
     _persistTableSnapshots();
@@ -550,7 +553,7 @@ class SubscriptionManager {
     final effectiveRequestId = uuidRequestId ?? numericRequestId.toString();
 
     final isOurTransaction = uuidRequestId != null;
-    final hasOptimistic = cache.anyTableHasOptimisticChange(effectiveRequestId);
+    final hasOptimistic = _optimisticState.hasOptimisticChange(effectiveRequestId);
 
     SdkLogger.d('TXN-LIGHT: isOurTransaction=$isOurTransaction, hasOptimistic=$hasOptimistic');
 
@@ -558,8 +561,8 @@ class SubscriptionManager {
     reducers.completeRequest(numericRequestId, result);
 
     if (isOurTransaction && hasOptimistic) {
-      SdkLogger.i('✅ Our light transaction confirmed - keeping optimistic state');
-      cache.confirmAllOptimisticChanges(effectiveRequestId);
+      SdkLogger.i('Our light transaction confirmed - keeping optimistic state');
+      _optimisticState.confirmOptimisticChange(effectiveRequestId);
       _persistTableSnapshots();
       return;
     }
@@ -587,7 +590,7 @@ class SubscriptionManager {
       touchedKeysByTable[tableUpdate.tableName] = touchedKeys;
     }
 
-    _confirmOptimisticChangesWithTouchedKeys(effectiveRequestId, touchedKeysByTable);
+    _optimisticState.confirmOrRollbackWithTouchedKeys(effectiveRequestId, touchedKeysByTable);
     _persistTableSnapshots();
   }
 
@@ -787,7 +790,7 @@ class SubscriptionManager {
 
       final pending = await storage.getPendingMutations();
       for (final mutation in pending) {
-        _applyOptimisticChanges(mutation.requestId, mutation.optimisticChanges);
+        _optimisticState.applyOptimisticChanges(mutation.requestId, mutation.optimisticChanges);
       }
 
       await _updatePendingCount();
@@ -796,79 +799,6 @@ class SubscriptionManager {
     }
   }
 
-  void _applyOptimisticChanges(
-      String requestId, List<OptimisticChange>? changes) {
-    if (changes == null) return;
-
-    for (final change in changes) {
-      var table = cache.getTableByName(change.tableName);
-      if (table == null) {
-        if (cache.hasBuilder(change.tableName)) {
-          cache.activateEmptyTable(change.tableName);
-          table = cache.getTableByName(change.tableName);
-          SdkLogger.d('Auto-activated table "${change.tableName}" for optimistic change');
-        } else {
-          SdkLogger.w('Table "${change.tableName}" not found and no builder registered');
-          continue;
-        }
-      }
-      if (table == null || !table.decoder.supportsJsonSerialization) continue;
-
-      switch (change.type) {
-        case OptimisticChangeType.insert:
-          final row = table.decoder.fromJson(change.newRowJson!);
-          if (row != null) {
-            table.applyOptimisticInsert(requestId, row);
-          }
-          break;
-        case OptimisticChangeType.update:
-          final oldRow = table.decoder.fromJson(change.oldRowJson!);
-          final newRow = table.decoder.fromJson(change.newRowJson!);
-          if (oldRow != null && newRow != null) {
-            table.applyOptimisticUpdate(requestId, oldRow, newRow);
-          }
-          break;
-        case OptimisticChangeType.delete:
-          final row = table.decoder.fromJson(change.oldRowJson!);
-          if (row != null) {
-            table.applyOptimisticDelete(requestId, row);
-          }
-          break;
-      }
-    }
-  }
-
-  void _rollbackOptimisticChanges(
-      String requestId, List<OptimisticChange>? changes) {
-    if (changes != null) {
-      for (final change in changes) {
-        final table = cache.getTableByName(change.tableName);
-        if (table == null) continue;
-        table.rollbackOptimisticChange(requestId);
-      }
-    } else {
-      for (final table in cache.allTables) {
-        table.rollbackOptimisticChange(requestId);
-      }
-    }
-  }
-
-  void _confirmOptimisticChangesWithTouchedKeys(
-      String requestId, Map<String, Set<dynamic>> touchedKeysByTable) {
-    SdkLogger.d('_confirmOptimisticChangesWithTouchedKeys requestId="$requestId"');
-    for (final entry in touchedKeysByTable.entries) {
-      SdkLogger.d('Table "${entry.key}" touched keys: ${entry.value.map((k) => '"$k"').toList()}');
-      final table = cache.getTableByName(entry.key);
-      if (table == null) continue;
-      table.confirmOrRollbackOptimisticChange(requestId, entry.value);
-    }
-
-    for (final table in cache.allTables) {
-      if (!touchedKeysByTable.containsKey(table.tableName)) {
-        table.confirmOrRollbackOptimisticChange(requestId, {});
-      }
-    }
-  }
 
   Future<void> _updatePendingCount() async {
     final storage = _offlineStorage;
@@ -955,8 +885,7 @@ class SubscriptionManager {
             }
           } else {
             final errorMsg = result.errorMessage ?? 'Unknown error';
-            _rollbackOptimisticChanges(
-                mutation.requestId, mutation.optimisticChanges);
+            _optimisticState.rollbackOptimisticChanges(mutation.requestId);
             await storage.dequeueMutation(mutation.requestId);
             _decrementPendingCount();
             SdkLogger.e('Server rejected mutation: ${mutation.reducerName} - $errorMsg');
@@ -970,8 +899,7 @@ class SubscriptionManager {
             }
           }
         } on ReducerException catch (e) {
-          _rollbackOptimisticChanges(
-              mutation.requestId, mutation.optimisticChanges);
+          _optimisticState.rollbackOptimisticChanges(mutation.requestId);
           await storage.dequeueMutation(mutation.requestId);
           _decrementPendingCount();
           SdkLogger.e('Server rejected mutation: ${mutation.reducerName} - ${e.message}');

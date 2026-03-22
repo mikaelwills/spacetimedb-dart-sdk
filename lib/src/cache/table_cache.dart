@@ -52,8 +52,6 @@ class TableCache<T> {
   final Map<dynamic, T> _rowsByPrimaryKey = {};
   final List<T> _rows = [];
 
-  final Map<String, List<_OptimisticChange<T>>> _optimisticChanges = {};
-
   // === Simple streams (existing - backward compatible) ===
   final StreamController<T> _insertController = StreamController<T>.broadcast();
   final StreamController<T> _deleteController = StreamController<T>.broadcast();
@@ -530,10 +528,7 @@ class TableCache<T> {
         'Implement toJson() and fromJson() in your RowDecoder.',
       );
     }
-    final savedOptimisticChanges =
-        Map<String, List<_OptimisticChange<T>>>.from(_optimisticChanges);
     clear();
-    _optimisticChanges.addAll(savedOptimisticChanges);
     for (final json in rows) {
       final row = decoder.fromJson(json);
       if (row == null) {
@@ -571,172 +566,40 @@ class TableCache<T> {
 
   T? getRow(dynamic primaryKey) => _rowsByPrimaryKey[primaryKey];
 
-  void applyOptimisticInsert(String requestId, T row) {
-    final primaryKey = decoder.getPrimaryKey(row);
-    final change = _OptimisticChange<T>(
-      type: _OptimisticChangeType.insert,
-      primaryKey: primaryKey,
-      newRow: row,
-    );
-    _optimisticChanges.putIfAbsent(requestId, () => []).add(change);
-    insertRow(row);
-
+  void emitInsert(T row, EventContext context) {
     _insertController.add(row);
     _changeController.add(TableChange.insert(row));
 
-    final context = EventContext.optimistic(requestId: requestId);
     final insertEvent = TableInsertEvent(context, row);
     _insertEventController.add(insertEvent);
     _eventController.add(insertEvent);
   }
 
-  void applyOptimisticUpdate(String requestId, T oldRow, T newRow) {
-    final primaryKey = decoder.getPrimaryKey(newRow);
-    final change = _OptimisticChange<T>(
-      type: _OptimisticChangeType.update,
-      primaryKey: primaryKey,
-      oldRow: oldRow,
-      newRow: newRow,
-    );
-    _optimisticChanges.putIfAbsent(requestId, () => []).add(change);
-    updateRow(newRow);
-
+  void emitUpdate(T oldRow, T newRow, EventContext context) {
     _updateController.add(TableUpdate(oldRow, newRow));
     _changeController.add(TableChange.update(oldRow, newRow));
 
-    final context = EventContext.optimistic(requestId: requestId);
     final updateEvent = TableUpdateEvent(context, oldRow, newRow);
     _updateEventController.add(updateEvent);
     _eventController.add(updateEvent);
   }
 
-  void applyOptimisticDelete(String requestId, T row) {
-    final primaryKey = decoder.getPrimaryKey(row);
-    final change = _OptimisticChange<T>(
-      type: _OptimisticChangeType.delete,
-      primaryKey: primaryKey,
-      oldRow: row,
-    );
-    _optimisticChanges.putIfAbsent(requestId, () => []).add(change);
-    deleteRow(primaryKey);
-
+  void emitDelete(T row, EventContext context) {
     _deleteController.add(row);
     _changeController.add(TableChange.delete(row));
 
-    final context = EventContext.optimistic(requestId: requestId);
     final deleteEvent = TableDeleteEvent(context, row);
     _deleteEventController.add(deleteEvent);
     _eventController.add(deleteEvent);
   }
 
-  void confirmOptimisticChange(String requestId) {
-    _optimisticChanges.remove(requestId);
+  void removeRowsWhere(bool Function(dynamic pk) test) {
+    _rowsByPrimaryKey.removeWhere((key, _) => test(key));
+    _rows.removeWhere((row) {
+      final pk = decoder.getPrimaryKey(row);
+      return test(pk);
+    });
   }
-
-  void confirmOrRollbackOptimisticChange(String requestId, Set<dynamic> touchedKeys) {
-    final changes = _optimisticChanges.remove(requestId);
-    if (changes == null) return;
-
-    SdkLogger.d('confirmOrRollbackOptimisticChange for "$tableName" requestId="$requestId"');
-    SdkLogger.d('touchedKeys: ${touchedKeys.map((k) => '"$k"').toList()}, changes: ${changes.length}');
-
-    for (final change in changes.reversed) {
-      final wasTouched = touchedKeys.contains(change.primaryKey);
-
-      SdkLogger.d('Change: ${change.type.name}, PK: "${change.primaryKey}", wasTouched: $wasTouched');
-
-      if (wasTouched) {
-        SdkLogger.d('CONFIRMED (key was touched)');
-        continue;
-      }
-
-      SdkLogger.d('ROLLING BACK (key NOT in touchedKeys)');
-      switch (change.type) {
-        case _OptimisticChangeType.insert:
-          deleteRow(change.primaryKey);
-        case _OptimisticChangeType.update:
-          if (change.oldRow != null) {
-            updateRow(change.oldRow as T);
-          }
-        case _OptimisticChangeType.delete:
-          if (change.oldRow != null) {
-            SdkLogger.d('Re-inserting deleted row');
-            insertRow(change.oldRow as T);
-          }
-      }
-    }
-  }
-
-  void rollbackOptimisticChange(String requestId) {
-    final changes = _optimisticChanges.remove(requestId);
-    if (changes == null) return;
-
-    for (final change in changes.reversed) {
-      switch (change.type) {
-        case _OptimisticChangeType.insert:
-          deleteRow(change.primaryKey);
-        case _OptimisticChangeType.update:
-          if (change.oldRow != null) {
-            updateRow(change.oldRow as T);
-          }
-        case _OptimisticChangeType.delete:
-          if (change.oldRow != null) {
-            insertRow(change.oldRow as T);
-          }
-      }
-    }
-  }
-
-  bool hasOptimisticChange(String requestId) =>
-      _optimisticChanges.containsKey(requestId);
-
-  int get optimisticChangeCount =>
-      _optimisticChanges.values.fold(0, (sum, list) => sum + list.length);
-
-  /// Clears all rows that are NOT involved in pending optimistic changes.
-  ///
-  /// This is called before applying InitialSubscription to remove "zombie" rows
-  /// that may have been deleted on the server but are still in the local cache
-  /// due to a crash or failed persistence.
-  ///
-  /// Rows involved in pending optimistic mutations are preserved to avoid
-  /// losing user changes that haven't been synced yet.
-  void clearNonOptimisticRows() {
-    final optimisticPrimaryKeys = <dynamic>{};
-    for (final changes in _optimisticChanges.values) {
-      for (final change in changes) {
-        if (change.primaryKey != null) {
-          optimisticPrimaryKeys.add(change.primaryKey);
-        }
-      }
-    }
-
-    if (optimisticPrimaryKeys.isEmpty) {
-      clear();
-    } else {
-      _rowsByPrimaryKey.removeWhere((key, _) => !optimisticPrimaryKeys.contains(key));
-      _rows.removeWhere((row) {
-        final pk = decoder.getPrimaryKey(row);
-        return !optimisticPrimaryKeys.contains(pk);
-      });
-    }
-  }
-}
-
-enum _OptimisticChangeType { insert, update, delete }
-
-class _OptimisticChange<T> {
-  final _OptimisticChangeType type;
-  final dynamic primaryKey;
-  final T? oldRow;
-  final T? newRow;
-
-  _OptimisticChange({
-    required this.type,
-    required this.primaryKey,
-    this.oldRow,
-    this.newRow,
-  });
 }
 
 class _RowChanges<T> {
