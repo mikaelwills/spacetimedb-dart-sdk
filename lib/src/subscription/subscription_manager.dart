@@ -165,15 +165,20 @@ class SubscriptionManager {
   void _startConnectionMonitoring() {
     if (_offlineStorage == null) return;
 
+    ConnectionStatus? previousStatus;
+
     _connectionStatusSubscription =
         _connection.connectionStatus.listen((status) {
-      if (status == ConnectionStatus.connected) {
+      if (status == ConnectionStatus.connected &&
+          previousStatus == ConnectionStatus.reconnecting) {
         _retryAttempt = 0;
         _onReconnected();
       } else if (status == ConnectionStatus.disconnected) {
         _cancelRetry();
         _initialSubscriptionReceived = false;
       }
+
+      previousStatus = status;
     });
   }
 
