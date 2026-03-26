@@ -54,7 +54,7 @@ ${_generateSwitchCases()}
   }
 
   factory $enumName.fromJson(Map<String, dynamic> json) {
-    final type = json['type'] as String;
+    final type = json['type'] ?? '';
     switch (type) {
 ${_generateFromJsonSwitchCases()}
       default: throw Exception('Unknown $enumName variant: \$type');
@@ -339,16 +339,16 @@ ${toJsonFields.join('\n')}
 
   String _getFromJsonValue(String fieldName, Map<String, dynamic> algebraicType, String dartType) {
     if (algebraicType.containsKey('U64') || algebraicType.containsKey('I64')) {
-      return "Int64(json['$fieldName'] as int)";
+      return "Int64(json['$fieldName'] ?? 0)";
     }
     if (algebraicType.containsKey('String')) {
-      return "json['$fieldName'] as String";
+      return "json['$fieldName'] ?? ''";
     }
     if (algebraicType.containsKey('Bool')) {
-      return "json['$fieldName'] as bool";
+      return "json['$fieldName'] ?? false";
     }
     if (algebraicType.containsKey('F32') || algebraicType.containsKey('F64')) {
-      return "(json['$fieldName'] as num).toDouble()";
+      return "(json['$fieldName'] ?? 0.0).toDouble()";
     }
     if (algebraicType.containsKey('U8') ||
         algebraicType.containsKey('U16') ||
@@ -356,7 +356,7 @@ ${toJsonFields.join('\n')}
         algebraicType.containsKey('I8') ||
         algebraicType.containsKey('I16') ||
         algebraicType.containsKey('I32')) {
-      return "json['$fieldName'] as int";
+      return "json['$fieldName'] ?? 0";
     }
     return "json['$fieldName']";
   }

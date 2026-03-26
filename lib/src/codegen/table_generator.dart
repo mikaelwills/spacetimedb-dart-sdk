@@ -210,16 +210,16 @@ class TableGenerator {
     );
 
     if (TypeMapper.isIdentityProduct(algebraicType)) {
-      return "Identity.fromJson(json['$fieldName'] as String)";
+      return "Identity.fromJson(json['$fieldName'] ?? '')";
     }
     if (_isTimestamp(algebraicType)) {
-      return "Int64((json['$fieldName'] as int?) ?? 0)";
+      return "Int64(json['$fieldName'] ?? 0)";
     }
     if (algebraicType.containsKey('U64') || algebraicType.containsKey('I64')) {
-      return "Int64((json['$fieldName'] as int?) ?? 0)";
+      return "Int64(json['$fieldName'] ?? 0)";
     }
     if (TypeMapper.isRefType(algebraicType)) {
-      return "$dartType.fromJson(json['$fieldName'] as Map<String, dynamic>)";
+      return "$dartType.fromJson(Map<String, dynamic>.from(json['$fieldName'] ?? {}))";
     }
     if (algebraicType.containsKey('Array')) {
       final elementType = algebraicType['Array'] as Map<String, dynamic>;
@@ -229,24 +229,24 @@ class TableGenerator {
         typeDefs: schema.types,
       );
       if (TypeMapper.isRefType(elementType)) {
-        return "(json['$fieldName'] as List?)?.map((e) => $innerDartType.fromJson(e as Map<String, dynamic>)).toList() ?? []";
+        return "(json['$fieldName'] ?? []).cast<Map<String, dynamic>>().map((e) => $innerDartType.fromJson(e)).toList()";
       }
       if (elementType.containsKey('U64') || elementType.containsKey('I64')) {
-        return "(json['$fieldName'] as List?)?.map((e) => Int64(e as int)).toList() ?? []";
+        return "(json['$fieldName'] ?? []).cast<int>().map((e) => Int64(e)).toList()";
       }
-      return "(json['$fieldName'] as List?)?.cast<$innerDartType>() ?? []";
+      return "List<$innerDartType>.from(json['$fieldName'] ?? [])";
     }
     if (algebraicType.containsKey('String')) {
-      return "(json['$fieldName'] as String?) ?? ''";
+      return "json['$fieldName'] ?? ''";
     }
     if (algebraicType.containsKey('Bool')) {
-      return "(json['$fieldName'] as bool?) ?? false";
+      return "json['$fieldName'] ?? false";
     }
     if (algebraicType.containsKey('F32') || algebraicType.containsKey('F64')) {
-      return "(json['$fieldName'] as num?)?.toDouble() ?? 0.0";
+      return "(json['$fieldName'] ?? 0.0).toDouble()";
     }
     if (_isIntType(algebraicType)) {
-      return "(json['$fieldName'] as int?) ?? 0";
+      return "json['$fieldName'] ?? 0";
     }
     return "json['$fieldName']";
   }
