@@ -54,9 +54,10 @@ class PendingMutation {
         (json['encodedArgs'] as List).cast<int>(),
       ),
       createdAt: DateTime.parse(json['createdAt'] as String),
-      optimisticChanges: changesJson
-          ?.map((c) => OptimisticChange.fromJson(c as Map<String, dynamic>))
-          .toList(),
+      optimisticChanges:
+          changesJson
+              ?.map((c) => OptimisticChange.fromJson(c as Map<String, dynamic>))
+              .toList(),
     );
   }
 

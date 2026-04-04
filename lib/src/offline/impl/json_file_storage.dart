@@ -22,7 +22,7 @@ class JsonFileStorage implements OfflineStorage {
   Completer<void>? _allOperationsComplete;
 
   JsonFileStorage({required this.basePath})
-      : _fileStore = AtomicFileStore(basePath);
+    : _fileStore = AtomicFileStore(basePath);
 
   Future<T> _tracked<T>(Future<T> Function() operation) async {
     if (_disposed) {

@@ -27,47 +27,79 @@ void main() {
         ];
 
         await storage.saveTableSnapshot('notes', rows).timeout(_timeout);
-        final loaded = await storage.loadTableSnapshot('notes').timeout(_timeout);
+        final loaded = await storage
+            .loadTableSnapshot('notes')
+            .timeout(_timeout);
 
         expect(loaded, equals(rows));
       });
 
       test('returns null for non-existent table', () async {
-        final result = await storage.loadTableSnapshot('non_existent').timeout(_timeout);
+        final result = await storage
+            .loadTableSnapshot('non_existent')
+            .timeout(_timeout);
         expect(result, isNull);
       });
 
       test('clearTableSnapshot removes only specified table', () async {
-        await storage.saveTableSnapshot('notes', [{'id': 1}]).timeout(_timeout);
-        await storage.saveTableSnapshot('users', [{'id': 2}]).timeout(_timeout);
+        await storage
+            .saveTableSnapshot('notes', [
+              {'id': 1},
+            ])
+            .timeout(_timeout);
+        await storage
+            .saveTableSnapshot('users', [
+              {'id': 2},
+            ])
+            .timeout(_timeout);
 
         await storage.clearTableSnapshot('notes').timeout(_timeout);
 
-        expect(await storage.loadTableSnapshot('notes').timeout(_timeout), isNull);
-        expect(await storage.loadTableSnapshot('users').timeout(_timeout), isNotNull);
+        expect(
+          await storage.loadTableSnapshot('notes').timeout(_timeout),
+          isNull,
+        );
+        expect(
+          await storage.loadTableSnapshot('users').timeout(_timeout),
+          isNotNull,
+        );
       });
     });
 
     group('mutation queue', () {
       test('enqueue and dequeue maintains order', () async {
-        await storage.enqueueMutation(_createMutation('req-1')).timeout(_timeout);
-        await storage.enqueueMutation(_createMutation('req-2')).timeout(_timeout);
-        await storage.enqueueMutation(_createMutation('req-3')).timeout(_timeout);
+        await storage
+            .enqueueMutation(_createMutation('req-1'))
+            .timeout(_timeout);
+        await storage
+            .enqueueMutation(_createMutation('req-2'))
+            .timeout(_timeout);
+        await storage
+            .enqueueMutation(_createMutation('req-3'))
+            .timeout(_timeout);
 
         var pending = await storage.getPendingMutations().timeout(_timeout);
-        expect(pending.map((m) => m.requestId).toList(),
-            equals(['req-1', 'req-2', 'req-3']));
+        expect(
+          pending.map((m) => m.requestId).toList(),
+          equals(['req-1', 'req-2', 'req-3']),
+        );
 
         await storage.dequeueMutation('req-2').timeout(_timeout);
 
         pending = await storage.getPendingMutations().timeout(_timeout);
-        expect(pending.map((m) => m.requestId).toList(),
-            equals(['req-1', 'req-3']));
+        expect(
+          pending.map((m) => m.requestId).toList(),
+          equals(['req-1', 'req-3']),
+        );
       });
 
       test('clearMutationQueue removes all', () async {
-        await storage.enqueueMutation(_createMutation('req-1')).timeout(_timeout);
-        await storage.enqueueMutation(_createMutation('req-2')).timeout(_timeout);
+        await storage
+            .enqueueMutation(_createMutation('req-1'))
+            .timeout(_timeout);
+        await storage
+            .enqueueMutation(_createMutation('req-2'))
+            .timeout(_timeout);
 
         await storage.clearMutationQueue().timeout(_timeout);
 
@@ -77,15 +109,29 @@ void main() {
 
     group('clearAll', () {
       test('clears snapshots, mutations, and sync times', () async {
-        await storage.saveTableSnapshot('notes', [{'id': 1}]).timeout(_timeout);
-        await storage.enqueueMutation(_createMutation('req-1')).timeout(_timeout);
-        await storage.setLastSyncTime('notes', DateTime.now()).timeout(_timeout);
+        await storage
+            .saveTableSnapshot('notes', [
+              {'id': 1},
+            ])
+            .timeout(_timeout);
+        await storage
+            .enqueueMutation(_createMutation('req-1'))
+            .timeout(_timeout);
+        await storage
+            .setLastSyncTime('notes', DateTime.now())
+            .timeout(_timeout);
 
         await storage.clearAll().timeout(_timeout);
 
-        expect(await storage.loadTableSnapshot('notes').timeout(_timeout), isNull);
+        expect(
+          await storage.loadTableSnapshot('notes').timeout(_timeout),
+          isNull,
+        );
         expect(await storage.getPendingMutations().timeout(_timeout), isEmpty);
-        expect(await storage.getLastSyncTime('notes').timeout(_timeout), isNull);
+        expect(
+          await storage.getLastSyncTime('notes').timeout(_timeout),
+          isNull,
+        );
       });
     });
   });

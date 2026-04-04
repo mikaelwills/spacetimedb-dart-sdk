@@ -17,10 +17,14 @@ void main() {
     if (connection.state == targetState) return;
     await connection.onStateChanged
         .firstWhere((state) => state == targetState)
-        .timeout(timeout, onTimeout: () {
-      throw TimeoutException(
-          'Timed out waiting for state $targetState. Current: ${connection.state}');
-    });
+        .timeout(
+          timeout,
+          onTimeout: () {
+            throw TimeoutException(
+              'Timed out waiting for state $targetState. Current: ${connection.state}',
+            );
+          },
+        );
   }
 
   group('Connection State Machine', () {
@@ -43,23 +47,26 @@ void main() {
       await connection.dispose();
     });
 
-    test('connect() transitions: disconnected -> connecting -> connected', () async {
-      final states = <ConnectionState>[];
+    test(
+      'connect() transitions: disconnected -> connecting -> connected',
+      () async {
+        final states = <ConnectionState>[];
 
-      // Setup listener BEFORE action
-      final sub = connection.onStateChanged.listen(states.add);
+        // Setup listener BEFORE action
+        final sub = connection.onStateChanged.listen(states.add);
 
-      try {
-        await connection.connect();
-        await waitForState(connection, ConnectionState.connected);
+        try {
+          await connection.connect();
+          await waitForState(connection, ConnectionState.connected);
 
-        expect(connection.isConnected, true);
-        expect(states, contains(ConnectionState.connecting));
-        expect(states, contains(ConnectionState.connected));
-      } finally {
-        await sub.cancel();
-      }
-    });
+          expect(connection.isConnected, true);
+          expect(states, contains(ConnectionState.connecting));
+          expect(states, contains(ConnectionState.connected));
+        } finally {
+          await sub.cancel();
+        }
+      },
+    );
 
     test('disconnect() cleanly closes connection', () async {
       await connection.connect();
@@ -130,10 +137,16 @@ void main() {
 
       // 4. VERIFICATION: We EXPECT an error!
       // The error proves the server processed our request - the error IS the pong
-      expect(response.error, isNotNull,
-          reason: 'Server should report table not found');
-      expect(response.error, anyOf(contains('not a valid table'), contains('no such table')),
-          reason: 'Error should indicate table does not exist');
+      expect(
+        response.error,
+        isNotNull,
+        reason: 'Server should report table not found',
+      );
+      expect(
+        response.error,
+        anyOf(contains('not a valid table'), contains('no such table')),
+        reason: 'Error should indicate table does not exist',
+      );
 
       // If we got here, the Round Trip was successful
       expect(connection.isConnected, true);
@@ -141,39 +154,43 @@ void main() {
   });
 
   group('Error & Retry Logic', () {
-    test('Connection to invalid host fails and allows retry', () async {
-      final connection = SpacetimeDbConnection(
-        host: 'invalid-host-name-xyz', // Will cause DNS failure
-        database: 'db',
-        config: const ConnectionConfig(
-          autoReconnect: false, // Disable auto so we settle on "Disconnected"
-          maxReconnectAttempts: 0,
-        ),
-      );
-
-      try {
-        try {
-          await connection.connect();
-        } catch (_) {
-          // Expected to throw exception immediately upon socket creation failure
-        }
-
-        // FIX: Increased timeout to 20s.
-        // DNS resolution and TCP connection timeouts are handled by the OS/Dart runtime.
-        // These often default to 10s-30s. A 5s test timeout is too optimistic for a failure case.
-        await waitForState(
-          connection,
-          ConnectionState.disconnected,
-          timeout: const Duration(seconds: 20),
+    test(
+      'Connection to invalid host fails and allows retry',
+      () async {
+        final connection = SpacetimeDbConnection(
+          host: 'invalid-host-name-xyz', // Will cause DNS failure
+          database: 'db',
+          config: const ConnectionConfig(
+            autoReconnect: false, // Disable auto so we settle on "Disconnected"
+            maxReconnectAttempts: 0,
+          ),
         );
 
-        // NOW it should be retryable
-        expect(connection.status.canRetry, true);
-        expect(connection.isConnected, false);
-      } finally {
-        await connection.dispose();
-      }
-    }, timeout: const Timeout(Duration(seconds: 30))); // Test-level timeout
+        try {
+          try {
+            await connection.connect();
+          } catch (_) {
+            // Expected to throw exception immediately upon socket creation failure
+          }
+
+          // FIX: Increased timeout to 20s.
+          // DNS resolution and TCP connection timeouts are handled by the OS/Dart runtime.
+          // These often default to 10s-30s. A 5s test timeout is too optimistic for a failure case.
+          await waitForState(
+            connection,
+            ConnectionState.disconnected,
+            timeout: const Duration(seconds: 20),
+          );
+
+          // NOW it should be retryable
+          expect(connection.status.canRetry, true);
+          expect(connection.isConnected, false);
+        } finally {
+          await connection.dispose();
+        }
+      },
+      timeout: const Timeout(Duration(seconds: 30)),
+    ); // Test-level timeout
 
     test('Connection to invalid database handles result', () async {
       final connection = SpacetimeDbConnection(

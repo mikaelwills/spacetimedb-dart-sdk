@@ -296,7 +296,9 @@ void main() {
     });
 
     test('Invalid boolean value throws', () {
-      final decoder = BsatnDecoder(Uint8List.fromList([2])); // Invalid (not 0 or 1)
+      final decoder = BsatnDecoder(
+        Uint8List.fromList([2]),
+      ); // Invalid (not 0 or 1)
       expect(() => decoder.readBool(), throwsFormatException);
     });
 

@@ -15,20 +15,14 @@ void main() {
     });
 
     test('getAuthUrl without SSL', () {
-      final helper = OidcHelper(
-        host: 'localhost:3000',
-        database: 'dev',
-      );
+      final helper = OidcHelper(host: 'localhost:3000', database: 'dev');
 
       final url = helper.getAuthUrl('discord');
       expect(url, 'http://localhost:3000/database/auth/discord?init');
     });
 
     test('getAuthUrl with redirect URI', () {
-      final helper = OidcHelper(
-        host: 'localhost:3000',
-        database: 'dev',
-      );
+      final helper = OidcHelper(host: 'localhost:3000', database: 'dev');
 
       final url = helper.getAuthUrl('discord', redirectUri: 'myapp://callback');
       expect(url, contains('redirect_uri=myapp%3A%2F%2Fcallback'));

@@ -73,10 +73,7 @@ class BsatnEncoder {
     if (value < 0 || value > 0xFFFF) {
       throw ArgumentError.value(value, 'value', 'Must be 0-65535 for u16');
     }
-    _buffer.add([
-      value & 0xFF,
-      (value >> 8) & 0xFF,
-    ]);
+    _buffer.add([value & 0xFF, (value >> 8) & 0xFF]);
   }
 
   /// Encodes an unsigned 32-bit integer (0-4294967295) in little-endian
@@ -123,7 +120,10 @@ class BsatnEncoder {
   void writeI16(int value) {
     if (value < -32768 || value > 32767) {
       throw ArgumentError.value(
-          value, 'value', 'Must be -32768 to 32767 for i16');
+        value,
+        'value',
+        'Must be -32768 to 32767 for i16',
+      );
     }
     final unsigned = value < 0 ? value + 65536 : value;
     writeU16(unsigned);
@@ -132,7 +132,10 @@ class BsatnEncoder {
   void writeI32(int value) {
     if (value < -2147483648 || value > 2147483647) {
       throw ArgumentError.value(
-          value, 'value', 'Must be -2147483648 to 2147483647 for i32');
+        value,
+        'value',
+        'Must be -2147483648 to 2147483647 for i32',
+      );
     }
     final unsigned = value < 0 ? value + 4294967296 : value;
     writeU32(unsigned);
@@ -274,7 +277,7 @@ class BsatnEncoder {
   }
 
   void writeSum(int tag, void Function() writeVariant) {
-  writeU8(tag);
-  writeVariant();
+    writeU8(tag);
+    writeVariant();
   }
 }

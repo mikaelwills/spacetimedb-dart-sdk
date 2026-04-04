@@ -14,7 +14,9 @@ void main() {
     late JsonFileStorage storage;
 
     setUp(() async {
-      tempDir = await Directory.systemTemp.createTemp('json_file_storage_test_');
+      tempDir = await Directory.systemTemp.createTemp(
+        'json_file_storage_test_',
+      );
       storage = JsonFileStorage(basePath: tempDir.path);
       await storage.initialize();
     });
@@ -42,12 +44,20 @@ void main() {
       });
 
       test('handles corrupted main file gracefully', () async {
-        await storage.saveTableSnapshot('notes', [{'id': 1, 'title': 'Test'}]).timeout(_timeout);
+        await storage
+            .saveTableSnapshot('notes', [
+              {'id': 1, 'title': 'Test'},
+            ])
+            .timeout(_timeout);
 
         final mainFile = File('${tempDir.path}/table_notes.json');
-        await mainFile.writeAsString('corrupted{invalid json').timeout(_timeout);
+        await mainFile
+            .writeAsString('corrupted{invalid json')
+            .timeout(_timeout);
 
-        final loaded = await storage.loadTableSnapshot('notes').timeout(_timeout);
+        final loaded = await storage
+            .loadTableSnapshot('notes')
+            .timeout(_timeout);
         expect(loaded, isNull);
       });
     });
@@ -57,12 +67,17 @@ void main() {
         final futures = <Future>[];
         for (var i = 0; i < 10; i++) {
           futures.add(
-              storage.saveTableSnapshot('concurrent', [{'id': i, 'value': i}]));
+            storage.saveTableSnapshot('concurrent', [
+              {'id': i, 'value': i},
+            ]),
+          );
         }
 
         await Future.wait(futures).timeout(_timeout);
 
-        final loaded = await storage.loadTableSnapshot('concurrent').timeout(_timeout);
+        final loaded = await storage
+            .loadTableSnapshot('concurrent')
+            .timeout(_timeout);
         expect(loaded, isNotNull);
         expect(loaded!.length, equals(1));
       });
@@ -82,18 +97,32 @@ void main() {
 
     group('data persistence', () {
       test('data persists across storage instances', () async {
-        await storage.saveTableSnapshot('notes', [{'id': 1, 'title': 'Test'}]).timeout(_timeout);
-        await storage.enqueueMutation(_createMutation('req-1')).timeout(_timeout);
-        await storage.setLastSyncTime('notes', DateTime.utc(2024, 1, 15)).timeout(_timeout);
+        await storage
+            .saveTableSnapshot('notes', [
+              {'id': 1, 'title': 'Test'},
+            ])
+            .timeout(_timeout);
+        await storage
+            .enqueueMutation(_createMutation('req-1'))
+            .timeout(_timeout);
+        await storage
+            .setLastSyncTime('notes', DateTime.utc(2024, 1, 15))
+            .timeout(_timeout);
 
         await storage.dispose().timeout(_timeout);
 
         final newStorage = JsonFileStorage(basePath: tempDir.path);
         await newStorage.initialize().timeout(_timeout);
 
-        final notes = await newStorage.loadTableSnapshot('notes').timeout(_timeout);
-        final mutations = await newStorage.getPendingMutations().timeout(_timeout);
-        final syncTime = await newStorage.getLastSyncTime('notes').timeout(_timeout);
+        final notes = await newStorage
+            .loadTableSnapshot('notes')
+            .timeout(_timeout);
+        final mutations = await newStorage.getPendingMutations().timeout(
+          _timeout,
+        );
+        final syncTime = await newStorage
+            .getLastSyncTime('notes')
+            .timeout(_timeout);
 
         expect(notes!.first['title'], equals('Test'));
         expect(mutations.first.requestId, equals('req-1'));
@@ -119,10 +148,14 @@ void main() {
         final newStorage = JsonFileStorage(basePath: tempDir.path);
         await newStorage.initialize().timeout(_timeout);
 
-        final pending = await newStorage.getPendingMutations().timeout(_timeout);
+        final pending = await newStorage.getPendingMutations().timeout(
+          _timeout,
+        );
         expect(pending.first.optimisticChanges, isNotNull);
-        expect(pending.first.optimisticChanges!.first.type,
-            equals(OptimisticChangeType.insert));
+        expect(
+          pending.first.optimisticChanges!.first.type,
+          equals(OptimisticChangeType.insert),
+        );
 
         await newStorage.dispose().timeout(_timeout);
       });
@@ -130,16 +163,33 @@ void main() {
 
     group('clearAll', () {
       test('removes all data and base directory still exists', () async {
-        await storage.saveTableSnapshot('notes', [{'id': 1}]).timeout(_timeout);
-        await storage.enqueueMutation(_createMutation('req-1')).timeout(_timeout);
-        await storage.setLastSyncTime('notes', DateTime.now()).timeout(_timeout);
+        await storage
+            .saveTableSnapshot('notes', [
+              {'id': 1},
+            ])
+            .timeout(_timeout);
+        await storage
+            .enqueueMutation(_createMutation('req-1'))
+            .timeout(_timeout);
+        await storage
+            .setLastSyncTime('notes', DateTime.now())
+            .timeout(_timeout);
 
         await storage.clearAll().timeout(_timeout);
 
-        expect(await storage.loadTableSnapshot('notes').timeout(_timeout), isNull);
+        expect(
+          await storage.loadTableSnapshot('notes').timeout(_timeout),
+          isNull,
+        );
         expect(await storage.getPendingMutations().timeout(_timeout), isEmpty);
-        expect(await storage.getLastSyncTime('notes').timeout(_timeout), isNull);
-        expect(await Directory(tempDir.path).exists().timeout(_timeout), isTrue);
+        expect(
+          await storage.getLastSyncTime('notes').timeout(_timeout),
+          isNull,
+        );
+        expect(
+          await Directory(tempDir.path).exists().timeout(_timeout),
+          isTrue,
+        );
       });
     });
 
@@ -148,9 +198,13 @@ void main() {
         var writeCompleted = false;
         final writeStarted = Completer<void>();
 
-        final writeFuture = storage.saveTableSnapshot('slow', [{'id': 1}]).then((_) {
-          writeCompleted = true;
-        });
+        final writeFuture = storage
+            .saveTableSnapshot('slow', [
+              {'id': 1},
+            ])
+            .then((_) {
+              writeCompleted = true;
+            });
 
         scheduleMicrotask(() => writeStarted.complete());
         await writeStarted.future;
@@ -169,7 +223,9 @@ void main() {
         await storage.dispose().timeout(_timeout);
 
         expect(
-          () => storage.saveTableSnapshot('test', [{'id': 1}]),
+          () => storage.saveTableSnapshot('test', [
+            {'id': 1},
+          ]),
           throwsA(isA<StateError>()),
         );
       });

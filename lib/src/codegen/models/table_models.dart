@@ -35,15 +35,20 @@ class TableSchema {
     return TableSchema(
       name: json['source_name'] ?? json['name'] ?? '',
       productTypeRef: json['product_type_ref'] ?? 0,
-      primaryKey: primaryKeyJson is List
-          ? primaryKeyJson.whereType<int>().toList()
-          : [],
-      indexes: indexesJson is List
-          ? indexesJson.map((i) => IndexSchema.fromJson(i)).toList()
-          : [],
-      constraints: constraintsJson is List
-          ? constraintsJson.map((c) => ConstraintSchema.fromJson(c)).toList()
-          : [],
+      primaryKey:
+          primaryKeyJson is List
+              ? primaryKeyJson.whereType<int>().toList()
+              : [],
+      indexes:
+          indexesJson is List
+              ? indexesJson.map((i) => IndexSchema.fromJson(i)).toList()
+              : [],
+      constraints:
+          constraintsJson is List
+              ? constraintsJson
+                  .map((c) => ConstraintSchema.fromJson(c))
+                  .toList()
+              : [],
       sequences: sequencesJson is List ? List.from(sequencesJson) : [],
       schedule: json['schedule'] ?? {},
       tableType: json['table_type'] ?? {},
@@ -64,8 +69,12 @@ class IndexSchema {
   factory IndexSchema.fromJson(Map<String, dynamic> json) {
     final nameJson = json['source_name'] ?? json['name'];
     final accessorJson = json['accessor_name'];
-    final indexName = nameJson is Map ? (nameJson['some'] ?? "") : (nameJson ?? "");
-    final accessor = accessorJson is Map ? (accessorJson['some'] ?? "") : (accessorJson ?? "");
+    final indexName =
+        nameJson is Map ? (nameJson['some'] ?? "") : (nameJson ?? "");
+    final accessor =
+        accessorJson is Map
+            ? (accessorJson['some'] ?? "")
+            : (accessorJson ?? "");
 
     return IndexSchema(
       name: indexName,
@@ -84,11 +93,9 @@ class ConstraintSchema {
 
   factory ConstraintSchema.fromJson(Map<String, dynamic> json) {
     final nameJson = json['source_name'] ?? json['name'];
-    final constraintName = nameJson is Map ? (nameJson['some'] ?? "") : (nameJson ?? "");
+    final constraintName =
+        nameJson is Map ? (nameJson['some'] ?? "") : (nameJson ?? "");
 
-    return ConstraintSchema(
-      name: constraintName,
-      data: json['data'] ?? {},
-    );
+    return ConstraintSchema(name: constraintName, data: json['data'] ?? {});
   }
 }

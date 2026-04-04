@@ -41,12 +41,11 @@ class EventContext {
     this.pendingRequestId,
   }) : _myConnectionId = myConnectionId;
 
-  EventContext.optimistic({
-    required String requestId,
-  })  : _myConnectionId = null,
-        event = OptimisticEvent(requestId: requestId),
-        isOptimistic = true,
-        pendingRequestId = requestId;
+  EventContext.optimistic({required String requestId})
+    : _myConnectionId = null,
+      event = OptimisticEvent(requestId: requestId),
+      isOptimistic = true,
+      pendingRequestId = requestId;
 
   /// 🌟 GOLD STANDARD: DX Helper - Check if this event was triggered by current client
   ///

@@ -45,5 +45,6 @@ class ReducerInfo {
   }
 
   @override
-  String toString() => 'ReducerInfo(reducerName: $reducerName, reducerId: $reducerId, args: ${args.length} bytes, requestId: $requestId)';
+  String toString() =>
+      'ReducerInfo(reducerName: $reducerName, reducerId: $reducerId, args: ${args.length} bytes, requestId: $requestId)';
 }

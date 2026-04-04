@@ -56,23 +56,29 @@ class MessageDecoder {
       ServerMessageType.identityToken => IdentityTokenMessage.decode(decoder),
       ServerMessageType.initialSubscription =>
         InitialSubscriptionMessage.decode(decoder),
-      ServerMessageType.transactionUpdate =>
-        TransactionUpdateMessage.decode(decoder),
+      ServerMessageType.transactionUpdate => TransactionUpdateMessage.decode(
+        decoder,
+      ),
       ServerMessageType.transactionUpdateLight =>
         TransactionUpdateLightMessage.decode(decoder),
-      ServerMessageType.oneOffQueryResponse =>
-        OneOffQueryResponse.decode(decoder),
+      ServerMessageType.oneOffQueryResponse => OneOffQueryResponse.decode(
+        decoder,
+      ),
       ServerMessageType.subscribeApplied => SubscribeApplied.decode(decoder),
-      ServerMessageType.unsubscribeApplied =>
-        UnsubscribeApplied.decode(decoder),
-      ServerMessageType.subscriptionError =>
-        SubscriptionErrorMessage.decode(decoder),
-      ServerMessageType.subscribeMultiApplied =>
-        SubscribeMultiApplied.decode(decoder),
+      ServerMessageType.unsubscribeApplied => UnsubscribeApplied.decode(
+        decoder,
+      ),
+      ServerMessageType.subscriptionError => SubscriptionErrorMessage.decode(
+        decoder,
+      ),
+      ServerMessageType.subscribeMultiApplied => SubscribeMultiApplied.decode(
+        decoder,
+      ),
       ServerMessageType.unsubscribeMultiApplied =>
         UnsubscribeMultiApplied.decode(decoder),
-      ServerMessageType.procedureResult =>
-        ProcedureResultMessage.decode(decoder),
+      ServerMessageType.procedureResult => ProcedureResultMessage.decode(
+        decoder,
+      ),
     };
   }
 }

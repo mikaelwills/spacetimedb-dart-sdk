@@ -18,10 +18,10 @@ class OfflineCacheCoordinator {
     required ClientCache cache,
     required OptimisticStateManager optimisticState,
     required MutationSyncer mutationSyncer,
-  })  : _storage = storage,
-        _cache = cache,
-        _optimisticState = optimisticState,
-        _mutationSyncer = mutationSyncer;
+  }) : _storage = storage,
+       _cache = cache,
+       _optimisticState = optimisticState,
+       _mutationSyncer = mutationSyncer;
 
   Future<void> ensureInitialized() async {
     if (_initialized) return;
@@ -42,7 +42,8 @@ class OfflineCacheCoordinator {
           if (table != null && table.decoder.supportsJsonSerialization) {
             table.loadFromSerializable(rows);
             SdkLogger.i(
-                'Loaded ${rows.length} rows from offline cache for "$tableName"');
+              'Loaded ${rows.length} rows from offline cache for "$tableName"',
+            );
           }
         }
       }
@@ -50,7 +51,9 @@ class OfflineCacheCoordinator {
       final pending = await _storage.getPendingMutations();
       for (final mutation in pending) {
         _optimisticState.applyOptimisticChanges(
-            mutation.requestId, mutation.optimisticChanges);
+          mutation.requestId,
+          mutation.optimisticChanges,
+        );
       }
 
       await _mutationSyncer.updatePendingCount();

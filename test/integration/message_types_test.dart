@@ -6,7 +6,6 @@ import '../generated/note.dart';
 import '../generated/reducer_args.dart';
 import '../helpers/integration_test_helper.dart';
 
-
 /// Comprehensive test for all SpacetimeDB server message types
 
 void main() {
@@ -23,9 +22,18 @@ void main() {
 
     // PHASE 0: Register decoders
     subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-    subManager.reducerRegistry.registerDecoder('create_note', CreateNoteArgsDecoder());
-    subManager.reducerRegistry.registerDecoder('update_note', UpdateNoteArgsDecoder());
-    subManager.reducerRegistry.registerDecoder('delete_note', DeleteNoteArgsDecoder());
+    subManager.reducerRegistry.registerDecoder(
+      'create_note',
+      CreateNoteArgsDecoder(),
+    );
+    subManager.reducerRegistry.registerDecoder(
+      'update_note',
+      UpdateNoteArgsDecoder(),
+    );
+    subManager.reducerRegistry.registerDecoder(
+      'delete_note',
+      DeleteNoteArgsDecoder(),
+    );
 
     await connection.connect();
     await subManager.onIdentityToken.first.timeout(const Duration(seconds: 5));
@@ -55,12 +63,17 @@ void main() {
       final token = await tokenFuture.timeout(const Duration(seconds: 2));
 
       // D. ASSERT
-      expect(token.identity.length, equals(32),
-          reason: 'Identity should be 32 bytes');
-      expect(token.connectionId.length, equals(16),
-          reason: 'Connection ID should be 16 bytes');
-      expect(token.token, isNotEmpty,
-          reason: 'Token should not be empty');
+      expect(
+        token.identity.length,
+        equals(32),
+        reason: 'Identity should be 32 bytes',
+      );
+      expect(
+        token.connectionId.length,
+        equals(16),
+        reason: 'Connection ID should be 16 bytes',
+      );
+      expect(token.token, isNotEmpty, reason: 'Token should not be empty');
 
       // Clean up
       newSubManager.dispose();
@@ -75,23 +88,37 @@ void main() {
       subManager.subscribe(['SELECT * FROM note']);
 
       // C. WAIT
-      final initialSub = await initialSubFuture.timeout(const Duration(seconds: 2));
+      final initialSub = await initialSubFuture.timeout(
+        const Duration(seconds: 2),
+      );
 
       // D. ASSERT
       // Note: tableUpdates can be empty if the table has no rows
       // The server only includes tables with data in tableUpdates
-      expect(initialSub.tableUpdates, isNotNull,
-          reason: 'Should have tableUpdates list (may be empty)');
-      expect(initialSub.requestId, isA<int>(),
-          reason: 'Request ID should be present');
-      expect(initialSub.totalHostExecutionDurationMicros, greaterThanOrEqualTo(0),
-          reason: 'Execution duration should be non-negative');
+      expect(
+        initialSub.tableUpdates,
+        isNotNull,
+        reason: 'Should have tableUpdates list (may be empty)',
+      );
+      expect(
+        initialSub.requestId,
+        isA<int>(),
+        reason: 'Request ID should be present',
+      );
+      expect(
+        initialSub.totalHostExecutionDurationMicros,
+        greaterThanOrEqualTo(0),
+        reason: 'Execution duration should be non-negative',
+      );
 
       // Verify cache was populated (even if table is empty)
       // The SDK activates empty tables automatically when using subscribe()
       final noteTable = subManager.cache.getTableByTypedName<Note>('note');
-      expect(noteTable, isNotNull,
-          reason: 'Note table should be in cache (even if empty)');
+      expect(
+        noteTable,
+        isNotNull,
+        reason: 'Note table should be in cache (even if empty)',
+      );
     });
 
     test('TransactionUpdate message', () async {
@@ -115,16 +142,28 @@ void main() {
       final txUpdate = await txUpdateFuture.timeout(const Duration(seconds: 2));
 
       // D. ASSERT
-      expect(txUpdate.timestamp, greaterThan(0),
-          reason: 'Timestamp should be positive');
-      expect(txUpdate.tableUpdates, isNotEmpty,
-          reason: 'Should have table updates');
-      expect(txUpdate.status, isA<Committed>(),
-          reason: 'Transaction should be committed');
+      expect(
+        txUpdate.timestamp,
+        greaterThan(0),
+        reason: 'Timestamp should be positive',
+      );
+      expect(
+        txUpdate.tableUpdates,
+        isNotEmpty,
+        reason: 'Should have table updates',
+      );
+      expect(
+        txUpdate.status,
+        isA<Committed>(),
+        reason: 'Transaction should be committed',
+      );
 
       final noteCountAfter = noteTable.count();
-      expect(noteCountAfter, equals(noteCountBefore + 1),
-          reason: 'Note count should increase by 1');
+      expect(
+        noteCountAfter,
+        equals(noteCountBefore + 1),
+        reason: 'Note count should increase by 1',
+      );
     });
 
     test('OneOffQueryResponse message', () async {
@@ -136,17 +175,27 @@ void main() {
       subManager.oneOffQuery(messageId, 'SELECT * FROM note');
 
       // C. WAIT
-      final queryResponse = await queryResponseFuture.timeout(const Duration(seconds: 2));
+      final queryResponse = await queryResponseFuture.timeout(
+        const Duration(seconds: 2),
+      );
 
       // D. ASSERT
-      expect(queryResponse.messageId, equals(messageId),
-          reason: 'Message ID should match');
-      expect(queryResponse.error, isNull,
-          reason: 'Should not have error for valid query');
-      expect(queryResponse.tables, isNotEmpty,
-          reason: 'Should have tables');
-      expect(queryResponse.totalHostExecutionDurationMicros, greaterThanOrEqualTo(0),
-          reason: 'Execution duration should be non-negative');
+      expect(
+        queryResponse.messageId,
+        equals(messageId),
+        reason: 'Message ID should match',
+      );
+      expect(
+        queryResponse.error,
+        isNull,
+        reason: 'Should not have error for valid query',
+      );
+      expect(queryResponse.tables, isNotEmpty, reason: 'Should have tables');
+      expect(
+        queryResponse.totalHostExecutionDurationMicros,
+        greaterThanOrEqualTo(0),
+        reason: 'Execution duration should be non-negative',
+      );
     });
 
     test('SubscribeApplied message', () async {
@@ -164,15 +213,26 @@ void main() {
       );
 
       // C. WAIT
-      final subscribeApplied = await subscribeAppliedFuture.timeout(const Duration(seconds: 2));
+      final subscribeApplied = await subscribeAppliedFuture.timeout(
+        const Duration(seconds: 2),
+      );
 
       // D. ASSERT
-      expect(subscribeApplied.requestId, equals(requestId),
-          reason: 'Request ID should match');
-      expect(subscribeApplied.queryId, equals(queryId),
-          reason: 'Query ID should match');
-      expect(subscribeApplied.totalHostExecutionDurationMicros, greaterThanOrEqualTo(0),
-          reason: 'Execution duration should be non-negative');
+      expect(
+        subscribeApplied.requestId,
+        equals(requestId),
+        reason: 'Request ID should match',
+      );
+      expect(
+        subscribeApplied.queryId,
+        equals(queryId),
+        reason: 'Query ID should match',
+      );
+      expect(
+        subscribeApplied.totalHostExecutionDurationMicros,
+        greaterThanOrEqualTo(0),
+        reason: 'Execution duration should be non-negative',
+      );
     });
 
     test('UnsubscribeApplied message', () async {
@@ -186,7 +246,9 @@ void main() {
         requestId: subscribeRequestId,
         queryId: queryId,
       );
-      await subManager.onSubscribeApplied.first.timeout(const Duration(seconds: 2));
+      await subManager.onSubscribeApplied.first.timeout(
+        const Duration(seconds: 2),
+      );
 
       // A. PREPARE LISTENER
       final unsubAppliedFuture = subManager.onUnsubscribeApplied.first;
@@ -195,15 +257,26 @@ void main() {
       subManager.unsubscribe(queryId, requestId: unsubscribeRequestId);
 
       // C. WAIT
-      final unsubApplied = await unsubAppliedFuture.timeout(const Duration(seconds: 2));
+      final unsubApplied = await unsubAppliedFuture.timeout(
+        const Duration(seconds: 2),
+      );
 
       // D. ASSERT
-      expect(unsubApplied.requestId, equals(unsubscribeRequestId),
-          reason: 'Request ID should match');
-      expect(unsubApplied.queryId, equals(queryId),
-          reason: 'Query ID should match');
-      expect(unsubApplied.totalHostExecutionDurationMicros, greaterThanOrEqualTo(0),
-          reason: 'Execution duration should be non-negative');
+      expect(
+        unsubApplied.requestId,
+        equals(unsubscribeRequestId),
+        reason: 'Request ID should match',
+      );
+      expect(
+        unsubApplied.queryId,
+        equals(queryId),
+        reason: 'Query ID should match',
+      );
+      expect(
+        unsubApplied.totalHostExecutionDurationMicros,
+        greaterThanOrEqualTo(0),
+        reason: 'Execution duration should be non-negative',
+      );
     });
 
     test('SubscriptionError message', () async {
@@ -220,19 +293,34 @@ void main() {
       final subError = await errorFuture.timeout(const Duration(seconds: 2));
 
       // D. ASSERT
-      expect(subError.requestId, equals(requestId),
-          reason: 'Request ID should match');
-      expect(subError.queryId, equals(queryId),
-          reason: 'Query ID should match');
-      expect(subError.error, isNotEmpty,
-          reason: 'Error message should not be empty');
-      expect(subError.totalHostExecutionDurationMicros, greaterThanOrEqualTo(0),
-          reason: 'Execution duration should be non-negative');
+      expect(
+        subError.requestId,
+        equals(requestId),
+        reason: 'Request ID should match',
+      );
+      expect(
+        subError.queryId,
+        equals(queryId),
+        reason: 'Query ID should match',
+      );
+      expect(
+        subError.error,
+        isNotEmpty,
+        reason: 'Error message should not be empty',
+      );
+      expect(
+        subError.totalHostExecutionDurationMicros,
+        greaterThanOrEqualTo(0),
+        reason: 'Execution duration should be non-negative',
+      );
 
       final errorMsg = subError.error.toLowerCase();
-      expect(errorMsg.contains('subscription not found') || errorMsg.contains('not found'),
-          isTrue,
-          reason: 'Error should indicate subscription not found');
+      expect(
+        errorMsg.contains('subscription not found') ||
+            errorMsg.contains('not found'),
+        isTrue,
+        reason: 'Error should indicate subscription not found',
+      );
     });
 
     test('ProcedureResult message', () async {
@@ -245,29 +333,49 @@ void main() {
       final encoder = BsatnEncoder();
       encoder.writeU32(42);
       encoder.writeU32(58);
-      subManager.callProcedure('add_numbers', encoder.toBytes(), requestId: requestId);
+      subManager.callProcedure(
+        'add_numbers',
+        encoder.toBytes(),
+        requestId: requestId,
+      );
 
       // C. WAIT
-      final procedureResult = await procedureResultFuture.timeout(const Duration(seconds: 2));
+      final procedureResult = await procedureResultFuture.timeout(
+        const Duration(seconds: 2),
+      );
 
       // D. ASSERT
-      expect(procedureResult.requestId, equals(requestId),
-          reason: 'Request ID should match');
-      expect(procedureResult.status.type, equals(ProcedureStatusType.returned),
-          reason: 'Procedure should return successfully');
-      expect(procedureResult.timestamp, greaterThan(0),
-          reason: 'Timestamp should be positive');
-      expect(procedureResult.totalHostExecutionDurationMicros, greaterThanOrEqualTo(0),
-          reason: 'Execution duration should be non-negative');
+      expect(
+        procedureResult.requestId,
+        equals(requestId),
+        reason: 'Request ID should match',
+      );
+      expect(
+        procedureResult.status.type,
+        equals(ProcedureStatusType.returned),
+        reason: 'Procedure should return successfully',
+      );
+      expect(
+        procedureResult.timestamp,
+        greaterThan(0),
+        reason: 'Timestamp should be positive',
+      );
+      expect(
+        procedureResult.totalHostExecutionDurationMicros,
+        greaterThanOrEqualTo(0),
+        reason: 'Execution duration should be non-negative',
+      );
 
       // Verify return value
-      expect(procedureResult.status.returnedData, isNotNull,
-          reason: 'Should have returned data');
+      expect(
+        procedureResult.status.returnedData,
+        isNotNull,
+        reason: 'Should have returned data',
+      );
 
       final decoder = BsatnDecoder(procedureResult.status.returnedData!);
       final result = decoder.readU32();
-      expect(result, equals(100),
-          reason: '42 + 58 should equal 100');
+      expect(result, equals(100), reason: '42 + 58 should equal 100');
     });
 
     test('TransactionUpdateLight or TransactionUpdate message', () async {
@@ -301,16 +409,24 @@ void main() {
       });
 
       // C. WAIT
-      final updateType = await updateCompleter.future.timeout(const Duration(seconds: 2));
+      final updateType = await updateCompleter.future.timeout(
+        const Duration(seconds: 2),
+      );
 
       // D. ASSERT - either type is valid
-      expect(updateType, anyOf(['light', 'full']),
-          reason: 'Should receive either Light or Full update');
+      expect(
+        updateType,
+        anyOf(['light', 'full']),
+        reason: 'Should receive either Light or Full update',
+      );
 
       // Verify state changed
       final noteCountAfter = noteTable.count();
-      expect(noteCountAfter, equals(noteCountBefore + 1),
-          reason: 'Note count should increase by 1');
+      expect(
+        noteCountAfter,
+        equals(noteCountBefore + 1),
+        reason: 'Note count should increase by 1',
+      );
 
       // Clean up
       await lightSub.cancel();
@@ -326,23 +442,40 @@ void main() {
 
       // B. ACTION
       subManager.subscribeMulti(
-        ['SELECT * FROM note WHERE id > 50', 'SELECT * FROM note WHERE id <= 50'],
+        [
+          'SELECT * FROM note WHERE id > 50',
+          'SELECT * FROM note WHERE id <= 50',
+        ],
         requestId: requestId,
         queryId: queryId,
       );
 
       // C. WAIT
-      final subscribeMultiApplied = await subscribeMultiFuture.timeout(const Duration(seconds: 2));
+      final subscribeMultiApplied = await subscribeMultiFuture.timeout(
+        const Duration(seconds: 2),
+      );
 
       // D. ASSERT
-      expect(subscribeMultiApplied.requestId, equals(requestId),
-          reason: 'Request ID should match');
-      expect(subscribeMultiApplied.queryId, equals(queryId),
-          reason: 'Query ID should match');
-      expect(subscribeMultiApplied.tableUpdates, isNotEmpty,
-          reason: 'Should have table updates');
-      expect(subscribeMultiApplied.totalHostExecutionDurationMicros, greaterThanOrEqualTo(0),
-          reason: 'Execution duration should be non-negative');
+      expect(
+        subscribeMultiApplied.requestId,
+        equals(requestId),
+        reason: 'Request ID should match',
+      );
+      expect(
+        subscribeMultiApplied.queryId,
+        equals(queryId),
+        reason: 'Query ID should match',
+      );
+      expect(
+        subscribeMultiApplied.tableUpdates,
+        isNotEmpty,
+        reason: 'Should have table updates',
+      );
+      expect(
+        subscribeMultiApplied.totalHostExecutionDurationMicros,
+        greaterThanOrEqualTo(0),
+        reason: 'Execution duration should be non-negative',
+      );
     });
 
     test('UnsubscribeMultiApplied message', () async {
@@ -356,7 +489,9 @@ void main() {
         requestId: subscribeRequestId,
         queryId: queryId,
       );
-      await subManager.onSubscribeMultiApplied.first.timeout(const Duration(seconds: 2));
+      await subManager.onSubscribeMultiApplied.first.timeout(
+        const Duration(seconds: 2),
+      );
 
       // A. PREPARE LISTENER
       final unsubMultiFuture = subManager.onUnsubscribeMultiApplied.first;
@@ -365,17 +500,31 @@ void main() {
       subManager.unsubscribeMulti(queryId, requestId: unsubscribeRequestId);
 
       // C. WAIT
-      final unsubscribeMultiApplied = await unsubMultiFuture.timeout(const Duration(seconds: 2));
+      final unsubscribeMultiApplied = await unsubMultiFuture.timeout(
+        const Duration(seconds: 2),
+      );
 
       // D. ASSERT
-      expect(unsubscribeMultiApplied.requestId, equals(unsubscribeRequestId),
-          reason: 'Request ID should match');
-      expect(unsubscribeMultiApplied.queryId, equals(queryId),
-          reason: 'Query ID should match');
-      expect(unsubscribeMultiApplied.tableUpdates, isNotNull,
-          reason: 'Should have table updates');
-      expect(unsubscribeMultiApplied.totalHostExecutionDurationMicros, greaterThanOrEqualTo(0),
-          reason: 'Execution duration should be non-negative');
+      expect(
+        unsubscribeMultiApplied.requestId,
+        equals(unsubscribeRequestId),
+        reason: 'Request ID should match',
+      );
+      expect(
+        unsubscribeMultiApplied.queryId,
+        equals(queryId),
+        reason: 'Query ID should match',
+      );
+      expect(
+        unsubscribeMultiApplied.tableUpdates,
+        isNotNull,
+        reason: 'Should have table updates',
+      );
+      expect(
+        unsubscribeMultiApplied.totalHostExecutionDurationMicros,
+        greaterThanOrEqualTo(0),
+        reason: 'Execution duration should be non-negative',
+      );
     });
   });
 }

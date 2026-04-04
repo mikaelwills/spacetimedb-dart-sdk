@@ -29,10 +29,7 @@ void main() {
 
     test('copyWith updates only specified fields', () {
       final now = DateTime.now();
-      const original = SyncState(
-        status: SyncStatus.idle,
-        pendingCount: 5,
-      );
+      const original = SyncState(status: SyncStatus.idle, pendingCount: 5);
 
       final updated = original.copyWith(
         status: SyncStatus.syncing,

@@ -37,27 +37,29 @@ class OptimisticChange {
   final Map<String, dynamic>? newRowJson;
 
   OptimisticChange.insert(this.tableName, Map<String, dynamic> row)
-      : type = OptimisticChangeType.insert,
-        oldRowJson = null,
-        newRowJson = row;
+    : type = OptimisticChangeType.insert,
+      oldRowJson = null,
+      newRowJson = row;
 
   OptimisticChange.update(
-      this.tableName, Map<String, dynamic> oldRow, Map<String, dynamic> newRow)
-      : type = OptimisticChangeType.update,
-        oldRowJson = oldRow,
-        newRowJson = newRow;
+    this.tableName,
+    Map<String, dynamic> oldRow,
+    Map<String, dynamic> newRow,
+  ) : type = OptimisticChangeType.update,
+      oldRowJson = oldRow,
+      newRowJson = newRow;
 
   OptimisticChange.delete(this.tableName, Map<String, dynamic> row)
-      : type = OptimisticChangeType.delete,
-        oldRowJson = row,
-        newRowJson = null;
+    : type = OptimisticChangeType.delete,
+      oldRowJson = row,
+      newRowJson = null;
 
   Map<String, dynamic> toJson() => {
-        'tableName': tableName,
-        'type': type.name,
-        'oldRowJson': oldRowJson,
-        'newRowJson': newRowJson,
-      };
+    'tableName': tableName,
+    'type': type.name,
+    'oldRowJson': oldRowJson,
+    'newRowJson': newRowJson,
+  };
 
   factory OptimisticChange.fromJson(Map<String, dynamic> json) {
     final type = OptimisticChangeType.values.byName(json['type'] as String);

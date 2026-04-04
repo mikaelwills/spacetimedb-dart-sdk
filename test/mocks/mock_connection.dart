@@ -134,7 +134,9 @@ class MockConnection implements SpacetimeDbConnection {
   /// Helper to extract requestId from sent message by index
   int getSentRequestId(int index) {
     if (index >= sentMessages.length) {
-      throw StateError('Index $index out of bounds (${sentMessages.length} messages sent)');
+      throw StateError(
+        'Index $index out of bounds (${sentMessages.length} messages sent)',
+      );
     }
     return _extractRequestId(sentMessages[index]);
   }
@@ -182,13 +184,18 @@ class MockConnection implements SpacetimeDbConnection {
   @override
   ConnectionConfig get config => const ConnectionConfig();
 
-  Identity? get identity => null; // Null for tests unless testing identity filtering
+  Identity? get identity =>
+      null; // Null for tests unless testing identity filtering
 
-  String? get address => null; // Null for tests unless testing address filtering
+  String? get address =>
+      null; // Null for tests unless testing address filtering
 
   @override
-  Future<void> callReducer(String reducerName, Uint8List args,
-      {int? requestId}) async {
+  Future<void> callReducer(
+    String reducerName,
+    Uint8List args, {
+    int? requestId,
+  }) async {
     // Stub - not used in our tests (we test ReducerCaller directly)
     throw UnimplementedError('Use ReducerCaller directly in tests');
   }

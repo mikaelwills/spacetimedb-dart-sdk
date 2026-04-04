@@ -72,11 +72,13 @@ class TransactionUpdateMessage implements ServerMessage {
 
   // Transaction metadata fields (from Rust TransactionUpdate struct)
   final UpdateStatus status;
-  final Uint8List callerIdentity;          // Identity: 32 bytes, NOT Option
-  final Uint8List callerConnectionId;      // ConnectionId: u128 (16 bytes), NOT Option
-  final ReducerInfo reducerCall;           // ReducerCallInfo struct
-  final int energyQuantaUsed;              // EnergyQuanta: u128 - stored as int (will lose precision for huge values)
-  final Int64 totalHostExecutionDuration;    // TimeDuration: i64 microseconds
+  final Uint8List callerIdentity; // Identity: 32 bytes, NOT Option
+  final Uint8List
+  callerConnectionId; // ConnectionId: u128 (16 bytes), NOT Option
+  final ReducerInfo reducerCall; // ReducerCallInfo struct
+  final int
+  energyQuantaUsed; // EnergyQuanta: u128 - stored as int (will lose precision for huge values)
+  final Int64 totalHostExecutionDuration; // TimeDuration: i64 microseconds
 
   TransactionUpdateMessage({
     required this.transactionOffset,
@@ -133,16 +135,18 @@ class TransactionUpdateMessage implements ServerMessage {
     // 6. Read energy_quanta_used (EnergyQuanta: u128 = 16 bytes)
     final energyBytes = decoder.readBytes(16);
     // Convert to int (will lose precision for very large values, but acceptable)
-    final energyQuantaUsed = energyBytes[0] |
+    final energyQuantaUsed =
+        energyBytes[0] |
         (energyBytes[1] << 8) |
         (energyBytes[2] << 16) |
         (energyBytes[3] << 24);
 
     // 7. Read total_host_execution_duration (TimeDuration: i64 microseconds)
-    final totalHostExecutionDuration = decoder.readU64(); // i64 serializes as u64
+    final totalHostExecutionDuration =
+        decoder.readU64(); // i64 serializes as u64
 
     return TransactionUpdateMessage(
-      transactionOffset: 0,  // Not in wire protocol
+      transactionOffset: 0, // Not in wire protocol
       timestamp: timestamp,
       tableUpdates: tableUpdates,
       status: status,
@@ -493,11 +497,7 @@ class ProcedureStatus {
   final Uint8List? returnedData;
   final String? errorMessage;
 
-  ProcedureStatus({
-    required this.type,
-    this.returnedData,
-    this.errorMessage,
-  });
+  ProcedureStatus({required this.type, this.returnedData, this.errorMessage});
 
   static ProcedureStatus decode(BsatnDecoder decoder) {
     final tag = decoder.readU8();
@@ -523,8 +523,4 @@ class ProcedureStatus {
   }
 }
 
-enum ProcedureStatusType {
-  returned,
-  outOfEnergy,
-  internalError,
-}
+enum ProcedureStatusType { returned, outOfEnergy, internalError }

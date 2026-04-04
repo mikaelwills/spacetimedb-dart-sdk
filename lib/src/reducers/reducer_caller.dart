@@ -50,8 +50,8 @@ class ReducerCaller {
     this._connection, {
     OfflineStorage? offlineStorage,
     MutationHandler? mutationHandler,
-  })  : _offlineStorage = offlineStorage,
-        _mutationHandler = mutationHandler;
+  }) : _offlineStorage = offlineStorage,
+       _mutationHandler = mutationHandler;
 
   bool get _isOnline => _connection.status == ConnectionStatus.connected;
 
@@ -70,7 +70,9 @@ class ReducerCaller {
       return _sendDirectly(reducerName, args, timeout, optimisticChanges);
     }
 
-    SdkLogger.d('$reducerName: status=${_connection.status}, isOnline=$_isOnline, hasOfflineStorage=${_offlineStorage != null}');
+    SdkLogger.d(
+      '$reducerName: status=${_connection.status}, isOnline=$_isOnline, hasOfflineStorage=${_offlineStorage != null}',
+    );
 
     if (_offlineStorage != null) {
       SdkLogger.d('OFFLINE-FIRST: Always queue first, then sync');
@@ -132,7 +134,8 @@ class ReducerCaller {
       _timeoutRequest(requestId, reducerName, effectiveTimeout);
     });
 
-    final hasOptimistic = optimisticChanges != null && optimisticChanges.isNotEmpty;
+    final hasOptimistic =
+        optimisticChanges != null && optimisticChanges.isNotEmpty;
 
     _pendingRequests[requestId] = _PendingRequest(
       completer: completer,
@@ -143,7 +146,10 @@ class ReducerCaller {
 
     if (hasOptimistic) {
       SdkLogger.d('Applying optimistic changes: ${optimisticChanges.length}');
-      _mutationHandler?.onOptimisticChanges(requestId.toString(), optimisticChanges);
+      _mutationHandler?.onOptimisticChanges(
+        requestId.toString(),
+        optimisticChanges,
+      );
     }
 
     final message = CallReducerMessage(
@@ -163,7 +169,9 @@ class ReducerCaller {
     String? requestId,
   }) async {
     final numericRequestId = _nextRequestId++;
-    SdkLogger.d('callWithBytes: $reducerName, numericId=$numericRequestId, uuidId=$requestId');
+    SdkLogger.d(
+      'callWithBytes: $reducerName, numericId=$numericRequestId, uuidId=$requestId',
+    );
     if (requestId != null) {
       _requestIdByUuid[requestId] = numericRequestId;
     }
@@ -277,9 +285,7 @@ class ReducerCaller {
         _mutationHandler?.onRollbackOptimistic(requestId.toString());
       }
       pending.completer.completeError(
-        ConnectionException(
-          'Connection lost during reducer call: $reason',
-        ),
+        ConnectionException('Connection lost during reducer call: $reason'),
       );
     }
     _pendingRequests.clear();

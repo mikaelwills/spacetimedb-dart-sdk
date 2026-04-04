@@ -48,15 +48,18 @@ class DatabaseSchema {
     return DatabaseSchema(
       databaseName: dbName,
       typeSpace: TypeSpace.fromJson(json['typespace'] ?? {}),
-      tables: tablesJson is List
-          ? tablesJson.map((t) => TableSchema.fromJson(t)).toList()
-          : [],
-      reducers: reducersJson is List
-          ? reducersJson.map((r) => ReducerSchema.fromJson(r)).toList()
-          : [],
-      types: typesJson is List
-          ? typesJson.map((t) => TypeDef.fromJson(t)).toList()
-          : [],
+      tables:
+          tablesJson is List
+              ? tablesJson.map((t) => TableSchema.fromJson(t)).toList()
+              : [],
+      reducers:
+          reducersJson is List
+              ? reducersJson.map((r) => ReducerSchema.fromJson(r)).toList()
+              : [],
+      types:
+          typesJson is List
+              ? typesJson.map((t) => TypeDef.fromJson(t)).toList()
+              : [],
       views: views,
     );
   }

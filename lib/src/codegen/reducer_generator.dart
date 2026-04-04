@@ -15,7 +15,9 @@ class ReducerGenerator {
     buf.writeln('// GENERATED CODE - DO NOT MODIFY BY HAND');
     buf.writeln();
     buf.writeln("import 'dart:async';");
-    buf.writeln("import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';");
+    buf.writeln(
+      "import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';",
+    );
     buf.writeln("import 'reducer_args.dart';");
     buf.writeln();
 
@@ -25,8 +27,12 @@ class ReducerGenerator {
     buf.writeln('/// All methods return Future<TransactionResult> containing:');
     buf.writeln('/// - status: Committed/Failed/OutOfEnergy');
     buf.writeln('/// - timestamp: When the reducer executed');
-    buf.writeln('/// - energyConsumed: Energy used (null for TransactionUpdateLight)');
-    buf.writeln('/// - executionDuration: How long it took (null for TransactionUpdateLight)');
+    buf.writeln(
+      '/// - energyConsumed: Energy used (null for TransactionUpdateLight)',
+    );
+    buf.writeln(
+      '/// - executionDuration: How long it took (null for TransactionUpdateLight)',
+    );
     buf.writeln('class Reducers {');
     buf.writeln('  final ReducerCaller _reducerCaller;');
     buf.writeln('  final ReducerEmitter _reducerEmitter;');
@@ -60,9 +66,13 @@ class ReducerGenerator {
     final buf = StringBuffer();
 
     // Header
-    buf.writeln('// GENERATED REDUCER ARGUMENT CLASSES AND DECODERS - DO NOT MODIFY BY HAND');
+    buf.writeln(
+      '// GENERATED REDUCER ARGUMENT CLASSES AND DECODERS - DO NOT MODIFY BY HAND',
+    );
     buf.writeln();
-    buf.writeln("import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';");
+    buf.writeln(
+      "import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';",
+    );
     buf.writeln();
 
     // Generate args class and decoder for each reducer
@@ -83,19 +93,31 @@ class ReducerGenerator {
     buf.writeln('  ///');
     buf.writeln('  /// Returns [TransactionResult] with execution metadata:');
     buf.writeln('  /// - `result.isSuccess` - Check if reducer committed');
-    buf.writeln('  /// - `result.energyConsumed` - Energy used (null for lightweight responses)');
-    buf.writeln('  /// - `result.executionDuration` - How long it took (null for lightweight responses)');
+    buf.writeln(
+      '  /// - `result.energyConsumed` - Energy used (null for lightweight responses)',
+    );
+    buf.writeln(
+      '  /// - `result.executionDuration` - How long it took (null for lightweight responses)',
+    );
     buf.writeln('  ///');
-    buf.writeln('  /// Pass [optimisticChanges] to immediately update the local cache for offline-first UX.');
+    buf.writeln(
+      '  /// Pass [optimisticChanges] to immediately update the local cache for offline-first UX.',
+    );
     buf.writeln('  /// Changes are rolled back if the server rejects them.');
     buf.writeln('  ///');
-    buf.writeln('  /// Throws [ReducerException] if the reducer fails or runs out of energy.');
-    buf.writeln('  /// Throws [TimeoutException] if the reducer doesn\'t complete within the timeout.');
+    buf.writeln(
+      '  /// Throws [ReducerException] if the reducer fails or runs out of energy.',
+    );
+    buf.writeln(
+      '  /// Throws [TimeoutException] if the reducer doesn\'t complete within the timeout.',
+    );
 
     buf.write('  Future<TransactionResult> $methodName(');
 
     if (reducer.params.elements.isEmpty) {
-      buf.writeln('{List<OptimisticChange>? optimisticChanges, bool isEventTable = false}) async {');
+      buf.writeln(
+        '{List<OptimisticChange>? optimisticChanges, bool isEventTable = false}) async {',
+      );
     } else {
       buf.writeln('{');
       for (final param in reducer.params.elements) {
@@ -116,9 +138,12 @@ class ReducerGenerator {
     }
     buf.writeln();
 
-    buf.writeln("    return await _reducerCaller.call('${reducer.name}', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable);");
+    buf.writeln(
+      "    return await _reducerCaller.call('${reducer.name}', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable);",
+    );
     buf.writeln('  }');
   }
+
   /// Generate completion callback method for a reducer
   ///
   /// Example generated code:
@@ -152,7 +177,9 @@ class ReducerGenerator {
     buf.writeln(') callback) {');
 
     // Implementation
-    buf.writeln("    return _reducerEmitter.on('${reducer.name}').listen((EventContext ctx) {");
+    buf.writeln(
+      "    return _reducerEmitter.on('${reducer.name}').listen((EventContext ctx) {",
+    );
     buf.writeln('      // Pattern match to extract ReducerEvent');
     buf.writeln('      final event = ctx.event;');
     buf.writeln('      if (event is! ReducerEvent) return;');
@@ -161,7 +188,9 @@ class ReducerGenerator {
     buf.writeln('      final args = event.reducerArgs;');
     buf.writeln('      if (args is! $argsClassName) return;');
     buf.writeln();
-    buf.writeln('      // Extract fields from strongly-typed object - NO CASTING');
+    buf.writeln(
+      '      // Extract fields from strongly-typed object - NO CASTING',
+    );
     buf.write('      callback(ctx');
 
     // Extract each arg field
@@ -211,7 +240,9 @@ class ReducerGenerator {
     final decoderClassName = '${_toPascalCase(reducer.name)}ArgsDecoder';
 
     buf.writeln('/// Decoder for ${reducer.name} reducer arguments');
-    buf.writeln('class $decoderClassName implements ReducerArgDecoder<$argsClassName> {');
+    buf.writeln(
+      'class $decoderClassName implements ReducerArgDecoder<$argsClassName> {',
+    );
     buf.writeln('  @override');
     buf.writeln('  $argsClassName? decode(BsatnDecoder decoder) {');
     buf.writeln('    try {');
@@ -242,7 +273,10 @@ class ReducerGenerator {
   /// This is the critical branching logic that makes the SDK "first in class".
   /// It handles nested structs and enums inside reducer arguments.
   void _generateArgDecode(
-      StringBuffer buf, String fieldName, Map<String, dynamic> algebraicType) {
+    StringBuffer buf,
+    String fieldName,
+    Map<String, dynamic> algebraicType,
+  ) {
     if (_isPrimitive(algebraicType)) {
       // Case A: Primitive type (int, String, bool, etc.)
       // Use BsatnDecoder's built-in read methods
@@ -269,7 +303,7 @@ class ReducerGenerator {
       'F32',
       'F64',
       'Bool',
-      'String'
+      'String',
     ];
 
     if (primitiveKeys.any((key) => algebraicType.containsKey(key))) return true;
@@ -293,18 +327,23 @@ class ReducerGenerator {
     if (parts.isEmpty) return input;
 
     return parts[0].toLowerCase() +
-        parts.skip(1).map((word) {
-          return word[0].toUpperCase() + word.substring(1).toLowerCase();
-        }).join('');
+        parts
+            .skip(1)
+            .map((word) {
+              return word[0].toUpperCase() + word.substring(1).toLowerCase();
+            })
+            .join('');
   }
 
   String _toPascalCase(String input) {
     final parts = input.split('_');
     if (parts.isEmpty) return input;
 
-    return parts.map((word) {
-      if (word.isEmpty) return '';
-      return word[0].toUpperCase() + word.substring(1).toLowerCase();
-    }).join('');
+    return parts
+        .map((word) {
+          if (word.isEmpty) return '';
+          return word[0].toUpperCase() + word.substring(1).toLowerCase();
+        })
+        .join('');
   }
 }

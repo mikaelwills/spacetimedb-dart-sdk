@@ -19,12 +19,13 @@ import 'websocket.dart' as ws;
 
 /// Factory function for creating WebSocket channels
 /// Allows dependency injection for testing
-typedef WebSocketFactory = WebSocketChannel Function(
-  Uri uri,
-  Iterable<String>? protocols,
-  Map<String, dynamic>? headers, {
-  Duration connectTimeout,
-});
+typedef WebSocketFactory =
+    WebSocketChannel Function(
+      Uri uri,
+      Iterable<String>? protocols,
+      Map<String, dynamic>? headers, {
+      Duration connectTimeout,
+    });
 
 /// WebSocket connection to a SpacetimeDB database
 ///
@@ -123,8 +124,8 @@ class SpacetimeDbConnection {
     this.ssl = false,
     this.config = const ConnectionConfig(),
     WebSocketFactory? socketFactory,
-  })  : _currentToken = initialToken,
-        _socketFactory = socketFactory ?? ws.connectWebSocket {
+  }) : _currentToken = initialToken,
+       _socketFactory = socketFactory ?? ws.connectWebSocket {
     _shouldReconnect = config.autoReconnect;
     // Emit initial quality after allowing time for subscribers to attach
     // Use scheduleMicrotask to emit after constructor completes
@@ -156,13 +157,13 @@ class SpacetimeDbConnection {
 
     try {
       final httpProtocol = ssl ? 'https' : 'http';
-      final url = Uri.parse('$httpProtocol://$host/v1/identity/websocket-token');
+      final url = Uri.parse(
+        '$httpProtocol://$host/v1/identity/websocket-token',
+      );
 
       final response = await http.post(
         url,
-        headers: {
-          'Authorization': 'Bearer $_currentToken',
-        },
+        headers: {'Authorization': 'Bearer $_currentToken'},
       );
 
       if (response.statusCode == 200) {
@@ -283,16 +284,19 @@ class SpacetimeDbConnection {
     final quality = ConnectionQuality(
       status: _currentStatus,
       reconnectAttempts: _reconnectAttempts,
-      timeSinceLastConnection: _lastSuccessfulConnection != null
-          ? DateTime.now().difference(_lastSuccessfulConnection!)
-          : null,
+      timeSinceLastConnection:
+          _lastSuccessfulConnection != null
+              ? DateTime.now().difference(_lastSuccessfulConnection!)
+              : null,
       lastError: _lastError,
       lastPingSent: _lastPingSent,
       lastPongReceived: _lastMessageReceived,
     );
 
     if (_currentStatus != _lastLoggedStatus) {
-      SdkLogger.i('Connection: ${quality.status.name} (health=${quality.healthScore.toStringAsFixed(1)})');
+      SdkLogger.i(
+        'Connection: ${quality.status.name} (health=${quality.healthScore.toStringAsFixed(1)})',
+      );
       _lastLoggedStatus = _currentStatus;
     }
     _qualityController.add(quality);
@@ -392,7 +396,8 @@ class SpacetimeDbConnection {
     _updateQuality(); // Emit quality update after reconnect attempt increment
     final delay = _getReconnectDelay();
     SdkLogger.i(
-        'Reconnecting in ${delay.inSeconds}s (attempt $_reconnectAttempts/${config.maxReconnectAttempts})');
+      'Reconnecting in ${delay.inSeconds}s (attempt $_reconnectAttempts/${config.maxReconnectAttempts})',
+    );
 
     _updateState(ConnectionState.reconnecting);
     _updateStatus(ConnectionStatus.reconnecting);
@@ -401,7 +406,9 @@ class SpacetimeDbConnection {
       try {
         await connect();
       } on SpacetimeDbAuthException {
-        SdkLogger.e('Authentication failed during reconnect - token may be invalid');
+        SdkLogger.e(
+          'Authentication failed during reconnect - token may be invalid',
+        );
         _shouldReconnect = false;
         _updateStatus(ConnectionStatus.authError);
       } catch (e) {
@@ -484,8 +491,11 @@ class SpacetimeDbConnection {
   /// track the response. For full async/await support with TransactionResult,
   /// use `SubscriptionManager.reducers.call()` instead.
   @Deprecated('Use SubscriptionManager.reducers.call() for async/await support')
-  Future<void> callReducer(String reducerName, Uint8List args,
-      {int? requestId}) async {
+  Future<void> callReducer(
+    String reducerName,
+    Uint8List args, {
+    int? requestId,
+  }) async {
     final message = CallReducerMessage(
       reducerName: reducerName,
       args: args,

@@ -10,8 +10,5 @@ WebSocketChannel connectWebSocket(
 }) {
   // Note: HtmlWebSocketChannel doesn't support custom headers or timeout
   // Authentication must be done via query parameters or after connection
-  return HtmlWebSocketChannel.connect(
-    uri,
-    protocols: protocols,
-  );
+  return HtmlWebSocketChannel.connect(uri, protocols: protocols);
 }

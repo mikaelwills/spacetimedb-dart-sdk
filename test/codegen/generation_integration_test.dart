@@ -49,7 +49,10 @@ void main() {
       expect(noteContent, contains('final String content;'));
       expect(noteContent, contains('final Int64 timestamp;'));
       expect(noteContent, contains('void encodeBsatn(BsatnEncoder encoder)'));
-      expect(noteContent, contains('static Note decodeBsatn(BsatnDecoder decoder)'));
+      expect(
+        noteContent,
+        contains('static Note decodeBsatn(BsatnDecoder decoder)'),
+      );
       expect(noteContent, contains('encoder.writeU32(id);'));
       expect(noteContent, contains('encoder.writeString(title);'));
       expect(noteContent, contains('decoder.readU32()'));
@@ -58,22 +61,51 @@ void main() {
       // Verify reducers.dart content
       final reducersContent = await reducersFile.readAsString();
       expect(reducersContent, contains('class Reducers {'));
-      expect(reducersContent, contains('Future<TransactionResult> createNote({'));
+      expect(
+        reducersContent,
+        contains('Future<TransactionResult> createNote({'),
+      );
       expect(reducersContent, contains('required String title,'));
       expect(reducersContent, contains('required String content,'));
-      expect(reducersContent, contains('Future<TransactionResult> init({List<OptimisticChange>? optimisticChanges, bool isEventTable = false}) async {'));
-      expect(reducersContent, contains('Future<TransactionResult> updateNote({'));
+      expect(
+        reducersContent,
+        contains(
+          'Future<TransactionResult> init({List<OptimisticChange>? optimisticChanges, bool isEventTable = false}) async {',
+        ),
+      );
+      expect(
+        reducersContent,
+        contains('Future<TransactionResult> updateNote({'),
+      );
       expect(reducersContent, contains('required int noteId,'));
-      expect(reducersContent, contains("return await _reducerCaller.call('create_note', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable)"));
-      expect(reducersContent, contains("return await _reducerCaller.call('init', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable)"));
-      expect(reducersContent, contains("return await _reducerCaller.call('update_note', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable)"));
+      expect(
+        reducersContent,
+        contains(
+          "return await _reducerCaller.call('create_note', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable)",
+        ),
+      );
+      expect(
+        reducersContent,
+        contains(
+          "return await _reducerCaller.call('init', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable)",
+        ),
+      );
+      expect(
+        reducersContent,
+        contains(
+          "return await _reducerCaller.call('update_note', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable)",
+        ),
+      );
 
       // Verify client.dart content
       final clientContent = await clientFile.readAsString();
       expect(clientContent, contains('class SpacetimeDbClient {'));
       expect(clientContent, contains('TableCache<Note> get note {'));
       expect(clientContent, contains('late final Reducers reducers;'));
-      expect(clientContent, contains('static Future<SpacetimeDbClient> connect({'));
+      expect(
+        clientContent,
+        contains('static Future<SpacetimeDbClient> connect({'),
+      );
       expect(clientContent, contains('required String host,'));
       expect(clientContent, contains('required String database,'));
       expect(clientContent, contains('AuthTokenStore? authStorage,'));
@@ -82,14 +114,38 @@ void main() {
       expect(clientContent, contains('Future<void> disconnect()'));
 
       // Verify all files have proper headers
-      expect(noteContent, startsWith('// GENERATED CODE - DO NOT MODIFY BY HAND'));
-      expect(reducersContent, startsWith('// GENERATED CODE - DO NOT MODIFY BY HAND'));
-      expect(clientContent, startsWith('// GENERATED CODE - DO NOT MODIFY BY HAND'));
+      expect(
+        noteContent,
+        startsWith('// GENERATED CODE - DO NOT MODIFY BY HAND'),
+      );
+      expect(
+        reducersContent,
+        startsWith('// GENERATED CODE - DO NOT MODIFY BY HAND'),
+      );
+      expect(
+        clientContent,
+        startsWith('// GENERATED CODE - DO NOT MODIFY BY HAND'),
+      );
 
       // Verify all files have proper imports
-      expect(noteContent, contains("import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';"));
-      expect(reducersContent, contains("import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';"));
-      expect(clientContent, contains("import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';"));
+      expect(
+        noteContent,
+        contains(
+          "import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';",
+        ),
+      );
+      expect(
+        reducersContent,
+        contains(
+          "import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';",
+        ),
+      );
+      expect(
+        clientContent,
+        contains(
+          "import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';",
+        ),
+      );
       expect(clientContent, contains("import 'reducers.dart';"));
       expect(clientContent, contains("import 'note.dart';"));
     });
@@ -110,24 +166,51 @@ void main() {
       final clientContent = await clientFile.readAsString();
 
       // Check for balanced braces
-      expect(_countChar(noteContent, '{'), equals(_countChar(noteContent, '}')));
-      expect(_countChar(reducersContent, '{'), equals(_countChar(reducersContent, '}')));
-      expect(_countChar(clientContent, '{'), equals(_countChar(clientContent, '}')));
+      expect(
+        _countChar(noteContent, '{'),
+        equals(_countChar(noteContent, '}')),
+      );
+      expect(
+        _countChar(reducersContent, '{'),
+        equals(_countChar(reducersContent, '}')),
+      );
+      expect(
+        _countChar(clientContent, '{'),
+        equals(_countChar(clientContent, '}')),
+      );
 
       // Check for balanced parentheses
-      expect(_countChar(noteContent, '('), equals(_countChar(noteContent, ')')));
-      expect(_countChar(reducersContent, '('), equals(_countChar(reducersContent, ')')));
-      expect(_countChar(clientContent, '('), equals(_countChar(clientContent, ')')));
+      expect(
+        _countChar(noteContent, '('),
+        equals(_countChar(noteContent, ')')),
+      );
+      expect(
+        _countChar(reducersContent, '('),
+        equals(_countChar(reducersContent, ')')),
+      );
+      expect(
+        _countChar(clientContent, '('),
+        equals(_countChar(clientContent, ')')),
+      );
 
       // Verify proper method signatures (should end with ; or { or })
-      expect(noteContent, matches(r'void encodeBsatn\(BsatnEncoder encoder\) \{'));
-      expect(reducersContent, matches(r'Future<TransactionResult> createNote\({'));
+      expect(
+        noteContent,
+        matches(r'void encodeBsatn\(BsatnEncoder encoder\) \{'),
+      );
+      expect(
+        reducersContent,
+        matches(r'Future<TransactionResult> createNote\({'),
+      );
       expect(clientContent, matches(r'static Future<\w+Client> connect\({'));
 
       // Verify no obvious syntax errors
-      expect(noteContent, isNot(contains('}{'))); // No immediate brace collision
+      expect(
+        noteContent,
+        isNot(contains('}{')),
+      ); // No immediate brace collision
       expect(reducersContent, isNot(contains('}{')));
-      expect(clientContent, isNot(contains('}{' )));
+      expect(clientContent, isNot(contains('}{')));
     });
 
     test('generated code passes dart analyze', () async {
@@ -140,7 +223,9 @@ void main() {
         await libDir.create();
 
         // Extract schema and generate code
-        final schema = await SchemaExtractor.fromProject('spacetime_test_module');
+        final schema = await SchemaExtractor.fromProject(
+          'spacetime_test_module',
+        );
         final generator = DartGenerator(schema);
         await generator.writeToDirectory(libDir.path);
 
@@ -160,28 +245,36 @@ dependencies:
   spacetimedb_dart_sdk:
     path: $sdkPath
 ''';
-        await File('${testPkgDir.path}/pubspec.yaml').writeAsString(pubspecContent);
+        await File(
+          '${testPkgDir.path}/pubspec.yaml',
+        ).writeAsString(pubspecContent);
 
         // Run dart pub get
-        final pubGetResult = await Process.run(
-          'dart',
-          ['pub', 'get'],
-          workingDirectory: testPkgDir.path,
-        );
+        final pubGetResult = await Process.run('dart', [
+          'pub',
+          'get',
+        ], workingDirectory: testPkgDir.path);
 
-        expect(pubGetResult.exitCode, equals(0),
-          reason: 'pub get should succeed:\n${pubGetResult.stdout}\n${pubGetResult.stderr}');
+        expect(
+          pubGetResult.exitCode,
+          equals(0),
+          reason:
+              'pub get should succeed:\n${pubGetResult.stdout}\n${pubGetResult.stderr}',
+        );
 
         // Run dart analyze
-        final analyzeResult = await Process.run(
-          'dart',
-          ['analyze', '--fatal-infos'],
-          workingDirectory: testPkgDir.path,
-        );
+        final analyzeResult = await Process.run('dart', [
+          'analyze',
+          '--fatal-infos',
+        ], workingDirectory: testPkgDir.path);
 
         // Should have no analysis errors or warnings
-        expect(analyzeResult.exitCode, equals(0),
-          reason: 'Generated code should pass analysis:\n${analyzeResult.stdout}\n${analyzeResult.stderr}');
+        expect(
+          analyzeResult.exitCode,
+          equals(0),
+          reason:
+              'Generated code should pass analysis:\n${analyzeResult.stdout}\n${analyzeResult.stderr}',
+        );
 
         // Verify no issues in output
         final output = analyzeResult.stdout.toString();
@@ -201,14 +294,22 @@ dependencies:
       final files = generator.generateAll();
 
       // Count sum types (enums) in the schema
-      final sumTypeCount = schema.types
-          .where((typeDef) => schema.typeSpace.types[typeDef.typeRef].sum != null)
-          .length;
+      final sumTypeCount =
+          schema.types
+              .where(
+                (typeDef) =>
+                    schema.typeSpace.types[typeDef.typeRef].sum != null,
+              )
+              .length;
 
       // Should have: tables + sum_types + reducers + reducer_args + client
       final expectedFiles = schema.tables.length + sumTypeCount + 3;
-      expect(files.length, equals(expectedFiles),
-          reason: 'Expected ${schema.tables.length} tables + $sumTypeCount sum types + 3 system files');
+      expect(
+        files.length,
+        equals(expectedFiles),
+        reason:
+            'Expected ${schema.tables.length} tables + $sumTypeCount sum types + 3 system files',
+      );
 
       // Verify filenames
       final filenames = files.map((f) => f.filename).toList();

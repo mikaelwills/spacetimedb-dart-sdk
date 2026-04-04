@@ -70,8 +70,12 @@ class TableCache<T> {
   final StreamController<TableEvent<T>> _eventController =
       StreamController<TableEvent<T>>.broadcast();
 
-  TableCache(
-      {required this.tableId, required this.tableName, required this.decoder, this.isEvent = false});
+  TableCache({
+    required this.tableId,
+    required this.tableName,
+    required this.decoder,
+    this.isEvent = false,
+  });
 
   /// Stream of inserted rows
   ///
@@ -278,7 +282,9 @@ class TableCache<T> {
 
   void _emitChanges(_RowChanges<T> changes, EventContext context) {
     if (!isEvent) {
-      SdkLogger.i('EMIT_CHANGES[$tableName]: inserts=${changes.inserted.length}, updates=${changes.updated.length}, deletes=${changes.deleted.length}');
+      SdkLogger.i(
+        'EMIT_CHANGES[$tableName]: inserts=${changes.inserted.length}, updates=${changes.updated.length}, deletes=${changes.deleted.length}',
+      );
     }
     for (final row in changes.inserted) {
       _insertController.add(row);
@@ -622,21 +628,21 @@ enum ChangeType { insert, update, delete }
 /// Represents any change to a table row
 class TableChange<T> {
   final ChangeType type;
-  final T? row; 
+  final T? row;
   final T? oldRow;
-  final T? newRow; 
+  final T? newRow;
 
   TableChange.insert(this.row)
-      : type = ChangeType.insert,
-        oldRow = null,
-        newRow = null;
+    : type = ChangeType.insert,
+      oldRow = null,
+      newRow = null;
 
   TableChange.update(this.oldRow, this.newRow)
-      : type = ChangeType.update,
-        row = null;
+    : type = ChangeType.update,
+      row = null;
 
   TableChange.delete(this.row)
-      : type = ChangeType.delete,
-        oldRow = null,
-        newRow = null;
+    : type = ChangeType.delete,
+      oldRow = null,
+      newRow = null;
 }

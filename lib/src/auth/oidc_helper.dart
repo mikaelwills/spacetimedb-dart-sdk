@@ -31,11 +31,7 @@ class OidcHelper {
   final String database;
   final bool ssl;
 
-  OidcHelper({
-    required this.host,
-    required this.database,
-    this.ssl = false,
-  });
+  OidcHelper({required this.host, required this.database, this.ssl = false});
 
   /// Generate the authentication URL for a given provider.
   ///

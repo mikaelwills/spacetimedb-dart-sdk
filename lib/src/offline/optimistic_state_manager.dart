@@ -26,8 +26,7 @@ class OptimisticStateManager {
 
   OptimisticStateManager(this._cache);
 
-  bool hasOptimisticChange(String requestId) =>
-      _entries.containsKey(requestId);
+  bool hasOptimisticChange(String requestId) => _entries.containsKey(requestId);
 
   Set<String> get activeRequestIds => _entries.keys.toSet();
 
@@ -44,7 +43,9 @@ class OptimisticStateManager {
   }
 
   void applyOptimisticChanges(
-      String requestId, List<OptimisticChange>? changes) {
+    String requestId,
+    List<OptimisticChange>? changes,
+  ) {
     if (changes == null) return;
 
     final entries = <OptimisticEntry>[];
@@ -56,10 +57,12 @@ class OptimisticStateManager {
           _cache.activateEmptyTable(change.tableName);
           table = _cache.getTableByName(change.tableName);
           SdkLogger.d(
-              'Auto-activated table "${change.tableName}" for optimistic change');
+            'Auto-activated table "${change.tableName}" for optimistic change',
+          );
         } else {
           SdkLogger.w(
-              'Table "${change.tableName}" not found and no builder registered');
+            'Table "${change.tableName}" not found and no builder registered',
+          );
           continue;
         }
       }
@@ -70,12 +73,14 @@ class OptimisticStateManager {
           final row = table.decoder.fromJson(change.newRowJson!);
           if (row != null) {
             final pk = table.decoder.getPrimaryKey(row);
-            entries.add(OptimisticEntry(
-              tableName: change.tableName,
-              type: OptimisticChangeType.insert,
-              primaryKey: pk,
-              newRowJson: change.newRowJson,
-            ));
+            entries.add(
+              OptimisticEntry(
+                tableName: change.tableName,
+                type: OptimisticChangeType.insert,
+                primaryKey: pk,
+                newRowJson: change.newRowJson,
+              ),
+            );
             table.insertRow(row);
 
             final context = EventContext.optimistic(requestId: requestId);
@@ -86,13 +91,15 @@ class OptimisticStateManager {
           final newRow = table.decoder.fromJson(change.newRowJson!);
           if (oldRow != null && newRow != null) {
             final pk = table.decoder.getPrimaryKey(newRow);
-            entries.add(OptimisticEntry(
-              tableName: change.tableName,
-              type: OptimisticChangeType.update,
-              primaryKey: pk,
-              oldRowJson: change.oldRowJson,
-              newRowJson: change.newRowJson,
-            ));
+            entries.add(
+              OptimisticEntry(
+                tableName: change.tableName,
+                type: OptimisticChangeType.update,
+                primaryKey: pk,
+                oldRowJson: change.oldRowJson,
+                newRowJson: change.newRowJson,
+              ),
+            );
             table.updateRow(newRow);
 
             final context = EventContext.optimistic(requestId: requestId);
@@ -102,12 +109,14 @@ class OptimisticStateManager {
           final row = table.decoder.fromJson(change.oldRowJson!);
           if (row != null) {
             final pk = table.decoder.getPrimaryKey(row);
-            entries.add(OptimisticEntry(
-              tableName: change.tableName,
-              type: OptimisticChangeType.delete,
-              primaryKey: pk,
-              oldRowJson: change.oldRowJson,
-            ));
+            entries.add(
+              OptimisticEntry(
+                tableName: change.tableName,
+                type: OptimisticChangeType.delete,
+                primaryKey: pk,
+                oldRowJson: change.oldRowJson,
+              ),
+            );
             table.deleteRow(pk);
 
             final context = EventContext.optimistic(requestId: requestId);
@@ -126,19 +135,21 @@ class OptimisticStateManager {
   }
 
   void confirmOrRollbackWithTouchedKeys(
-      String requestId, Map<String, Set<dynamic>> touchedKeysByTable) {
+    String requestId,
+    Map<String, Set<dynamic>> touchedKeysByTable,
+  ) {
     final entries = _entries.remove(requestId);
     if (entries == null) return;
 
-    SdkLogger.d(
-        'confirmOrRollbackWithTouchedKeys requestId="$requestId"');
+    SdkLogger.d('confirmOrRollbackWithTouchedKeys requestId="$requestId"');
 
     for (final entry in entries.reversed) {
       final touchedKeys = touchedKeysByTable[entry.tableName] ?? {};
       final wasTouched = touchedKeys.contains(entry.primaryKey);
 
       SdkLogger.d(
-          'Change: ${entry.type.name}, table="${entry.tableName}", PK: "${entry.primaryKey}", wasTouched: $wasTouched');
+        'Change: ${entry.type.name}, table="${entry.tableName}", PK: "${entry.primaryKey}", wasTouched: $wasTouched',
+      );
 
       if (wasTouched) {
         SdkLogger.d('CONFIRMED (key was touched)');

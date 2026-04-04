@@ -54,7 +54,8 @@ class BsatnDecoder {
   void _checkRemaining(int needed) {
     if (_offset + needed > _bytes.length) {
       throw StateError(
-          'Not enough bytes: need $needed, have $remaining at offset $_offset');
+        'Not enough bytes: need $needed, have $remaining at offset $_offset',
+      );
     }
   }
 
@@ -84,7 +85,8 @@ class BsatnDecoder {
   /// ```
   int readU32() {
     _checkRemaining(4);
-    final value = _bytes[_offset] |
+    final value =
+        _bytes[_offset] |
         (_bytes[_offset + 1] << 8) |
         (_bytes[_offset + 2] << 16) |
         (_bytes[_offset + 3] << 24);
@@ -94,11 +96,13 @@ class BsatnDecoder {
 
   Int64 readU64() {
     _checkRemaining(8);
-    final low = _bytes[_offset] |
+    final low =
+        _bytes[_offset] |
         (_bytes[_offset + 1] << 8) |
         (_bytes[_offset + 2] << 16) |
         (_bytes[_offset + 3] << 24);
-    final high = _bytes[_offset + 4] |
+    final high =
+        _bytes[_offset + 4] |
         (_bytes[_offset + 5] << 8) |
         (_bytes[_offset + 6] << 16) |
         (_bytes[_offset + 7] << 24);
@@ -123,11 +127,13 @@ class BsatnDecoder {
 
   Int64 readI64() {
     _checkRemaining(8);
-    final low = _bytes[_offset] |
+    final low =
+        _bytes[_offset] |
         (_bytes[_offset + 1] << 8) |
         (_bytes[_offset + 2] << 16) |
         (_bytes[_offset + 3] << 24);
-    final high = _bytes[_offset + 4] |
+    final high =
+        _bytes[_offset + 4] |
         (_bytes[_offset + 5] << 8) |
         (_bytes[_offset + 6] << 16) |
         (_bytes[_offset + 7] << 24);
@@ -255,10 +261,7 @@ class BsatnDecoder {
   ///   () => decoder.readU32(),
   /// );
   /// ```
-  Map<K, V> readMap<K, V>(
-    K Function() readKey,
-    V Function() readValue,
-  ) {
+  Map<K, V> readMap<K, V>(K Function() readKey, V Function() readValue) {
     final length = readU32();
     final map = <K, V>{};
 
@@ -270,5 +273,4 @@ class BsatnDecoder {
 
     return map;
   }
-
 }

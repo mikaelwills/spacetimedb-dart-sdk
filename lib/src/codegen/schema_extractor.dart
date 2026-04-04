@@ -26,9 +26,7 @@ class SchemaExtractor {
     final result = await Process.run('spacetime', args, runInShell: true);
 
     if (result.exitCode != 0) {
-      throw Exception(
-        'Failed to fetch schema: ${result.stderr}',
-      );
+      throw Exception('Failed to fetch schema: ${result.stderr}');
     }
 
     // Filter out WARNING lines
@@ -41,12 +39,14 @@ class SchemaExtractor {
     final decoded = jsonDecode(jsonStr);
     if (decoded is! Map<String, dynamic>) {
       throw StateError(
-          'Expected JSON object from spacetime describe, got ${decoded.runtimeType}');
+        'Expected JSON object from spacetime describe, got ${decoded.runtimeType}',
+      );
     }
     final json = decoded;
 
     return DatabaseSchema.fromJson(database, json);
   }
+
   /// Extract schema from a SpacetimeDB project directory
   ///
   /// This will:
@@ -61,16 +61,14 @@ class SchemaExtractor {
     SdkLogger.i('Building SpacetimeDB module at: $projectPath');
 
     // Build the module
-    final buildResult = await Process.run(
-      'spacetime',
-      ['build', '-p', projectPath],
-      runInShell: true,
-    );
+    final buildResult = await Process.run('spacetime', [
+      'build',
+      '-p',
+      projectPath,
+    ], runInShell: true);
 
     if (buildResult.exitCode != 0) {
-      throw Exception(
-        'Failed to build module:\n${buildResult.stderr}',
-      );
+      throw Exception('Failed to build module:\n${buildResult.stderr}');
     }
 
     // Extract WASM path from build output
@@ -92,16 +90,13 @@ class SchemaExtractor {
     final standalonePath = await _findStandaloneBinary();
 
     // Extract schema as JSON
-    final result = await Process.run(
-      standalonePath,
-      ['extract-schema', wasmPath],
-      runInShell: true,
-    );
+    final result = await Process.run(standalonePath, [
+      'extract-schema',
+      wasmPath,
+    ], runInShell: true);
 
     if (result.exitCode != 0) {
-      throw Exception(
-        'Failed to extract schema:\n${result.stderr}',
-      );
+      throw Exception('Failed to extract schema:\n${result.stderr}');
     }
 
     // Parse JSON schema
@@ -109,7 +104,8 @@ class SchemaExtractor {
     final decoded = jsonDecode(jsonString);
     if (decoded is! Map<String, dynamic>) {
       throw StateError(
-          'Expected JSON object from WASM schema extraction, got ${decoded.runtimeType}');
+        'Expected JSON object from WASM schema extraction, got ${decoded.runtimeType}',
+      );
     }
     final json = decoded;
 
@@ -143,11 +139,9 @@ class SchemaExtractor {
     }
 
     // Try to find in PATH
-    final whichResult = await Process.run(
-      'which',
-      ['spacetimedb-standalone'],
-      runInShell: true,
-    );
+    final whichResult = await Process.run('which', [
+      'spacetimedb-standalone',
+    ], runInShell: true);
 
     if (whichResult.exitCode == 0) {
       return whichResult.stdout.toString().trim();
@@ -182,13 +176,16 @@ class SchemaExtractor {
     }
 
     // Fallback: check common build output locations
-    final targetPath = path.join(projectPath, 'target', 'wasm32-unknown-unknown', 'release');
+    final targetPath = path.join(
+      projectPath,
+      'target',
+      'wasm32-unknown-unknown',
+      'release',
+    );
     final dir = Directory(targetPath);
     if (dir.existsSync()) {
-      final wasmFiles = dir
-          .listSync()
-          .where((f) => f.path.endsWith('.wasm'))
-          .toList();
+      final wasmFiles =
+          dir.listSync().where((f) => f.path.endsWith('.wasm')).toList();
       if (wasmFiles.isNotEmpty) {
         return wasmFiles.first.path;
       }
@@ -207,7 +204,9 @@ class SchemaExtractor {
   ///
   /// V9 and earlier: flat structure with top-level keys (tables, reducers, etc.)
   /// V10+: sections-based structure that needs conversion to flat format
-  static Map<String, dynamic> _unwrapVersionEnvelope(Map<String, dynamic> json) {
+  static Map<String, dynamic> _unwrapVersionEnvelope(
+    Map<String, dynamic> json,
+  ) {
     if (json.length != 1) return json;
 
     final key = json.keys.first;
@@ -216,7 +215,8 @@ class SchemaExtractor {
     final value = json[key];
     if (value is! Map<String, dynamic>) {
       throw StateError(
-          'Expected version envelope to contain Map, got ${value.runtimeType}');
+        'Expected version envelope to contain Map, got ${value.runtimeType}',
+      );
     }
 
     if (value.containsKey('sections')) {
@@ -241,9 +241,8 @@ class SchemaExtractor {
     };
 
     for (final rawSection in sections) {
-      final section = rawSection is Map
-          ? Map<String, dynamic>.from(rawSection)
-          : null;
+      final section =
+          rawSection is Map ? Map<String, dynamic>.from(rawSection) : null;
       if (section == null || section.length != 1) continue;
 
       final sectionKey = section.keys.first;
@@ -251,19 +250,20 @@ class SchemaExtractor {
 
       switch (sectionKey) {
         case 'Typespace':
-          result['typespace'] = sectionValue is Map
-              ? Map<String, dynamic>.from(sectionValue)
-              : sectionValue;
+          result['typespace'] =
+              sectionValue is Map
+                  ? Map<String, dynamic>.from(sectionValue)
+                  : sectionValue;
         case 'Tables':
           result['tables'] = sectionValue is List ? sectionValue : [];
         case 'Reducers':
-          result['reducers'] = sectionValue is List
-              ? _filterClientCallableReducers(sectionValue)
-              : [];
+          result['reducers'] =
+              sectionValue is List
+                  ? _filterClientCallableReducers(sectionValue)
+                  : [];
         case 'Types':
-          result['types'] = sectionValue is List
-              ? _convertV10Types(sectionValue)
-              : [];
+          result['types'] =
+              sectionValue is List ? _convertV10Types(sectionValue) : [];
         case 'MiscExports':
           result['misc_exports'] = sectionValue is List ? sectionValue : [];
         case 'Views':
@@ -318,7 +318,9 @@ class SchemaExtractor {
   static dynamic _deepCast(dynamic value) {
     if (value is Map) {
       return Map<String, dynamic>.fromEntries(
-        value.entries.map((e) => MapEntry(e.key.toString(), _deepCast(e.value))),
+        value.entries.map(
+          (e) => MapEntry(e.key.toString(), _deepCast(e.value)),
+        ),
       );
     }
     if (value is List) {

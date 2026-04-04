@@ -38,10 +38,10 @@ class MutationSyncer implements MutationHandler {
     required OfflineStorage storage,
     required OptimisticStateManager optimisticState,
     required void Function() onPersistSnapshots,
-  })  : _connection = connection,
-        _storage = storage,
-        _optimisticState = optimisticState,
-        _onPersistSnapshots = onPersistSnapshots;
+  }) : _connection = connection,
+       _storage = storage,
+       _optimisticState = optimisticState,
+       _onPersistSnapshots = onPersistSnapshots;
 
   void setReducers(ReducerCaller reducers) {
     _reducers = reducers;
@@ -66,11 +66,12 @@ class MutationSyncer implements MutationHandler {
   @override
   void onMutationQueued(String requestId, List<OptimisticChange>? changes) {
     SdkLogger.d(
-        'onMutationQueued called: requestId=$requestId, changes=${changes?.length ?? 0}');
+      'onMutationQueued called: requestId=$requestId, changes=${changes?.length ?? 0}',
+    );
     _cachedPendingCount++;
-    _updateSyncState(_currentSyncState.copyWith(
-      pendingCount: _cachedPendingCount,
-    ));
+    _updateSyncState(
+      _currentSyncState.copyWith(pendingCount: _cachedPendingCount),
+    );
   }
 
   @override
@@ -82,7 +83,8 @@ class MutationSyncer implements MutationHandler {
   @override
   void onRollbackOptimistic(String requestId) {
     SdkLogger.w(
-        'Rolling back optimistic changes for request $requestId due to timeout/failure');
+      'Rolling back optimistic changes for request $requestId due to timeout/failure',
+    );
     _optimisticState.rollbackOptimisticChanges(requestId);
     _onPersistSnapshots();
   }
@@ -93,7 +95,8 @@ class MutationSyncer implements MutationHandler {
     if (prev.status != state.status ||
         prev.pendingCount != state.pendingCount) {
       SdkLogger.d(
-          'SyncState: ${prev.status}(${prev.pendingCount}) -> ${state.status}(${state.pendingCount})');
+        'SyncState: ${prev.status}(${prev.pendingCount}) -> ${state.status}(${state.pendingCount})',
+      );
     }
     _currentSyncState = state;
     _syncStateController.add(state);
@@ -102,17 +105,19 @@ class MutationSyncer implements MutationHandler {
   Future<void> updatePendingCount() async {
     final pending = await _storage.getPendingMutations();
     _cachedPendingCount = pending.length;
-    _updateSyncState(_currentSyncState.copyWith(
-      pendingCount: _cachedPendingCount,
-    ));
+    _updateSyncState(
+      _currentSyncState.copyWith(pendingCount: _cachedPendingCount),
+    );
   }
 
   void _decrementPendingCount() {
-    _cachedPendingCount =
-        (_cachedPendingCount - 1).clamp(0, _cachedPendingCount);
-    _updateSyncState(_currentSyncState.copyWith(
-      pendingCount: _cachedPendingCount,
-    ));
+    _cachedPendingCount = (_cachedPendingCount - 1).clamp(
+      0,
+      _cachedPendingCount,
+    );
+    _updateSyncState(
+      _currentSyncState.copyWith(pendingCount: _cachedPendingCount),
+    );
   }
 
   void resetRetryAttempts() {
@@ -141,21 +146,21 @@ class MutationSyncer implements MutationHandler {
     try {
       final pending = await _storage.getPendingMutations();
       if (pending.isEmpty) {
-        SdkLogger.d(
-            'syncPendingMutations: no pending mutations, setting idle');
+        SdkLogger.d('syncPendingMutations: no pending mutations, setting idle');
         _cachedPendingCount = 0;
-        _updateSyncState(_currentSyncState.copyWith(
-          status: SyncStatus.idle,
-          pendingCount: 0,
-        ));
+        _updateSyncState(
+          _currentSyncState.copyWith(status: SyncStatus.idle, pendingCount: 0),
+        );
         return;
       }
 
       _cachedPendingCount = pending.length;
-      _updateSyncState(_currentSyncState.copyWith(
-        status: SyncStatus.syncing,
-        pendingCount: _cachedPendingCount,
-      ));
+      _updateSyncState(
+        _currentSyncState.copyWith(
+          status: SyncStatus.syncing,
+          pendingCount: _cachedPendingCount,
+        ),
+      );
 
       SdkLogger.i('Syncing ${pending.length} pending mutations');
 
@@ -168,7 +173,8 @@ class MutationSyncer implements MutationHandler {
 
         try {
           SdkLogger.d(
-              'SYNC_SEND: ${mutation.reducerName}, uuidRequestId=${mutation.requestId}, argsLen=${mutation.encodedArgs.length}');
+            'SYNC_SEND: ${mutation.reducerName}, uuidRequestId=${mutation.requestId}, argsLen=${mutation.encodedArgs.length}',
+          );
           final result = await _reducers.callWithBytes(
             mutation.reducerName,
             mutation.encodedArgs,
@@ -182,11 +188,13 @@ class MutationSyncer implements MutationHandler {
             _decrementPendingCount();
             SdkLogger.i('Synced mutation: ${mutation.reducerName}');
             if (!_disposed) {
-              _mutationSyncResultController.add(MutationSyncResult(
-                requestId: mutation.requestId,
-                reducerName: mutation.reducerName,
-                success: true,
-              ));
+              _mutationSyncResultController.add(
+                MutationSyncResult(
+                  requestId: mutation.requestId,
+                  reducerName: mutation.reducerName,
+                  success: true,
+                ),
+              );
             }
           } else {
             final errorMsg = result.errorMessage ?? 'Unknown error';
@@ -194,14 +202,17 @@ class MutationSyncer implements MutationHandler {
             await _storage.dequeueMutation(mutation.requestId);
             _decrementPendingCount();
             SdkLogger.e(
-                'Server rejected mutation: ${mutation.reducerName} - $errorMsg');
+              'Server rejected mutation: ${mutation.reducerName} - $errorMsg',
+            );
             if (!_disposed) {
-              _mutationSyncResultController.add(MutationSyncResult(
-                requestId: mutation.requestId,
-                reducerName: mutation.reducerName,
-                success: false,
-                error: errorMsg,
-              ));
+              _mutationSyncResultController.add(
+                MutationSyncResult(
+                  requestId: mutation.requestId,
+                  reducerName: mutation.reducerName,
+                  success: false,
+                  error: errorMsg,
+                ),
+              );
             }
           }
         } on ReducerException catch (e) {
@@ -209,22 +220,27 @@ class MutationSyncer implements MutationHandler {
           await _storage.dequeueMutation(mutation.requestId);
           _decrementPendingCount();
           SdkLogger.e(
-              'Server rejected mutation: ${mutation.reducerName} - ${e.message}');
+            'Server rejected mutation: ${mutation.reducerName} - ${e.message}',
+          );
           if (!_disposed) {
-            _mutationSyncResultController.add(MutationSyncResult(
-              requestId: mutation.requestId,
-              reducerName: mutation.reducerName,
-              success: false,
-              error: e.message,
-            ));
+            _mutationSyncResultController.add(
+              MutationSyncResult(
+                requestId: mutation.requestId,
+                reducerName: mutation.reducerName,
+                success: false,
+                error: e.message,
+              ),
+            );
           }
         } on TimeoutException catch (e) {
           SdkLogger.w(
-              'Timeout syncing ${mutation.reducerName}: $e. Keeping in queue for retry.');
+            'Timeout syncing ${mutation.reducerName}: $e. Keeping in queue for retry.',
+          );
           break;
         } catch (e) {
           SdkLogger.w(
-              'Network error syncing ${mutation.reducerName}: $e. Pausing queue.');
+            'Network error syncing ${mutation.reducerName}: $e. Pausing queue.',
+          );
           break;
         }
       }
@@ -235,19 +251,23 @@ class MutationSyncer implements MutationHandler {
 
     if (_disposed) {
       SdkLogger.d(
-          'syncPendingMutations: disposed, skipping final state update');
+        'syncPendingMutations: disposed, skipping final state update',
+      );
       return;
     }
 
     final remaining = await _storage.getPendingMutations();
     _cachedPendingCount = remaining.length;
     SdkLogger.d(
-        'syncPendingMutations: remaining=$_cachedPendingCount, setting idle');
-    _updateSyncState(_currentSyncState.copyWith(
-      status: SyncStatus.idle,
-      pendingCount: _cachedPendingCount,
-      lastSyncTime: DateTime.now(),
-    ));
+      'syncPendingMutations: remaining=$_cachedPendingCount, setting idle',
+    );
+    _updateSyncState(
+      _currentSyncState.copyWith(
+        status: SyncStatus.idle,
+        pendingCount: _cachedPendingCount,
+        lastSyncTime: DateTime.now(),
+      ),
+    );
 
     if (remaining.isNotEmpty &&
         _connection.status == ConnectionStatus.connected) {
@@ -269,7 +289,8 @@ class MutationSyncer implements MutationHandler {
     _retryAttempt++;
 
     SdkLogger.i(
-        'Scheduling sync retry in ${delay.inSeconds}s (attempt $_retryAttempt)');
+      'Scheduling sync retry in ${delay.inSeconds}s (attempt $_retryAttempt)',
+    );
 
     _retryTimer = Timer(delay, () {
       if (_disposed) return;

@@ -66,9 +66,7 @@ class TransactionResult {
     );
   }
 
-  factory TransactionResult.dropped({
-    required String reducerName,
-  }) {
+  factory TransactionResult.dropped({required String reducerName}) {
     return TransactionResult(
       status: Dropped(),
       timestamp: DateTime.now(),
@@ -78,14 +76,17 @@ class TransactionResult {
 
   /// Create result from a full TransactionUpdate message
   factory TransactionResult.fromTransactionUpdate(
-      TransactionUpdateMessage message) {
+    TransactionUpdateMessage message,
+  ) {
     return TransactionResult(
       status: message.status,
       timestamp: DateTime.fromMicrosecondsSinceEpoch(
         (message.timestamp ~/ Int64(1000)).toInt(),
       ),
       energyConsumed: message.energyQuantaUsed,
-      executionDuration: Duration(microseconds: message.totalHostExecutionDuration.toInt()),
+      executionDuration: Duration(
+        microseconds: message.totalHostExecutionDuration.toInt(),
+      ),
       reducerName: message.reducerCall.reducerName,
       reducerId: message.reducerCall.reducerId,
       isLightUpdate: false,
@@ -94,10 +95,12 @@ class TransactionResult {
 
   /// Create result from a lightweight TransactionUpdateLight message
   factory TransactionResult.fromTransactionUpdateLight(
-      TransactionUpdateLightMessage message) {
+    TransactionUpdateLightMessage message,
+  ) {
     return TransactionResult(
       status: Committed(), // Light updates always mean success
-      timestamp: DateTime.now(), // Approximate - server doesn't provide timestamp
+      timestamp:
+          DateTime.now(), // Approximate - server doesn't provide timestamp
       energyConsumed: null, // Not available in light updates
       executionDuration: null, // Not available in light updates
       reducerName: null,
@@ -141,7 +144,10 @@ class TransactionResult {
   @override
   String toString() {
     final energyStr = energyConsumed != null ? '$energyConsumed' : 'unknown';
-    final durationStr = executionDuration != null ? '${executionDuration!.inMilliseconds}ms' : 'unknown';
+    final durationStr =
+        executionDuration != null
+            ? '${executionDuration!.inMilliseconds}ms'
+            : 'unknown';
     return 'TransactionResult('
         'status: ${status.runtimeType}, '
         'reducer: $reducerName, '

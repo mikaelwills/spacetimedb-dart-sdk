@@ -1,12 +1,7 @@
 import '../models/type_models.dart';
 import '../type_mapper.dart';
 
-enum VariantType {
-  unit,          
-  tupleSingle,   
-  tupleMultiple, 
-  struct,        
-}
+enum VariantType { unit, tupleSingle, tupleMultiple, struct }
 
 class SumTypeGenerator {
   final String enumName;
@@ -26,7 +21,9 @@ class SumTypeGenerator {
 
     buffer.writeln('// GENERATED CODE - DO NOT MODIFY BY HAND');
     buffer.writeln();
-    buffer.writeln("import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';");
+    buffer.writeln(
+      "import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';",
+    );
     buffer.writeln();
 
     buffer.writeln(_generateSealedClass());
@@ -82,7 +79,9 @@ ${_generateFromJsonSwitchCases()}
       final variant = sumType.variants[i];
       final variantClassName = _getVariantClassName(variant, i);
       final variantName = variant.name ?? 'Variant$i';
-      cases.add("      case '$variantName': return $variantClassName.fromJson(json);");
+      cases.add(
+        "      case '$variantName': return $variantClassName.fromJson(json);",
+      );
     }
     return cases.join('\n');
   }
@@ -96,9 +95,19 @@ ${_generateFromJsonSwitchCases()}
       case VariantType.unit:
         return _generateUnitVariant(className, tag, variantName);
       case VariantType.tupleSingle:
-        return _generateTupleSingleVariant(className, variant, tag, variantName);
+        return _generateTupleSingleVariant(
+          className,
+          variant,
+          tag,
+          variantName,
+        );
       case VariantType.tupleMultiple:
-        return _generateTupleMultipleVariant(className, variant, tag, variantName);
+        return _generateTupleMultipleVariant(
+          className,
+          variant,
+          tag,
+          variantName,
+        );
       case VariantType.struct:
         return _generateStructVariant(className, variant, tag, variantName);
     }
@@ -128,7 +137,11 @@ class $className extends $enumName {
   }
 
   String _generateTupleSingleVariant(
-      String className, SumVariant variant, int tag, String variantName) {
+    String className,
+    SumVariant variant,
+    int tag,
+    String variantName,
+  ) {
     final type = variant.algebraicType;
     final Map<String, dynamic> algebraicType;
 
@@ -170,7 +183,11 @@ class $className extends $enumName {
   }
 
   String _generateTupleMultipleVariant(
-      String className, SumVariant variant, int tag, String variantName) {
+    String className,
+    SumVariant variant,
+    int tag,
+    String variantName,
+  ) {
     final elements = variant.algebraicType.product!.elements;
     final fields = <String>[];
     final params = <String>[];
@@ -186,7 +203,11 @@ class $className extends $enumName {
       final decoderMethod = TypeMapper.getDecoderMethod(element.algebraicType);
       final encoderMethod = TypeMapper.getEncoderMethod(element.algebraicType);
       final toJsonValue = _getToJsonValue(fieldName, element.algebraicType);
-      final fromJsonValue = _getFromJsonValue(fieldName, element.algebraicType, dartType);
+      final fromJsonValue = _getFromJsonValue(
+        fieldName,
+        element.algebraicType,
+        dartType,
+      );
 
       fields.add('  final $dartType $fieldName;');
       params.add('this.$fieldName');
@@ -229,7 +250,11 @@ ${toJsonFields.join('\n')}
   }
 
   String _generateStructVariant(
-      String className, SumVariant variant, int tag, String variantName) {
+    String className,
+    SumVariant variant,
+    int tag,
+    String variantName,
+  ) {
     final elements = variant.algebraicType.product!.elements;
     final fields = <String>[];
     final namedParams = <String>[];
@@ -244,7 +269,11 @@ ${toJsonFields.join('\n')}
       final decoderMethod = TypeMapper.getDecoderMethod(element.algebraicType);
       final encoderMethod = TypeMapper.getEncoderMethod(element.algebraicType);
       final toJsonValue = _getToJsonValue(fieldName, element.algebraicType);
-      final fromJsonValue = _getFromJsonValue(fieldName, element.algebraicType, dartType);
+      final fromJsonValue = _getFromJsonValue(
+        fieldName,
+        element.algebraicType,
+        dartType,
+      );
 
       fields.add('  final $dartType $fieldName;');
       namedParams.add('required this.$fieldName');
@@ -313,8 +342,7 @@ ${toJsonFields.join('\n')}
     }
 
     // Check if all elements are unnamed (tuple variant)
-    final allUnnamed =
-        elements.every((e) => e.name == null || e.name!.isEmpty);
+    final allUnnamed = elements.every((e) => e.name == null || e.name!.isEmpty);
 
     if (allUnnamed) {
       return elements.length == 1
@@ -337,7 +365,11 @@ ${toJsonFields.join('\n')}
     return fieldName;
   }
 
-  String _getFromJsonValue(String fieldName, Map<String, dynamic> algebraicType, String dartType) {
+  String _getFromJsonValue(
+    String fieldName,
+    Map<String, dynamic> algebraicType,
+    String dartType,
+  ) {
     if (algebraicType.containsKey('U64') || algebraicType.containsKey('I64')) {
       return "Int64(json['$fieldName'] ?? 0)";
     }

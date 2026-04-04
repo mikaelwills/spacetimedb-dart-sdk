@@ -49,11 +49,7 @@ class SubscribeSingleMessage implements ClientMessage {
   final int requestId;
   final int queryId;
 
-  SubscribeSingleMessage(
-    this.query, {
-    this.requestId = 0,
-    this.queryId = 0,
-  });
+  SubscribeSingleMessage(this.query, {this.requestId = 0, this.queryId = 0});
 
   @override
   ClientMessageType get messageType => ClientMessageType.subscribeSingle;
@@ -75,11 +71,7 @@ class SubscribeMultiMessage implements ClientMessage {
   final int requestId;
   final int queryId;
 
-  SubscribeMultiMessage(
-    this.queries, {
-    this.requestId = 0,
-    this.queryId = 0,
-  });
+  SubscribeMultiMessage(this.queries, {this.requestId = 0, this.queryId = 0});
 
   @override
   ClientMessageType get messageType => ClientMessageType.subscribeMulti;
@@ -103,10 +95,7 @@ class UnsubscribeMultiMessage implements ClientMessage {
   final int requestId;
   final int queryId;
 
-  UnsubscribeMultiMessage({
-    required this.queryId,
-    this.requestId = 0,
-  });
+  UnsubscribeMultiMessage({required this.queryId, this.requestId = 0});
 
   @override
   ClientMessageType get messageType => ClientMessageType.unsubscribeMulti;
@@ -144,7 +133,7 @@ class CallReducerMessage implements ClientMessage {
     encoder.writeU32(args.length);
     encoder.writeBytes(args);
     encoder.writeU32(requestId);
-    encoder.writeU8(0);  // CallReducerFlags::FullUpdate
+    encoder.writeU8(0); // CallReducerFlags::FullUpdate
     return encoder.toBytes();
   }
 }
@@ -173,7 +162,7 @@ class CallProcedureMessage implements ClientMessage {
     encoder.writeU32(args.length);
     encoder.writeBytes(args);
     encoder.writeU32(requestId);
-    encoder.writeU8(0);  // CallReducerFlags::FullUpdate
+    encoder.writeU8(0); // CallReducerFlags::FullUpdate
     return encoder.toBytes();
   }
 }
@@ -183,10 +172,7 @@ class OneOffQueryMessage implements ClientMessage {
   final Uint8List messageId;
   final String queryString;
 
-  OneOffQueryMessage({
-    required this.messageId,
-    required this.queryString,
-  });
+  OneOffQueryMessage({required this.messageId, required this.queryString});
 
   @override
   ClientMessageType get messageType => ClientMessageType.oneOffQuery;
@@ -207,10 +193,7 @@ class UnsubscribeMessage implements ClientMessage {
   final int queryId;
   final int requestId;
 
-  UnsubscribeMessage({
-    required this.queryId,
-    this.requestId = 0,
-  });
+  UnsubscribeMessage({required this.queryId, this.requestId = 0});
 
   @override
   ClientMessageType get messageType => ClientMessageType.unsubscribe;

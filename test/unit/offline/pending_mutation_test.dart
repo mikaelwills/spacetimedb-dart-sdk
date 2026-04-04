@@ -30,9 +30,18 @@ void main() {
       expect(restored.encodedArgs, equals(original.encodedArgs));
       expect(restored.createdAt, equals(original.createdAt));
       expect(restored.optimisticChanges!.length, equals(3));
-      expect(restored.optimisticChanges![0].type, equals(OptimisticChangeType.insert));
-      expect(restored.optimisticChanges![1].type, equals(OptimisticChangeType.update));
-      expect(restored.optimisticChanges![2].type, equals(OptimisticChangeType.delete));
+      expect(
+        restored.optimisticChanges![0].type,
+        equals(OptimisticChangeType.insert),
+      );
+      expect(
+        restored.optimisticChanges![1].type,
+        equals(OptimisticChangeType.update),
+      );
+      expect(
+        restored.optimisticChanges![2].type,
+        equals(OptimisticChangeType.delete),
+      );
     });
 
     test('JSON handles missing optional fields', () {
@@ -51,7 +60,10 @@ void main() {
 
   group('OptimisticChange', () {
     test('JSON round-trip preserves all change types', () {
-      final insert = OptimisticChange.insert('notes', {'id': 1, 'title': 'Test'});
+      final insert = OptimisticChange.insert('notes', {
+        'id': 1,
+        'title': 'Test',
+      });
       final update = OptimisticChange.update(
         'notes',
         {'id': 1, 'title': 'Old'},

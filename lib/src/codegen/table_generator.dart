@@ -12,7 +12,9 @@ class TableGenerator {
 
     buf.writeln('// GENERATED CODE - DO NOT MODIFY BY HAND');
     buf.writeln();
-    buf.writeln("import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';");
+    buf.writeln(
+      "import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';",
+    );
 
     final productType = schema.typeSpace.types[table.productTypeRef].product;
     if (productType == null) {
@@ -119,7 +121,10 @@ class TableGenerator {
     buf.writeln('    return $className(');
     for (final element in productType.elements) {
       final fieldName = _toCamelCase(element.name ?? 'unknown');
-      final fromJsonExpr = _getFromJsonExpression(fieldName, element.algebraicType);
+      final fromJsonExpr = _getFromJsonExpression(
+        fieldName,
+        element.algebraicType,
+      );
       buf.writeln('      $fieldName: $fromJsonExpr,');
     }
     buf.writeln('    );');
@@ -165,10 +170,14 @@ class TableGenerator {
     buf.writeln('  }');
     buf.writeln();
     buf.writeln('  @override');
-    buf.writeln('  Map<String, dynamic>? toJson($className row) => row.toJson();');
+    buf.writeln(
+      '  Map<String, dynamic>? toJson($className row) => row.toJson();',
+    );
     buf.writeln();
     buf.writeln('  @override');
-    buf.writeln('  $className? fromJson(Map<String, dynamic> json) => $className.fromJson(json);');
+    buf.writeln(
+      '  $className? fromJson(Map<String, dynamic> json) => $className.fromJson(json);',
+    );
     buf.writeln();
     buf.writeln('  @override');
     buf.writeln('  bool get supportsJsonSerialization => true;');
@@ -177,7 +186,10 @@ class TableGenerator {
     return buf.toString();
   }
 
-  String _getToJsonExpression(String fieldName, Map<String, dynamic> algebraicType) {
+  String _getToJsonExpression(
+    String fieldName,
+    Map<String, dynamic> algebraicType,
+  ) {
     if (TypeMapper.isIdentityProduct(algebraicType)) {
       return '$fieldName.toJson()';
     }
@@ -202,7 +214,10 @@ class TableGenerator {
     return fieldName;
   }
 
-  String _getFromJsonExpression(String fieldName, Map<String, dynamic> algebraicType) {
+  String _getFromJsonExpression(
+    String fieldName,
+    Map<String, dynamic> algebraicType,
+  ) {
     final dartType = TypeMapper.toDartType(
       algebraicType,
       typeSpace: schema.typeSpace,
@@ -259,7 +274,8 @@ class TableGenerator {
         if (elements.length == 1) {
           final element = elements[0];
           if (element['name'] != null &&
-              element['name']['some'] == '__timestamp_micros_since_unix_epoch__') {
+              element['name']['some'] ==
+                  '__timestamp_micros_since_unix_epoch__') {
             return true;
           }
         }
@@ -278,15 +294,20 @@ class TableGenerator {
   }
 
   String _toPascalCase(String input) {
-    return input.split('_').map((word) {
-      return word[0].toUpperCase() + word.substring(1).toLowerCase();
-    }).join('');
+    return input
+        .split('_')
+        .map((word) {
+          return word[0].toUpperCase() + word.substring(1).toLowerCase();
+        })
+        .join('');
   }
 
   String _toSnakeCase(String input) {
     return input
         .replaceAllMapped(
-            RegExp(r'[A-Z]'), (match) => '_${match.group(0)!.toLowerCase()}')
+          RegExp(r'[A-Z]'),
+          (match) => '_${match.group(0)!.toLowerCase()}',
+        )
         .replaceFirst(RegExp(r'^_'), '');
   }
 
@@ -295,10 +316,13 @@ class TableGenerator {
     if (parts.isEmpty) return input;
 
     final first = parts.first.toLowerCase();
-    final rest = parts.skip(1).map((word) {
-      if (word.isEmpty) return word;
-      return word[0].toUpperCase() + word.substring(1).toLowerCase();
-    }).join('');
+    final rest = parts
+        .skip(1)
+        .map((word) {
+          if (word.isEmpty) return word;
+          return word[0].toUpperCase() + word.substring(1).toLowerCase();
+        })
+        .join('');
 
     return first + rest;
   }

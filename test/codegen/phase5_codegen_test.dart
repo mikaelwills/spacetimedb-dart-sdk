@@ -16,14 +16,8 @@ void main() {
         lifecycle: {},
         params: ProductType(
           elements: [
-            ProductElement(
-              name: 'title',
-              algebraicType: {'String': null},
-            ),
-            ProductElement(
-              name: 'content',
-              algebraicType: {'String': null},
-            ),
+            ProductElement(name: 'title', algebraicType: {'String': null}),
+            ProductElement(name: 'content', algebraicType: {'String': null}),
           ],
         ),
       );
@@ -33,14 +27,8 @@ void main() {
         lifecycle: {},
         params: ProductType(
           elements: [
-            ProductElement(
-              name: 'id',
-              algebraicType: {'U32': null},
-            ),
-            ProductElement(
-              name: 'title',
-              algebraicType: {'String': null},
-            ),
+            ProductElement(name: 'id', algebraicType: {'U32': null}),
+            ProductElement(name: 'title', algebraicType: {'String': null}),
           ],
         ),
       );
@@ -81,15 +69,21 @@ void main() {
       // Should accept ReducerCaller and ReducerEmitter in constructor
       expect(code, contains('final ReducerCaller _reducerCaller;'));
       expect(code, contains('final ReducerEmitter _reducerEmitter;'));
-      expect(code,
-          contains('Reducers(this._reducerCaller, this._reducerEmitter);'));
+      expect(
+        code,
+        contains('Reducers(this._reducerCaller, this._reducerEmitter);'),
+      );
 
       // Should generate onCreateNote method
       expect(code, contains('StreamSubscription<void> onCreateNote('));
 
       // Should have typed callback signature
-      expect(code,
-          contains('void Function(EventContext ctx, String title, String content) callback'));
+      expect(
+        code,
+        contains(
+          'void Function(EventContext ctx, String title, String content) callback',
+        ),
+      );
 
       // Should use _reducerEmitter.on()
       expect(code, contains("_reducerEmitter.on('create_note')"));
@@ -116,7 +110,10 @@ void main() {
       expect(code, contains('final String content;'));
 
       // Should generate constructor
-      expect(code, contains('CreateNoteArgs({required this.title, required this.content,'));
+      expect(
+        code,
+        contains('CreateNoteArgs({required this.title, required this.content,'),
+      );
     });
 
     test('ReducerGenerator generates arg decoders', () {
@@ -124,7 +121,12 @@ void main() {
       final code = generator.generateArgDecoders();
 
       // Should generate CreateNoteArgsDecoder class
-      expect(code, contains('class CreateNoteArgsDecoder implements ReducerArgDecoder<CreateNoteArgs>'));
+      expect(
+        code,
+        contains(
+          'class CreateNoteArgsDecoder implements ReducerArgDecoder<CreateNoteArgs>',
+        ),
+      );
 
       // Should implement decode method
       expect(code, contains('CreateNoteArgs? decode(BsatnDecoder decoder)'));
@@ -151,10 +153,20 @@ void main() {
       expect(code, contains("import 'reducer_args.dart';"));
 
       // Should expose reducerEmitter getter
-      expect(code, contains('ReducerEmitter get reducerEmitter => subscriptions.reducerEmitter;'));
+      expect(
+        code,
+        contains(
+          'ReducerEmitter get reducerEmitter => subscriptions.reducerEmitter;',
+        ),
+      );
 
       // Should pass ReducerCaller and ReducerEmitter to Reducers
-      expect(code, contains('reducers = Reducers(subscriptions.reducers, subscriptions.reducerEmitter);'));
+      expect(
+        code,
+        contains(
+          'reducers = Reducers(subscriptions.reducers, subscriptions.reducerEmitter);',
+        ),
+      );
     });
 
     test('ClientGenerator auto-registers reducer arg decoders', () {
@@ -162,19 +174,30 @@ void main() {
       final code = generator.generate();
 
       // Should register CreateNoteArgsDecoder
-      expect(code,
-          contains("subscriptionManager.reducerRegistry.registerDecoder('create_note', CreateNoteArgsDecoder());"));
+      expect(
+        code,
+        contains(
+          "subscriptionManager.reducerRegistry.registerDecoder('create_note', CreateNoteArgsDecoder());",
+        ),
+      );
 
       // Should register UpdateNoteArgsDecoder
-      expect(code,
-          contains("subscriptionManager.reducerRegistry.registerDecoder('update_note', UpdateNoteArgsDecoder());"));
+      expect(
+        code,
+        contains(
+          "subscriptionManager.reducerRegistry.registerDecoder('update_note', UpdateNoteArgsDecoder());",
+        ),
+      );
 
       // Should have comment explaining what we're doing
       expect(code, contains('// Auto-register reducer argument decoders'));
     });
 
     test('Multiple reducers generate multiple completion callbacks', () {
-      final generator = ReducerGenerator([createNoteReducer, updateNoteReducer]);
+      final generator = ReducerGenerator([
+        createNoteReducer,
+        updateNoteReducer,
+      ]);
       final code = generator.generate();
 
       // Should generate onCreateNote
@@ -184,10 +207,18 @@ void main() {
       expect(code, contains('StreamSubscription<void> onUpdateNote('));
 
       // Each with their own typed signatures
-      expect(code,
-          contains('void Function(EventContext ctx, String title, String content) callback'));
-      expect(code,
-          contains('void Function(EventContext ctx, int id, String title) callback'));
+      expect(
+        code,
+        contains(
+          'void Function(EventContext ctx, String title, String content) callback',
+        ),
+      );
+      expect(
+        code,
+        contains(
+          'void Function(EventContext ctx, int id, String title) callback',
+        ),
+      );
     });
 
     test('Reducer with no params generates correct callback', () {
@@ -211,7 +242,10 @@ void main() {
     });
 
     test('Generated code follows NO as CASTS rule', () {
-      final generator = ReducerGenerator([createNoteReducer, updateNoteReducer]);
+      final generator = ReducerGenerator([
+        createNoteReducer,
+        updateNoteReducer,
+      ]);
       final reducerCode = generator.generate();
       final argsCode = generator.generateArgDecoders();
 

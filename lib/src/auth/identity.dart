@@ -13,7 +13,9 @@ class Identity {
   /// Throws [ArgumentError] if bytes length is not exactly 32.
   Identity(this.bytes) {
     if (bytes.length != 32) {
-      throw ArgumentError('Identity must be exactly 32 bytes, got ${bytes.length}');
+      throw ArgumentError(
+        'Identity must be exactly 32 bytes, got ${bytes.length}',
+      );
     }
   }
 

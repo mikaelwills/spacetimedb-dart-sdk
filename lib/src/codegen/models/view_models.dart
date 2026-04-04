@@ -1,4 +1,3 @@
-
 import 'type_models.dart';
 
 class ViewSchema {

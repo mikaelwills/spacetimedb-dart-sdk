@@ -1,8 +1,4 @@
-enum SyncStatus {
-  idle,
-  syncing,
-  error,
-}
+enum SyncStatus { idle, syncing, error }
 
 class MutationSyncResult {
   final String requestId;

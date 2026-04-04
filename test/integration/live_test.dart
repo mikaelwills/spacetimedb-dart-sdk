@@ -33,7 +33,9 @@ void main() async {
   });
 
   noteTable.updateStream.listen((update) {
-    print('✏️  Note Updated "${update.oldRow.title}" -> "${update.newRow.title}"');
+    print(
+      '✏️  Note Updated "${update.oldRow.title}" -> "${update.newRow.title}"',
+    );
   });
 
   // Listen for connection errors
@@ -53,11 +55,14 @@ void main() async {
   subscriptionManager.onIdentityToken.listen((message) {
     print('✅ Identity Token received!');
     print(
-        '   Identity: ${message.identity.sublist(0, 8)}... (${message.identity.length} bytes)');
+      '   Identity: ${message.identity.sublist(0, 8)}... (${message.identity.length} bytes)',
+    );
     print(
-        '   Token: ${message.token.substring(0, min(20, message.token.length))}...');
+      '   Token: ${message.token.substring(0, min(20, message.token.length))}...',
+    );
     print(
-        '   Connection ID: ${message.connectionId.sublist(0, 8)}... (${message.connectionId.length} bytes)\n');
+      '   Connection ID: ${message.connectionId.sublist(0, 8)}... (${message.connectionId.length} bytes)\n',
+    );
     identityReceived.complete();
   });
 
@@ -75,9 +80,11 @@ void main() async {
 
       for (final update in tableUpdate.updates) {
         print(
-            '         - Inserts: ${update.update.inserts.rowsData.length} bytes');
+          '         - Inserts: ${update.update.inserts.rowsData.length} bytes',
+        );
         print(
-            '         - Deletes: ${update.update.deletes.rowsData.length} bytes');
+          '         - Deletes: ${update.update.deletes.rowsData.length} bytes',
+        );
       }
       print('');
     }
@@ -94,9 +101,11 @@ void main() async {
       print('   Table ${tableUpdate.tableName} changed:');
       for (final update in tableUpdate.updates) {
         print(
-            '      - Inserts: ${update.update.inserts.rowsData.length} bytes');
+          '      - Inserts: ${update.update.inserts.rowsData.length} bytes',
+        );
         print(
-            '      - Deletes: ${update.update.deletes.rowsData.length} bytes');
+          '      - Deletes: ${update.update.deletes.rowsData.length} bytes',
+        );
       }
     }
     print('');
@@ -132,7 +141,8 @@ void main() async {
     onTimeout: () {
       print('❌ Timeout waiting for initial data');
       print(
-          '   This likely means the server rejected the subscription or sent a different message type.');
+        '   This likely means the server rejected the subscription or sent a different message type.',
+      );
       throw TimeoutException('No initial data received');
     },
   );

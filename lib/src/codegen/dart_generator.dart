@@ -26,35 +26,47 @@ class DartGenerator {
         );
 
         final fileName = _toSnakeCase(typeDef.name);
-        files.add(GeneratedFile(
-          filename: '$fileName.dart',
-          content: generator.generate(),
-        ));
+        files.add(
+          GeneratedFile(
+            filename: '$fileName.dart',
+            content: generator.generate(),
+          ),
+        );
       }
     }
 
     for (final table in schema.tables) {
       final generator = TableGenerator(schema, table);
-      files.add(GeneratedFile(
-        filename: '${table.name}.dart',
-        content: generator.generate(),
-      ));
+      files.add(
+        GeneratedFile(
+          filename: '${table.name}.dart',
+          content: generator.generate(),
+        ),
+      );
     }
 
     if (schema.reducers.isNotEmpty) {
       final generator = ReducerGenerator(schema.reducers);
-      files.add(GeneratedFile(
-          filename: 'reducers.dart', content: generator.generate()));
+      files.add(
+        GeneratedFile(filename: 'reducers.dart', content: generator.generate()),
+      );
 
       // Generate reducer argument classes and decoders
-      files.add(GeneratedFile(
+      files.add(
+        GeneratedFile(
           filename: 'reducer_args.dart',
-          content: generator.generateArgDecoders()));
+          content: generator.generateArgDecoders(),
+        ),
+      );
     }
 
     final clientGenerator = ClientGenerator(schema);
-    files.add(GeneratedFile(
-        filename: 'client.dart', content: clientGenerator.generate()));
+    files.add(
+      GeneratedFile(
+        filename: 'client.dart',
+        content: clientGenerator.generate(),
+      ),
+    );
 
     return files;
   }
@@ -62,7 +74,9 @@ class DartGenerator {
   String _toSnakeCase(String input) {
     return input
         .replaceAllMapped(
-            RegExp(r'[A-Z]'), (match) => '_${match.group(0)!.toLowerCase()}')
+          RegExp(r'[A-Z]'),
+          (match) => '_${match.group(0)!.toLowerCase()}',
+        )
         .replaceFirst(RegExp(r'^_'), '');
   }
 

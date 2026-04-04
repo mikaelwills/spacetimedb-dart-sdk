@@ -43,10 +43,10 @@ class KeepAliveMonitor {
     required void Function() onDisconnect,
     Duration idleThreshold = const Duration(seconds: 30),
     Duration pongTimeout = const Duration(seconds: 5),
-  })  : _sendPingCallback = onSendPing,
-        _onTimeoutCallback = onDisconnect,
-        _idleThreshold = idleThreshold,
-        _pongTimeout = pongTimeout;
+  }) : _sendPingCallback = onSendPing,
+       _onTimeoutCallback = onDisconnect,
+       _idleThreshold = idleThreshold,
+       _pongTimeout = pongTimeout;
 
   /// Call this EVERY time a message is received from the WebSocket
   ///

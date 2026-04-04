@@ -31,7 +31,10 @@ class BsatnRowList {
     } else if (hintTag == 1) {
       // RowOffsets variant - read offset list
       final numOffsets = decoder.readU32();
-      final offsets = List<int>.generate(numOffsets, (_) => decoder.readU64().toInt());
+      final offsets = List<int>.generate(
+        numOffsets,
+        (_) => decoder.readU64().toInt(),
+      );
       sizeHint = RowSizeHint.rowOffsets(offsets);
     } else {
       throw ArgumentError('Unknown RowSizeHint tag: $hintTag');
@@ -104,8 +107,9 @@ class TableUpdate {
     final tableId = decoder.readU32();
     final tableName = decoder.readString();
     final numRows = decoder.readU64();
-    final updates =
-        decoder.readList(() => CompressableQueryUpdate.decode(decoder));
+    final updates = decoder.readList(
+      () => CompressableQueryUpdate.decode(decoder),
+    );
 
     return TableUpdate(
       tableId: tableId,

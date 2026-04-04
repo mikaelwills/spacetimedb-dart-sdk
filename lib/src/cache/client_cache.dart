@@ -69,7 +69,11 @@ class ClientCache {
   /// ```
   bool isEventTable(String tableName) => _eventTableNames.contains(tableName);
 
-  void registerDecoder<T>(String tableName, RowDecoder<T> decoder, {bool isEvent = false}) {
+  void registerDecoder<T>(
+    String tableName,
+    RowDecoder<T> decoder, {
+    bool isEvent = false,
+  }) {
     if (_builders.containsKey(tableName)) {
       throw ArgumentError('Decoder for "$tableName" is already registered');
     }
@@ -139,16 +143,15 @@ class ClientCache {
   TableCache<T> getTable<T>(int tableId) {
     final table = _tables[tableId];
     if (table == null) {
-      throw ArgumentError(
-        'Table $tableId not found in cache.',
-      );
+      throw ArgumentError('Table $tableId not found in cache.');
     }
     if (table is! TableCache<T>) {
       // 2. The Descriptive Error: Use standard Dart StateError
       throw StateError(
-          "Type Mismatch: You requested TableCache<$T> for table '$tableId', "
-          "but the active cache is ${table.runtimeType}. "
-          "Ensure you are using the correct generated class for this table.");
+        "Type Mismatch: You requested TableCache<$T> for table '$tableId', "
+        "but the active cache is ${table.runtimeType}. "
+        "Ensure you are using the correct generated class for this table.",
+      );
     }
 
     // 3. Safe Return: We know 100% this will not crash now.
@@ -182,9 +185,10 @@ class ClientCache {
     final table = _tables[tableId]!;
     if (table is! TableCache<T>) {
       throw StateError(
-          "Type Mismatch: You requested TableCache<$T> for table '$tableName', "
-          "but the active cache is ${table.runtimeType}. "
-          "Ensure you are using the correct generated class for this table.");
+        "Type Mismatch: You requested TableCache<$T> for table '$tableName', "
+        "but the active cache is ${table.runtimeType}. "
+        "Ensure you are using the correct generated class for this table.",
+      );
     }
 
     return table;
@@ -326,5 +330,4 @@ class ClientCache {
   }
 
   Iterable<TableCache> get allTables => _tables.values;
-
 }

@@ -25,16 +25,18 @@ void main() async {
 
   print('Running tests...');
 
-  final process = await Process.start(
-    'dart',
-    ['test', '--reporter', 'json'],
-    mode: ProcessStartMode.normal,
-  );
+  final process = await Process.start('dart', [
+    'test',
+    '--reporter',
+    'json',
+  ], mode: ProcessStartMode.normal);
 
   // Pipe stderr to stderr (for compiler warnings/errors)
   process.stderr.pipe(stderr);
 
-  await for (final line in process.stdout.transform(utf8.decoder).transform(const LineSplitter())) {
+  await for (final line in process.stdout
+      .transform(utf8.decoder)
+      .transform(const LineSplitter())) {
     if (line.trim().isEmpty) continue;
 
     try {
@@ -50,13 +52,13 @@ void main() async {
           groupNames[id] = name;
         }
       }
-
       // 2. Track Test Starts (Build the full name)
       else if (type == 'testStart') {
         final test = json['test'] as Map<String, dynamic>;
         final id = test['id'] as int;
         final name = test['name'] as String;
-        final groupIds = (test['groupIDs'] as List<dynamic>?)?.cast<int>() ?? [];
+        final groupIds =
+            (test['groupIDs'] as List<dynamic>?)?.cast<int>() ?? [];
 
         // Build full name: "Group Name - SubGroup - Test Name"
         final buffer = StringBuffer();
@@ -68,7 +70,6 @@ void main() async {
         buffer.write(name);
         testNames[id] = buffer.toString();
       }
-
       // 3. Capture Errors
       else if (type == 'error') {
         final testId = json['testID'] as int;
@@ -80,7 +81,6 @@ void main() async {
           testErrors[testId]!.writeln(stackTrace);
         }
       }
-
       // 4. Process Done (The Filter Logic)
       else if (type == 'testDone') {
         final testId = json['testID'] as int;
@@ -92,7 +92,9 @@ void main() async {
         // These are usually Suites or Groups that "failed" only because a child failed.
         if (!hidden && !skipped && (result == 'error' || result == 'failure')) {
           final name = testNames[testId] ?? 'Unknown Test ($testId)';
-          final errorMsg = testErrors[testId]?.toString().trim() ?? 'Unknown error (Exit code failure?)';
+          final errorMsg =
+              testErrors[testId]?.toString().trim() ??
+              'Unknown error (Exit code failure?)';
 
           failures.add(TestFailure(name, errorMsg));
         }

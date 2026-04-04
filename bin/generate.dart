@@ -5,19 +5,35 @@ import 'package:spacetimedb_dart_sdk/src/codegen/schema_extractor.dart';
 import 'package:spacetimedb_dart_sdk/src/codegen/dart_generator.dart';
 
 void main(List<String> arguments) async {
-  final parser = ArgParser()
-    // Network approach (existing)
-    ..addOption('database', abbr: 'd', help: 'Database name to generate from')
-    ..addOption('server', abbr: 's', help: 'SpacetimeDB server URL')
-    // Local file approach (new)
-    ..addOption('project-path',
-        abbr: 'p', help: 'Path to SpacetimeDB Rust module project')
-    ..addOption('bin-path',
-        abbr: 'b', help: 'Path to compiled WASM binary')
-    // Common
-    ..addOption('output',
-        abbr: 'o', mandatory: true, help: 'Output directory for generated files')
-    ..addFlag('help', abbr: 'h', help: 'Show usage information', negatable: false);
+  final parser =
+      ArgParser()
+        // Network approach (existing)
+        ..addOption(
+          'database',
+          abbr: 'd',
+          help: 'Database name to generate from',
+        )
+        ..addOption('server', abbr: 's', help: 'SpacetimeDB server URL')
+        // Local file approach (new)
+        ..addOption(
+          'project-path',
+          abbr: 'p',
+          help: 'Path to SpacetimeDB Rust module project',
+        )
+        ..addOption('bin-path', abbr: 'b', help: 'Path to compiled WASM binary')
+        // Common
+        ..addOption(
+          'output',
+          abbr: 'o',
+          mandatory: true,
+          help: 'Output directory for generated files',
+        )
+        ..addFlag(
+          'help',
+          abbr: 'h',
+          help: 'Show usage information',
+          negatable: false,
+        );
 
   try {
     final results = parser.parse(arguments);
@@ -58,10 +74,7 @@ void main(List<String> arguments) async {
       if (hasNetwork) {
         print('Fetching schema for database: $database');
         print('Using server: $server');
-        return SchemaExtractor.fromNetwork(
-          database: database,
-          server: server,
-        );
+        return SchemaExtractor.fromNetwork(database: database, server: server);
       } else if (hasProject) {
         print('Extracting schema from project: $projectPath');
         return SchemaExtractor.fromProject(projectPath);
@@ -112,6 +125,8 @@ void _printUsage(ArgParser parser) {
   print('');
   print('  # Generate from compiled WASM binary');
   print('  dart run spacetimedb_dart_sdk:generate \\');
-  print('    --bin-path ../my-module/target/wasm32-unknown-unknown/release/my_module.wasm \\');
+  print(
+    '    --bin-path ../my-module/target/wasm32-unknown-unknown/release/my_module.wasm \\',
+  );
   print('    --output lib/generated');
 }

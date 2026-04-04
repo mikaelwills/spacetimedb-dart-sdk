@@ -10,9 +10,10 @@ class TypeSpace {
     final typesJson = json['types'];
 
     return TypeSpace(
-      types: typesJson is List
-          ? typesJson.map((t) => AlgebraicType.fromJson(t)).toList()
-          : [],
+      types:
+          typesJson is List
+              ? typesJson.map((t) => AlgebraicType.fromJson(t)).toList()
+              : [],
     );
   }
 }
@@ -46,9 +47,10 @@ class ProductType {
     final elementsJson = json['elements'];
 
     return ProductType(
-      elements: elementsJson is List
-          ? elementsJson.map((e) => ProductElement.fromJson(e)).toList()
-          : [],
+      elements:
+          elementsJson is List
+              ? elementsJson.map((e) => ProductElement.fromJson(e)).toList()
+              : [],
     );
   }
 }
@@ -86,10 +88,11 @@ class TypeDef {
   factory TypeDef.fromJson(Map<String, dynamic> json) {
     final nameJson = json['name'];
     final typeName = nameJson['name'] ?? "";
-    final scopeJson =  nameJson['scope'] ?? "";
-    final scopeList = scopeJson is List
-        ? scopeJson.map((s) => s.toString()).toList()
-        : <String>[];
+    final scopeJson = nameJson['scope'] ?? "";
+    final scopeList =
+        scopeJson is List
+            ? scopeJson.map((s) => s.toString()).toList()
+            : <String>[];
 
     return TypeDef(
       scope: scopeList,
@@ -109,19 +112,24 @@ class SumType {
     final variantsJson = json['variants'];
 
     return SumType(
-      variants: variantsJson is List
-          ? variantsJson.map((v) => SumVariant.fromJson(v)).toList()
-          : [],
+      variants:
+          variantsJson is List
+              ? variantsJson.map((v) => SumVariant.fromJson(v)).toList()
+              : [],
     );
   }
 }
 
 class SumVariant {
-  final String? name;          
+  final String? name;
   final AlgebraicType algebraicType;
-  final Map<String, dynamic> algebraicTypeJson; 
+  final Map<String, dynamic> algebraicTypeJson;
 
-  SumVariant({this.name, required this.algebraicType, required this.algebraicTypeJson});
+  SumVariant({
+    this.name,
+    required this.algebraicType,
+    required this.algebraicTypeJson,
+  });
 
   factory SumVariant.fromJson(Map<String, dynamic> json) {
     final nameObj = json['name'];

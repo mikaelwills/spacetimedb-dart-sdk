@@ -23,19 +23,23 @@ void main() {
       }
     });
 
-    test('Generated code functionality (Full CRUD cycle + Sum Types)', () async {
-      print('Phase 1: Fetching Schema & Generating Code...');
+    test(
+      'Generated code functionality (Full CRUD cycle + Sum Types)',
+      () async {
+        print('Phase 1: Fetching Schema & Generating Code...');
 
-      // 1. Get Real Schema from local project (no auth needed)
-      final schema = await SchemaExtractor.fromProject('spacetime_test_module');
+        // 1. Get Real Schema from local project (no auth needed)
+        final schema = await SchemaExtractor.fromProject(
+          'spacetime_test_module',
+        );
 
-      // 2. Generate Code into Temp Dir
-      final generator = DartGenerator(schema);
-      await generator.writeToDirectory(tempDir.path);
+        // 2. Generate Code into Temp Dir
+        final generator = DartGenerator(schema);
+        await generator.writeToDirectory(tempDir.path);
 
-      // 3. Create a "User App" script inside the temp dir
-      // This script imports the GENERATED files, not your mocks.
-      const userAppScript = """
+        // 3. Create a "User App" script inside the temp dir
+        // This script imports the GENERATED files, not your mocks.
+        const userAppScript = """
 import 'dart:io';
 import 'dart:async';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
@@ -163,10 +167,12 @@ void main() async {
 }
 """;
 
-      await File(path.join(tempDir.path, 'main.dart')).writeAsString(userAppScript);
+        await File(
+          path.join(tempDir.path, 'main.dart'),
+        ).writeAsString(userAppScript);
 
-      // 4. Create pubspec.yaml for the temp app
-      await File(path.join(tempDir.path, 'pubspec.yaml')).writeAsString("""
+        // 4. Create pubspec.yaml for the temp app
+        await File(path.join(tempDir.path, 'pubspec.yaml')).writeAsString("""
 name: e2e_temp_app
 environment:
   sdk: ^3.0.0
@@ -175,28 +181,28 @@ dependencies:
     path: $sdkPath
 """);
 
-      print('Phase 2: Running "dart pub get" in temp environment...');
-      final pubResult = await Process.run(
-        'dart',
-        ['pub', 'get'],
-        workingDirectory: tempDir.path,
-      );
-      if (pubResult.exitCode != 0) {
-        fail('Pub get failed:\n${pubResult.stderr}');
-      }
+        print('Phase 2: Running "dart pub get" in temp environment...');
+        final pubResult = await Process.run('dart', [
+          'pub',
+          'get',
+        ], workingDirectory: tempDir.path);
+        if (pubResult.exitCode != 0) {
+          fail('Pub get failed:\n${pubResult.stderr}');
+        }
 
-      print('Phase 3: Executing Generated Client Logic...');
-      final runResult = await Process.run(
-        'dart',
-        ['run', 'main.dart'],
-        workingDirectory: tempDir.path,
-      );
+        print('Phase 3: Executing Generated Client Logic...');
+        final runResult = await Process.run('dart', [
+          'run',
+          'main.dart',
+        ], workingDirectory: tempDir.path);
 
-      print(runResult.stdout);
-      if (runResult.exitCode != 0) {
-        print(runResult.stderr);
-        fail('Generated client execution failed.');
-      }
-    }, timeout: const Timeout(Duration(minutes: 2))); // Give time for pub get
+        print(runResult.stdout);
+        if (runResult.exitCode != 0) {
+          print(runResult.stderr);
+          fail('Generated client execution failed.');
+        }
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    ); // Give time for pub get
   });
 }

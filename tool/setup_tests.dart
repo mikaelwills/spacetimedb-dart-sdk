@@ -34,11 +34,9 @@ Future<void> main() async {
 
   // Build the test module
   print('🔨 Building test module...');
-  final buildResult = await Process.run(
-    'spacetime',
-    ['build'],
-    workingDirectory: testModuleDir.path,
-  );
+  final buildResult = await Process.run('spacetime', [
+    'build',
+  ], workingDirectory: testModuleDir.path);
   if (buildResult.exitCode != 0) {
     print('❌ Build failed: ${buildResult.stderr}');
     exit(1);
@@ -50,11 +48,11 @@ Future<void> main() async {
 
   // Publish the test module
   print('📦 Publishing test module to \'notesdb\'...');
-  final publishResult = await Process.run(
-    'spacetime',
-    ['publish', '--clear-database', 'notesdb'],
-    workingDirectory: testModuleDir.path,
-  );
+  final publishResult = await Process.run('spacetime', [
+    'publish',
+    '--clear-database',
+    'notesdb',
+  ], workingDirectory: testModuleDir.path);
 
   if (publishResult.exitCode != 0) {
     print('❌ Publish failed: ${publishResult.stderr}');
@@ -63,16 +61,16 @@ Future<void> main() async {
 
   // Generate test code from notesdb schema
   print('🔧 Generating test code from notesdb schema...');
-  final generateResult = await Process.run(
-    'dart',
-    [
-      'run',
-      'spacetimedb_dart_sdk:generate',
-      '-d', 'notesdb',
-      '-s', 'http://localhost:3000',
-      '-o', 'test/generated',
-    ],
-  );
+  final generateResult = await Process.run('dart', [
+    'run',
+    'spacetimedb_dart_sdk:generate',
+    '-d',
+    'notesdb',
+    '-s',
+    'http://localhost:3000',
+    '-o',
+    'test/generated',
+  ]);
 
   if (generateResult.exitCode != 0) {
     print('❌ Code generation failed: ${generateResult.stderr}');

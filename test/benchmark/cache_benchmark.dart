@@ -41,7 +41,9 @@ void main() async {
   final cacheEnd = DateTime.now();
   final cacheDuration = cacheEnd.difference(cacheStart);
   print('   Total time: ${cacheDuration.inMilliseconds}ms');
-  print('   Per query: ${(cacheDuration.inMicroseconds / 100000).toStringAsFixed(2)}μs\n');
+  print(
+    '   Per query: ${(cacheDuration.inMicroseconds / 100000).toStringAsFixed(2)}μs\n',
+  );
 
   // BENCHMARK 2: Network queries (actual server round-trips)
   print('🌐 NETWORK BENCHMARK (100 queries):');
@@ -68,7 +70,9 @@ void main() async {
   final networkDuration = networkEnd.difference(networkStart);
 
   print('   Total time: ${networkDuration.inMilliseconds}ms');
-  print('   Per query: ${(networkDuration.inMilliseconds / 100).toStringAsFixed(2)}ms\n');
+  print(
+    '   Per query: ${(networkDuration.inMilliseconds / 100).toStringAsFixed(2)}ms\n',
+  );
 
   // COMPARISON
   final cachePerQuery = cacheDuration.inMicroseconds / 100000;
@@ -82,8 +86,12 @@ void main() async {
 
   print('💡 REAL IMPACT:');
   print('   For 100,000 queries:');
-  print('   - Cache: ${cacheDuration.inMilliseconds}ms (${(cacheDuration.inMilliseconds / 1000).toStringAsFixed(2)}s)');
-  print('   - Network: ${(networkPerQuery * 100000).toStringAsFixed(0)}ms (${(networkPerQuery * 100000 / 1000 / 60).toStringAsFixed(1)} minutes!)\n');
+  print(
+    '   - Cache: ${cacheDuration.inMilliseconds}ms (${(cacheDuration.inMilliseconds / 1000).toStringAsFixed(2)}s)',
+  );
+  print(
+    '   - Network: ${(networkPerQuery * 100000).toStringAsFixed(0)}ms (${(networkPerQuery * 100000 / 1000 / 60).toStringAsFixed(1)} minutes!)\n',
+  );
 
   await connection.disconnect();
   print('✅ Benchmark complete!');

@@ -126,7 +126,9 @@ void main() {
       encoder.writeString('create_note'); // reducerName
       encoder.writeU32(42); // reducerId
       encoder.writeU32(10); // args length
-      encoder.writeBytes(Uint8List.fromList([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])); // args
+      encoder.writeBytes(
+        Uint8List.fromList([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+      ); // args
       encoder.writeU32(123); // requestId
 
       final decoder = BsatnDecoder(encoder.toBytes());
@@ -135,7 +137,10 @@ void main() {
       expect(info.reducerName, equals('create_note'));
       expect(info.reducerId, equals(42));
       expect(info.args.length, equals(10));
-      expect(info.args, equals(Uint8List.fromList([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])));
+      expect(
+        info.args,
+        equals(Uint8List.fromList([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])),
+      );
       expect(info.requestId, equals(123));
     });
 
@@ -169,7 +174,10 @@ void main() {
 
     test('OutOfEnergy toString', () {
       final status = OutOfEnergy('Budget exceeded: 1000/500');
-      expect(status.toString(), equals('OutOfEnergy(budgetInfo: Budget exceeded: 1000/500)'));
+      expect(
+        status.toString(),
+        equals('OutOfEnergy(budgetInfo: Budget exceeded: 1000/500)'),
+      );
     });
 
     test('sealed class hierarchy', () {

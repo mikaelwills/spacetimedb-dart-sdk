@@ -102,7 +102,13 @@ class TypeMapper {
       if (typeSpace != null && typeDefs != null) {
         final typeDef = typeDefs.firstWhere(
           (td) => td.typeRef == typeIndex,
-          orElse: () => TypeDef(scope: [], name: '', typeRef: -1, customOrdering: false),
+          orElse:
+              () => TypeDef(
+                scope: [],
+                name: '',
+                typeRef: -1,
+                customOrdering: false,
+              ),
         );
 
         if (typeDef.name.isNotEmpty) {
@@ -110,7 +116,7 @@ class TypeMapper {
         }
       }
 
-      return 'dynamic'; 
+      return 'dynamic';
     }
 
     // 2. Handle Array types (recursive)
@@ -175,7 +181,9 @@ class TypeMapper {
     final typeIndex = algebraicType['Ref'] as int;
     final typeDef = typeDefs.firstWhere(
       (td) => td.typeRef == typeIndex,
-      orElse: () => TypeDef(scope: [], name: '', typeRef: -1, customOrdering: false),
+      orElse:
+          () =>
+              TypeDef(scope: [], name: '', typeRef: -1, customOrdering: false),
     );
 
     return typeDef.name.isNotEmpty ? typeDef.name : null;
