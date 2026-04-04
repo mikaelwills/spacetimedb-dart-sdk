@@ -5,27 +5,13 @@ import 'dart:io';
 import '../offline_storage.dart';
 import '../pending_mutation.dart';
 import '../../utils/sdk_logger.dart';
-
-class _AsyncLock {
-  Completer<void>? _completer;
-
-  Future<T> synchronized<T>(Future<T> Function() action) async {
-    while (_completer != null) {
-      await _completer!.future;
-    }
-    _completer = Completer<void>();
-    try {
-      return await action();
-    } finally {
-      final c = _completer!;
-      _completer = null;
-      c.complete();
-    }
-  }
-}
+import 'atomic_file_store.dart';
+import 'lock_manager.dart';
 
 class JsonFileStorage implements OfflineStorage {
   final String basePath;
+  final AtomicFileStore _fileStore;
+  final LockManager _locks = LockManager();
 
   Directory? _baseDir;
   File? _mutationsFile;
@@ -35,12 +21,8 @@ class JsonFileStorage implements OfflineStorage {
   int _pendingOperations = 0;
   Completer<void>? _allOperationsComplete;
 
-  final _AsyncLock _mutationsLock = _AsyncLock();
-  final _AsyncLock _syncTimesLock = _AsyncLock();
-  final Map<String, _AsyncLock> _tableLocks = {};
-  final _AsyncLock _globalLock = _AsyncLock();
-
-  JsonFileStorage({required this.basePath});
+  JsonFileStorage({required this.basePath})
+      : _fileStore = AtomicFileStore(basePath);
 
   Future<T> _tracked<T>(Future<T> Function() operation) async {
     if (_disposed) {
@@ -59,10 +41,6 @@ class JsonFileStorage implements OfflineStorage {
     }
   }
 
-  _AsyncLock _getTableLock(String tableName) {
-    return _tableLocks.putIfAbsent(tableName, () => _AsyncLock());
-  }
-
   @override
   Future<void> initialize() async {
     if (_initialized) return;
@@ -74,112 +52,8 @@ class JsonFileStorage implements OfflineStorage {
     _mutationsFile = File('$basePath/pending_mutations.json');
     _syncTimesFile = File('$basePath/sync_times.json');
 
-    await _recoverFromTempFiles();
+    await _fileStore.recoverFromTempFiles(_baseDir!);
     _initialized = true;
-  }
-
-  Future<void> _recoverFromTempFiles() async {
-    await for (final entity in _baseDir!.list()) {
-      if (entity is File && entity.path.endsWith('.tmp')) {
-        final originalPath = entity.path.substring(0, entity.path.length - 4);
-        final originalFile = File(originalPath);
-        if (!await originalFile.exists()) {
-          try {
-            await entity.rename(originalPath);
-          } catch (e) {
-            SdkLogger.e('Failed to recover temp file: $e');
-          }
-        } else {
-          try {
-            await entity.delete();
-          } catch (_) {}
-        }
-      }
-    }
-  }
-
-  File _tableFile(String tableName) => File('$basePath/table_$tableName.json');
-
-  Future<void> _atomicWrite(File file, String content) async {
-    final tempFile = File('${file.path}.tmp');
-    final backupFile = File('${file.path}.bak');
-
-    await tempFile.writeAsString(content, flush: true);
-
-    if (await file.exists()) {
-      try {
-        await file.copy(backupFile.path);
-      } catch (_) {}
-    }
-
-    await tempFile.rename(file.path);
-  }
-
-  Future<String?> _readWithFallback(File file) async {
-    if (await file.exists()) {
-      try {
-        return await file.readAsString();
-      } catch (e) {
-        SdkLogger.e('Failed to read ${file.path}: $e');
-      }
-    }
-
-    final backupFile = File('${file.path}.bak');
-    if (await backupFile.exists()) {
-      try {
-        SdkLogger.i('Recovering from backup: ${backupFile.path}');
-        return await backupFile.readAsString();
-      } catch (e) {
-        SdkLogger.e('Failed to read backup ${backupFile.path}: $e');
-      }
-    }
-
-    return null;
-  }
-
-  @override
-  Future<void> saveTableSnapshot(
-    String tableName,
-    List<Map<String, dynamic>> rows,
-  ) async {
-    await _tracked(() async {
-      await _ensureInitialized();
-      await _getTableLock(tableName).synchronized(() async {
-        final file = _tableFile(tableName);
-        final json = jsonEncode(rows);
-        await _atomicWrite(file, json);
-        await _cleanupBackup(file);
-      });
-    });
-  }
-
-  @override
-  Future<List<Map<String, dynamic>>?> loadTableSnapshot(
-    String tableName,
-  ) async {
-    return _getTableLock(tableName).synchronized(() async {
-      final file = _tableFile(tableName);
-      final content = await _readWithFallback(file);
-      if (content == null) return null;
-
-      try {
-        final data = jsonDecode(content) as List;
-        await _cleanupBackup(file);
-        return data.cast<Map<String, dynamic>>();
-      } catch (e) {
-        SdkLogger.e('Failed to parse table snapshot for "$tableName": $e');
-        return null;
-      }
-    });
-  }
-
-  Future<void> _cleanupBackup(File file) async {
-    final backupFile = File('${file.path}.bak');
-    if (await backupFile.exists()) {
-      try {
-        await backupFile.delete();
-      } catch (_) {}
-    }
   }
 
   Future<void> _ensureInitialized() async {
@@ -188,11 +62,49 @@ class JsonFileStorage implements OfflineStorage {
     }
   }
 
+  File _tableFile(String tableName) => File('$basePath/table_$tableName.json');
+
+  @override
+  Future<void> saveTableSnapshot(
+    String tableName,
+    List<Map<String, dynamic>> rows,
+  ) async {
+    await _tracked(() async {
+      await _ensureInitialized();
+      await _locks.getTableLock(tableName).synchronized(() async {
+        final file = _tableFile(tableName);
+        final json = jsonEncode(rows);
+        await _fileStore.atomicWrite(file, json);
+        await _fileStore.cleanupBackup(file);
+      });
+    });
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>?> loadTableSnapshot(
+    String tableName,
+  ) async {
+    return _locks.getTableLock(tableName).synchronized(() async {
+      final file = _tableFile(tableName);
+      final content = await _fileStore.readWithFallback(file);
+      if (content == null) return null;
+
+      try {
+        final data = jsonDecode(content) as List;
+        await _fileStore.cleanupBackup(file);
+        return data.cast<Map<String, dynamic>>();
+      } catch (e) {
+        SdkLogger.e('Failed to parse table snapshot for "$tableName": $e');
+        return null;
+      }
+    });
+  }
+
   @override
   Future<void> enqueueMutation(PendingMutation mutation) async {
     await _tracked(() async {
       await _ensureInitialized();
-      await _mutationsLock.synchronized(() async {
+      await _locks.mutations.synchronized(() async {
         final mutations = await _loadMutationsUnsafe();
         mutations.add(mutation);
         await _saveMutationsUnsafe(mutations);
@@ -203,11 +115,11 @@ class JsonFileStorage implements OfflineStorage {
   @override
   Future<List<PendingMutation>> getPendingMutations() async {
     await _ensureInitialized();
-    return _mutationsLock.synchronized(() => _loadMutationsUnsafe());
+    return _locks.mutations.synchronized(() => _loadMutationsUnsafe());
   }
 
   Future<List<PendingMutation>> _loadMutationsUnsafe() async {
-    final content = await _readWithFallback(_mutationsFile!);
+    final content = await _fileStore.readWithFallback(_mutationsFile!);
     if (content == null) return [];
 
     try {
@@ -224,7 +136,7 @@ class JsonFileStorage implements OfflineStorage {
   @override
   Future<void> dequeueMutation(String requestId) async {
     await _tracked(() async {
-      await _mutationsLock.synchronized(() async {
+      await _locks.mutations.synchronized(() async {
         final mutations = await _loadMutationsUnsafe();
         mutations.removeWhere((m) => m.requestId == requestId);
         await _saveMutationsUnsafe(mutations);
@@ -234,14 +146,14 @@ class JsonFileStorage implements OfflineStorage {
 
   Future<void> _saveMutationsUnsafe(List<PendingMutation> mutations) async {
     final json = jsonEncode(mutations.map((m) => m.toJson()).toList());
-    await _atomicWrite(_mutationsFile!, json);
+    await _fileStore.atomicWrite(_mutationsFile!, json);
   }
 
   @override
   Future<void> setLastSyncTime(String tableName, DateTime time) async {
     await _tracked(() async {
       await _ensureInitialized();
-      await _syncTimesLock.synchronized(() async {
+      await _locks.syncTimes.synchronized(() async {
         final times = await _loadSyncTimesUnsafe();
         times[tableName] = time.toIso8601String();
         await _saveSyncTimesUnsafe(times);
@@ -251,7 +163,7 @@ class JsonFileStorage implements OfflineStorage {
 
   @override
   Future<DateTime?> getLastSyncTime(String tableName) async {
-    return _syncTimesLock.synchronized(() async {
+    return _locks.syncTimes.synchronized(() async {
       final times = await _loadSyncTimesUnsafe();
       final timeStr = times[tableName];
       if (timeStr == null) return null;
@@ -260,7 +172,7 @@ class JsonFileStorage implements OfflineStorage {
   }
 
   Future<Map<String, String>> _loadSyncTimesUnsafe() async {
-    final content = await _readWithFallback(_syncTimesFile!);
+    final content = await _fileStore.readWithFallback(_syncTimesFile!);
     if (content == null) return {};
 
     try {
@@ -274,20 +186,20 @@ class JsonFileStorage implements OfflineStorage {
 
   Future<void> _saveSyncTimesUnsafe(Map<String, String> times) async {
     final json = jsonEncode(times);
-    await _atomicWrite(_syncTimesFile!, json);
+    await _fileStore.atomicWrite(_syncTimesFile!, json);
   }
 
   @override
   Future<void> clearAll() async {
     await _tracked(() async {
-      await _globalLock.synchronized(() async {
-        await _mutationsLock.synchronized(() async {
-          await _syncTimesLock.synchronized(() async {
+      await _locks.global.synchronized(() async {
+        await _locks.mutations.synchronized(() async {
+          await _locks.syncTimes.synchronized(() async {
             if (await _baseDir!.exists()) {
               await _baseDir!.delete(recursive: true);
               await _baseDir!.create(recursive: true);
             }
-            _tableLocks.clear();
+            _locks.clearDynamicLocks();
           });
         });
       });
@@ -297,12 +209,12 @@ class JsonFileStorage implements OfflineStorage {
   @override
   Future<void> clearTableSnapshot(String tableName) async {
     await _tracked(() async {
-      await _getTableLock(tableName).synchronized(() async {
+      await _locks.getTableLock(tableName).synchronized(() async {
         final file = _tableFile(tableName);
         if (await file.exists()) {
           await file.delete();
         }
-        await _cleanupBackup(file);
+        await _fileStore.cleanupBackup(file);
       });
     });
   }
@@ -310,7 +222,7 @@ class JsonFileStorage implements OfflineStorage {
   @override
   Future<void> clearMutationQueue() async {
     await _tracked(() async {
-      await _mutationsLock.synchronized(() async {
+      await _locks.mutations.synchronized(() async {
         if (await _mutationsFile!.exists()) {
           await _mutationsFile!.delete();
         }
