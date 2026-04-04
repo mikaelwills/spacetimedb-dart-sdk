@@ -43,7 +43,6 @@ class SubscriptionManager {
   MutationSyncer? _mutationSyncer;
   OfflineCacheCoordinator? _offlineCacheCoordinator;
   bool _disposed = false;
-  bool _initialSubscriptionReceived = false;
 
   final _initialSubscriptionController =
       StreamController<InitialSubscriptionMessage>.broadcast();
@@ -107,8 +106,7 @@ class SubscriptionManager {
       _mutationSyncer?.onSyncStateChanged ?? const Stream.empty();
   Stream<MutationSyncResult> get onMutationSyncResult =>
       _mutationSyncer?.onMutationSyncResult ?? const Stream.empty();
-  SyncState get syncState =>
-      _mutationSyncer?.syncState ?? const SyncState();
+  SyncState get syncState => _mutationSyncer?.syncState ?? const SyncState();
   bool get hasOfflineStorage => _mutationSyncer != null;
 
   @visibleForTesting
@@ -147,15 +145,15 @@ class SubscriptionManager {
 
     ConnectionStatus? previousStatus;
 
-    _connectionStatusSubscription =
-        _connection.connectionStatus.listen((status) {
+    _connectionStatusSubscription = _connection.connectionStatus.listen((
+      status,
+    ) {
       if (status == ConnectionStatus.connected &&
           previousStatus == ConnectionStatus.reconnecting) {
         _mutationSyncer!.resetRetryAttempts();
         _onReconnected();
       } else if (status == ConnectionStatus.disconnected) {
         _mutationSyncer!.cancelRetry();
-        _initialSubscriptionReceived = false;
       }
 
       previousStatus = status;
@@ -165,12 +163,14 @@ class SubscriptionManager {
   Future<void> _onReconnected() async {
     if (_activeSubscriptionQueries.isNotEmpty) {
       SdkLogger.i(
-          'Re-subscribing to ${_activeSubscriptionQueries.length} queries...');
+        'Re-subscribing to ${_activeSubscriptionQueries.length} queries...',
+      );
       final message = SubscribeMessage(_activeSubscriptionQueries.toList());
       _connection.send(message.encode());
     } else {
       SdkLogger.i(
-          'No active subscriptions, syncing pending mutations directly...');
+        'No active subscriptions, syncing pending mutations directly...',
+      );
       _mutationSyncer!.syncPendingMutations();
     }
   }
@@ -197,16 +197,18 @@ class SubscriptionManager {
       case IdentityTokenMessage():
         _identity = Identity(message.identity);
         _connectionId = message.connectionId;
-        _address = message.connectionId
-            .map((b) => b.toRadixString(16).padLeft(2, '0'))
-            .join();
+        _address =
+            message.connectionId
+                .map((b) => b.toRadixString(16).padLeft(2, '0'))
+                .join();
         _identityTokenController.add(message);
       case InitialSubscriptionMessage():
         _handleInitialSubscription(message).then((_) {
           if (_disposed) return;
-          _initialSubscriptionReceived = true;
           _initialSubscriptionController.add(message);
-          SdkLogger.i('Syncing pending mutations after initial subscription...');
+          SdkLogger.i(
+            'Syncing pending mutations after initial subscription...',
+          );
           _mutationSyncer?.syncPendingMutations();
         });
       case TransactionUpdateMessage():
@@ -234,8 +236,9 @@ class SubscriptionManager {
   }
 
   void _handleSubscriptionError(SubscriptionErrorMessage message) {
-    final tableNameMatch =
-        RegExp(r'`(\w+)` is not a valid table').firstMatch(message.error);
+    final tableNameMatch = RegExp(
+      r'`(\w+)` is not a valid table',
+    ).firstMatch(message.error);
     if (tableNameMatch == null) {
       SdkLogger.e('Subscription error: ${message.error}');
       return;
@@ -249,19 +252,21 @@ class SubscriptionManager {
 
     if (badQuery.isEmpty) {
       SdkLogger.e(
-          'Subscription error for unknown table "$badTable": ${message.error}');
+        'Subscription error for unknown table "$badTable": ${message.error}',
+      );
       return;
     }
 
     _activeSubscriptionQueries.remove(badQuery);
     SdkLogger.w(
-        'Subscription failed for table "$badTable", removed query. Resubscribing with ${_activeSubscriptionQueries.length} remaining queries...');
+      'Subscription failed for table "$badTable", removed query. Resubscribing with ${_activeSubscriptionQueries.length} remaining queries...',
+    );
 
     if (_activeSubscriptionQueries.isNotEmpty) {
-      _pendingTableNames =
-          _extractTableNames(_activeSubscriptionQueries.toList());
-      final resubscribe =
-          SubscribeMessage(_activeSubscriptionQueries.toList());
+      _pendingTableNames = _extractTableNames(
+        _activeSubscriptionQueries.toList(),
+      );
+      final resubscribe = SubscribeMessage(_activeSubscriptionQueries.toList());
       _connection.send(resubscribe.encode());
     }
   }
@@ -269,13 +274,16 @@ class SubscriptionManager {
   // --- Transaction Processing ---
 
   Future<void> _handleInitialSubscription(
-      InitialSubscriptionMessage message) async {
+    InitialSubscriptionMessage message,
+  ) async {
     SdkLogger.i(
-        'Handling InitialSubscription with ${message.tableUpdates.length} table updates');
+      'Handling InitialSubscription with ${message.tableUpdates.length} table updates',
+    );
 
     for (final tableUpdate in message.tableUpdates) {
       SdkLogger.i(
-          '  Linking table "${tableUpdate.tableName}" to ID ${tableUpdate.tableId}');
+        '  Linking table "${tableUpdate.tableName}" to ID ${tableUpdate.tableId}',
+      );
       cache.linkTableId(tableUpdate.tableId, tableUpdate.tableName);
     }
 
@@ -291,10 +299,7 @@ class SubscriptionManager {
     _pendingTableNames = [];
 
     final event = SubscribeAppliedEvent();
-    final context = EventContext(
-      myConnectionId: _connectionId,
-      event: event,
-    );
+    final context = EventContext(myConnectionId: _connectionId, event: event);
 
     final serverTableNames =
         message.tableUpdates.map((t) => t.tableName).toSet();
@@ -309,7 +314,8 @@ class SubscriptionManager {
 
       final table = cache.getTable(tableUpdate.tableId);
       SdkLogger.i(
-          '  Table ${tableUpdate.tableId} ("${tableUpdate.tableName}"): ${tableUpdate.updates.length} updates');
+        '  Table ${tableUpdate.tableId} ("${tableUpdate.tableName}"): ${tableUpdate.updates.length} updates',
+      );
 
       _optimisticState.clearNonOptimisticRows(tableUpdate.tableName);
 
@@ -324,8 +330,9 @@ class SubscriptionManager {
   }
 
   void _handleTransactionUpdate(TransactionUpdateMessage message) {
-    final isEventOnly =
-        message.tableUpdates.every((tu) => cache.isEventTable(tu.tableName));
+    final isEventOnly = message.tableUpdates.every(
+      (tu) => cache.isEventTable(tu.tableName),
+    );
 
     if (isEventOnly) {
       final numericRequestId = message.reducerCall.requestId;
@@ -337,8 +344,10 @@ class SubscriptionManager {
         event: UnknownTransactionEvent(),
       );
       for (final tableUpdate in message.tableUpdates) {
-        final table =
-            cache.linkTableId(tableUpdate.tableId, tableUpdate.tableName);
+        final table = cache.linkTableId(
+          tableUpdate.tableId,
+          tableUpdate.tableName,
+        );
         if (table == null) continue;
         for (final update in tableUpdate.updates) {
           table.applyTransactionUpdate(
@@ -352,7 +361,8 @@ class SubscriptionManager {
     }
 
     SdkLogger.i(
-        'TXN_UPDATE: reducer=${message.reducerCall.reducerName}, tables=${message.tableUpdates.length}, status=${message.status}, requestId=${message.reducerCall.requestId}');
+      'TXN_UPDATE: reducer=${message.reducerCall.reducerName}, tables=${message.tableUpdates.length}, status=${message.status}, requestId=${message.reducerCall.requestId}',
+    );
     for (final tu in message.tableUpdates) {
       SdkLogger.i('  TABLE: ${tu.tableName}, updates=${tu.updates.length}');
     }
@@ -386,19 +396,18 @@ class SubscriptionManager {
       );
 
       SdkLogger.i(
-          'Transaction caused by reducer: ${message.reducerCall.reducerName}');
+        'Transaction caused by reducer: ${message.reducerCall.reducerName}',
+      );
       SdkLogger.i('Arguments: $reducerArgs');
       SdkLogger.i('Status: ${message.status}');
     } else {
       event = UnknownTransactionEvent();
       SdkLogger.i(
-          'Failed to deserialize reducer args for: ${message.reducerCall.reducerName}');
+        'Failed to deserialize reducer args for: ${message.reducerCall.reducerName}',
+      );
     }
 
-    final context = EventContext(
-      myConnectionId: _connectionId,
-      event: event,
-    );
+    final context = EventContext(myConnectionId: _connectionId, event: event);
 
     if (event is ReducerEvent) {
       reducerEmitter.emit(event.reducerName, context);
@@ -407,13 +416,16 @@ class SubscriptionManager {
 
     final isOurTransaction = uuidRequestId != null;
     final isCommitted = message.status is Committed;
-    final hasOptimistic =
-        _optimisticState.hasOptimisticChange(effectiveRequestId);
+    final hasOptimistic = _optimisticState.hasOptimisticChange(
+      effectiveRequestId,
+    );
 
     SdkLogger.d(
-        'TXN: numericRequestId=$numericRequestId, uuidRequestId=$uuidRequestId');
+      'TXN: numericRequestId=$numericRequestId, uuidRequestId=$uuidRequestId',
+    );
     SdkLogger.d(
-        'TXN: isOurTransaction=$isOurTransaction, isCommitted=$isCommitted, hasOptimistic=$hasOptimistic');
+      'TXN: isOurTransaction=$isOurTransaction, isCommitted=$isCommitted, hasOptimistic=$hasOptimistic',
+    );
 
     if (isOurTransaction && isCommitted && hasOptimistic) {
       SdkLogger.i('Our transaction confirmed - keeping optimistic state');
@@ -424,8 +436,10 @@ class SubscriptionManager {
 
     final touchedKeysByTable = <String, Set<dynamic>>{};
     for (final tableUpdate in message.tableUpdates) {
-      final table =
-          cache.linkTableId(tableUpdate.tableId, tableUpdate.tableName);
+      final table = cache.linkTableId(
+        tableUpdate.tableId,
+        tableUpdate.tableName,
+      );
       if (table == null) continue;
 
       final touchedKeys = <dynamic>{};
@@ -442,7 +456,9 @@ class SubscriptionManager {
 
     if (isCommitted) {
       _optimisticState.confirmOrRollbackWithTouchedKeys(
-          effectiveRequestId, touchedKeysByTable);
+        effectiveRequestId,
+        touchedKeysByTable,
+      );
     } else {
       _optimisticState.rollbackOptimisticChanges(effectiveRequestId);
     }
@@ -451,20 +467,25 @@ class SubscriptionManager {
   }
 
   void _handleTransactionUpdateLight(TransactionUpdateLightMessage message) {
-    final isEventOnly =
-        message.tableUpdates.every((tu) => cache.isEventTable(tu.tableName));
+    final isEventOnly = message.tableUpdates.every(
+      (tu) => cache.isEventTable(tu.tableName),
+    );
 
     if (isEventOnly) {
-      reducers.completeRequest(message.requestId,
-          TransactionResult.fromTransactionUpdateLight(message));
+      reducers.completeRequest(
+        message.requestId,
+        TransactionResult.fromTransactionUpdateLight(message),
+      );
 
       final context = EventContext(
         myConnectionId: _connectionId,
         event: UnknownTransactionEvent(),
       );
       for (final tableUpdate in message.tableUpdates) {
-        final table =
-            cache.linkTableId(tableUpdate.tableId, tableUpdate.tableName);
+        final table = cache.linkTableId(
+          tableUpdate.tableId,
+          tableUpdate.tableName,
+        );
         if (table == null) continue;
         for (final update in tableUpdate.updates) {
           table.applyTransactionUpdate(
@@ -478,40 +499,41 @@ class SubscriptionManager {
     }
 
     SdkLogger.i(
-        'TXN_LIGHT: requestId=${message.requestId}, tables=${message.tableUpdates.length}');
+      'TXN_LIGHT: requestId=${message.requestId}, tables=${message.tableUpdates.length}',
+    );
 
     final numericRequestId = message.requestId;
     final uuidRequestId = reducers.getUuidForRequest(numericRequestId);
     final effectiveRequestId = uuidRequestId ?? numericRequestId.toString();
 
     final isOurTransaction = uuidRequestId != null;
-    final hasOptimistic =
-        _optimisticState.hasOptimisticChange(effectiveRequestId);
+    final hasOptimistic = _optimisticState.hasOptimisticChange(
+      effectiveRequestId,
+    );
 
     SdkLogger.d(
-        'TXN-LIGHT: isOurTransaction=$isOurTransaction, hasOptimistic=$hasOptimistic');
+      'TXN-LIGHT: isOurTransaction=$isOurTransaction, hasOptimistic=$hasOptimistic',
+    );
 
     final result = TransactionResult.fromTransactionUpdateLight(message);
     reducers.completeRequest(numericRequestId, result);
 
     if (isOurTransaction && hasOptimistic) {
-      SdkLogger.i(
-          'Our light transaction confirmed - keeping optimistic state');
+      SdkLogger.i('Our light transaction confirmed - keeping optimistic state');
       _optimisticState.confirmOptimisticChange(effectiveRequestId);
       _persistTableSnapshots();
       return;
     }
 
     final event = UnknownTransactionEvent();
-    final context = EventContext(
-      myConnectionId: _connectionId,
-      event: event,
-    );
+    final context = EventContext(myConnectionId: _connectionId, event: event);
 
     final touchedKeysByTable = <String, Set<dynamic>>{};
     for (final tableUpdate in message.tableUpdates) {
-      final table =
-          cache.linkTableId(tableUpdate.tableId, tableUpdate.tableName);
+      final table = cache.linkTableId(
+        tableUpdate.tableId,
+        tableUpdate.tableName,
+      );
       if (table == null) continue;
 
       final touchedKeys = <dynamic>{};
@@ -527,7 +549,9 @@ class SubscriptionManager {
     }
 
     _optimisticState.confirmOrRollbackWithTouchedKeys(
-        effectiveRequestId, touchedKeysByTable);
+      effectiveRequestId,
+      touchedKeysByTable,
+    );
     _persistTableSnapshots();
   }
 
@@ -551,8 +575,10 @@ class SubscriptionManager {
 
   List<String> _extractTableNames(List<String> queries) {
     final tableNames = <String>[];
-    final regex =
-        RegExp(r'FROM\s+([a-zA-Z_][a-zA-Z0-9_]*)', caseSensitive: false);
+    final regex = RegExp(
+      r'FROM\s+([a-zA-Z_][a-zA-Z0-9_]*)',
+      caseSensitive: false,
+    );
 
     for (final query in queries) {
       final match = regex.firstMatch(query);
@@ -564,15 +590,24 @@ class SubscriptionManager {
   }
 
   void subscribeSingle(String query, {int requestId = 0, int queryId = 0}) {
-    final message =
-        SubscribeSingleMessage(query, requestId: requestId, queryId: queryId);
+    final message = SubscribeSingleMessage(
+      query,
+      requestId: requestId,
+      queryId: queryId,
+    );
     _connection.send(message.encode());
   }
 
-  void subscribeMulti(List<String> queries,
-      {int requestId = 0, int queryId = 0}) {
-    final message =
-        SubscribeMultiMessage(queries, requestId: requestId, queryId: queryId);
+  void subscribeMulti(
+    List<String> queries, {
+    int requestId = 0,
+    int queryId = 0,
+  }) {
+    final message = SubscribeMultiMessage(
+      queries,
+      requestId: requestId,
+      queryId: queryId,
+    );
     _connection.send(message.encode());
   }
 
@@ -585,10 +620,7 @@ class SubscriptionManager {
   }
 
   void unsubscribe(int queryId, {int requestId = 0}) {
-    final message = UnsubscribeMessage(
-      queryId: queryId,
-      requestId: requestId,
-    );
+    final message = UnsubscribeMessage(queryId: queryId, requestId: requestId);
     _connection.send(message.encode());
   }
 
@@ -600,8 +632,11 @@ class SubscriptionManager {
     _connection.send(message.encode());
   }
 
-  void callProcedure(String procedureName, Uint8List args,
-      {int requestId = 0}) {
+  void callProcedure(
+    String procedureName,
+    Uint8List args, {
+    int requestId = 0,
+  }) {
     final message = CallProcedureMessage(
       procedureName: procedureName,
       args: args,

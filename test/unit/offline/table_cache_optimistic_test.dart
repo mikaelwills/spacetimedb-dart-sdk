@@ -1,20 +1,16 @@
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
-import 'package:spacetimedb_dart_sdk/src/cache/table_cache.dart';
-import 'package:spacetimedb_dart_sdk/src/cache/client_cache.dart';
-import 'package:spacetimedb_dart_sdk/src/offline/optimistic_state_manager.dart';
-import 'package:spacetimedb_dart_sdk/src/offline/optimistic_change.dart';
 
 import '../../generated/note.dart';
 import '../../generated/note_status.dart';
 
 Note createNote(int id, String title) => Note(
-      id: id,
-      title: title,
-      content: '',
-      timestamp: Int64(0),
-      status: const NoteStatusDraft(),
-    );
+  id: id,
+  title: title,
+  content: '',
+  timestamp: Int64(0),
+  status: const NoteStatusDraft(),
+);
 
 OptimisticChange insertChange(int id, String title) =>
     OptimisticChange.insert('note', createNote(id, title).toJson());
@@ -87,7 +83,9 @@ void main() {
 
       test('rollback update restores old value', () {
         table.insertRow(createNote(1, 'Old'));
-        manager.applyOptimisticChanges('req-1', [updateChange(1, 'Old', 'New')]);
+        manager.applyOptimisticChanges('req-1', [
+          updateChange(1, 'Old', 'New'),
+        ]);
         manager.rollbackOptimisticChanges('req-1');
 
         expect(table.find(1)?.title, equals('Old'));
@@ -154,7 +152,9 @@ void main() {
       test('clears non-optimistic rows, preserves optimistic ones', () {
         table.insertRow(createNote(1, 'Server'));
         table.insertRow(createNote(2, 'Also Server'));
-        manager.applyOptimisticChanges('req-1', [insertChange(3, 'Optimistic')]);
+        manager.applyOptimisticChanges('req-1', [
+          insertChange(3, 'Optimistic'),
+        ]);
 
         manager.clearNonOptimisticRows('note');
 
@@ -173,16 +173,19 @@ void main() {
       });
     });
 
-    test('loadFromSerializable no longer needs to preserve optimistic state', () {
-      manager.applyOptimisticChanges('req-1', [insertChange(1, 'Optimistic')]);
+    test(
+      'loadFromSerializable no longer needs to preserve optimistic state',
+      () {
+        manager.applyOptimisticChanges('req-1', [
+          insertChange(1, 'Optimistic'),
+        ]);
 
-      table.loadFromSerializable([
-        createNote(2, 'Server Note').toJson(),
-      ]);
+        table.loadFromSerializable([createNote(2, 'Server Note').toJson()]);
 
-      expect(manager.hasOptimisticChange('req-1'), isTrue);
-      expect(table.find(2)?.title, equals('Server Note'));
-    });
+        expect(manager.hasOptimisticChange('req-1'), isTrue);
+        expect(table.find(2)?.title, equals('Server Note'));
+      },
+    );
 
     test('optimisticPrimaryKeysForTable returns correct keys', () {
       manager.applyOptimisticChanges('req-1', [

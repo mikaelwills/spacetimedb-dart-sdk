@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:fixnum/fixnum.dart';
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 
@@ -38,17 +37,21 @@ void main() {
         );
 
         // This should NOT crash the SubscriptionManager - just be ignored
-        expect(() => mockConnection.simulateIncoming(wrongIdResponse),
-            returnsNormally,
-            reason:
-                'SubscriptionManager should handle mismatched IDs gracefully');
+        expect(
+          () => mockConnection.simulateIncoming(wrongIdResponse),
+          returnsNormally,
+          reason: 'SubscriptionManager should handle mismatched IDs gracefully',
+        );
 
         // 4. Verify Future is STILL pending (no false positive)
         bool completed = false;
         unawaited(future.then((_) => completed = true));
         await Future.delayed(const Duration(milliseconds: 50));
-        expect(completed, isFalse,
-            reason: 'Should ignore mismatched request_id');
+        expect(
+          completed,
+          isFalse,
+          reason: 'Should ignore mismatched request_id',
+        );
 
         // 5. Simulate response with CORRECT ID
         final correctIdResponse = _createTransactionUpdate(
@@ -73,8 +76,10 @@ void main() {
         );
 
         // Should not throw - just ignore silently
-        expect(() => mockConnection.simulateIncoming(serverInitiated),
-            returnsNormally);
+        expect(
+          () => mockConnection.simulateIncoming(serverInitiated),
+          returnsNormally,
+        );
       });
     });
 
@@ -121,34 +126,36 @@ void main() {
         expect(slowResult.reducerName, equals('slow_reducer'));
       });
 
-      test('Handles 10 concurrent requests with random completion order',
-          () async {
-        // Fire 10 requests
-        final futures = <Future<TransactionResult>>[];
-        final expectedIds = <int>[];
+      test(
+        'Handles 10 concurrent requests with random completion order',
+        () async {
+          // Fire 10 requests
+          final futures = <Future<TransactionResult>>[];
+          final expectedIds = <int>[];
 
-        for (int i = 0; i < 10; i++) {
-          futures.add(reducerCaller.call('reducer_$i', Uint8List(0)));
-          expectedIds.add(mockConnection.getSentRequestId(i));
-        }
+          for (int i = 0; i < 10; i++) {
+            futures.add(reducerCaller.call('reducer_$i', Uint8List(0)));
+            expectedIds.add(mockConnection.getSentRequestId(i));
+          }
 
-        // Complete them in reverse order (worst case for FIFO)
-        for (int i = 9; i >= 0; i--) {
-          final response = _createTransactionUpdate(
-            requestId: expectedIds[i],
-            status: Committed(),
-            reducerName: 'reducer_$i',
-          );
-          mockConnection.simulateIncoming(response);
-        }
+          // Complete them in reverse order (worst case for FIFO)
+          for (int i = 9; i >= 0; i--) {
+            final response = _createTransactionUpdate(
+              requestId: expectedIds[i],
+              status: Committed(),
+              reducerName: 'reducer_$i',
+            );
+            mockConnection.simulateIncoming(response);
+          }
 
-        // All should complete successfully
-        final results = await Future.wait(futures);
-        expect(results.length, 10);
-        for (int i = 0; i < 10; i++) {
-          expect(results[i].reducerName, equals('reducer_$i'));
-        }
-      });
+          // All should complete successfully
+          final results = await Future.wait(futures);
+          expect(results.length, 10);
+          for (int i = 0; i < 10; i++) {
+            expect(results[i].reducerName, equals('reducer_$i'));
+          }
+        },
+      );
     });
 
     group('Test C: Light Update Handling', () {
@@ -157,8 +164,9 @@ void main() {
         final requestId = mockConnection.getLastSentRequestId();
 
         // Simulate LIGHT update (minimal data, no reducer metadata)
-        final lightResponse =
-            _createTransactionUpdateLight(requestId: requestId);
+        final lightResponse = _createTransactionUpdateLight(
+          requestId: requestId,
+        );
         mockConnection.simulateIncoming(lightResponse);
 
         final result = await future;
@@ -168,12 +176,21 @@ void main() {
         expect(result.isLightUpdate, isTrue);
 
         // KEY CHECK: Nullable fields must be null (not 0 or empty)
-        expect(result.energyConsumed, isNull,
-            reason: 'Light updates do not provide energy data');
-        expect(result.executionDuration, isNull,
-            reason: 'Light updates do not provide duration data');
-        expect(result.reducerName, isNull,
-            reason: 'Light updates do not provide reducer metadata');
+        expect(
+          result.energyConsumed,
+          isNull,
+          reason: 'Light updates do not provide energy data',
+        );
+        expect(
+          result.executionDuration,
+          isNull,
+          reason: 'Light updates do not provide duration data',
+        );
+        expect(
+          result.reducerName,
+          isNull,
+          reason: 'Light updates do not provide reducer metadata',
+        );
         expect(result.reducerId, isNull);
 
         // Timestamp should still be present (approximated client-side)
@@ -188,15 +205,18 @@ void main() {
         final id2 = mockConnection.getSentRequestId(1);
 
         // Respond with LIGHT for first, FULL for second
-        mockConnection
-            .simulateIncoming(_createTransactionUpdateLight(requestId: id1));
-        mockConnection.simulateIncoming(_createTransactionUpdate(
-          requestId: id2,
-          status: Committed(),
-          reducerName: 'light_reducer',
-          energyConsumed: 42,
-          executionDurationMicros: 1500,
-        ));
+        mockConnection.simulateIncoming(
+          _createTransactionUpdateLight(requestId: id1),
+        );
+        mockConnection.simulateIncoming(
+          _createTransactionUpdate(
+            requestId: id2,
+            status: Committed(),
+            reducerName: 'light_reducer',
+            energyConsumed: 42,
+            executionDurationMicros: 1500,
+          ),
+        );
 
         final result1 = await future1;
         final result2 = await future2;
@@ -235,8 +255,10 @@ void main() {
         );
 
         // Should not throw - request was already removed from map
-        expect(() => mockConnection.simulateIncoming(lateResponse),
-            returnsNormally);
+        expect(
+          () => mockConnection.simulateIncoming(lateResponse),
+          returnsNormally,
+        );
 
         // Give time for any potential async errors
         await Future.delayed(const Duration(milliseconds: 50));

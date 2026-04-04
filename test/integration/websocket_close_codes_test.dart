@@ -1,3 +1,4 @@
+// ignore_for_file: avoid_print
 import 'dart:async';
 import 'dart:io';
 import 'package:test/test.dart';
@@ -41,7 +42,11 @@ void main() {
   // Ensure SpacetimeDB is running before tests
   setUpAll(() async {
     try {
-      final socket = await Socket.connect('localhost', 3000, timeout: const Duration(seconds: 2));
+      final socket = await Socket.connect(
+        'localhost',
+        3000,
+        timeout: const Duration(seconds: 2),
+      );
       socket.destroy();
       print('✅ SpacetimeDB is running on localhost:3000');
     } catch (e) {
@@ -67,7 +72,9 @@ void main() {
       channel.stream.listen(
         (data) {
           receivedData = true;
-          print('  Received data: ${data.runtimeType} (${(data as List).length} bytes)');
+          print(
+            '  Received data: ${data.runtimeType} (${(data as List).length} bytes)',
+          );
         },
         onError: (e) => print('  Error: $e'),
         onDone: () {
@@ -79,37 +86,46 @@ void main() {
 
       // Wait a moment to receive initial messages (IdentityToken)
       await Future.delayed(const Duration(seconds: 2));
-      expect(receivedData, isTrue, reason: 'Should receive IdentityToken message');
+      expect(
+        receivedData,
+        isTrue,
+        reason: 'Should receive IdentityToken message',
+      );
 
       // Gracefully close
       await channel.sink.close();
       await completer.future.timeout(const Duration(seconds: 5));
 
-      print('  ✅ Anonymous connection works - server sends data then accepts close');
-    });
-
-    test('2. Invalid token - HTTP 401 rejection (not WebSocket close code)', () async {
-      final uri = Uri.parse('ws://$host/v1/database/$database/subscribe');
-
-      final channel = IOWebSocketChannel.connect(
-        uri,
-        protocols: ['v1.bsatn.spacetimedb'],
-        headers: {'Authorization': 'Bearer invalid_garbage_token_12345'},
+      print(
+        '  ✅ Anonymous connection works - server sends data then accepts close',
       );
-
-      Object? caughtError;
-      try {
-        await channel.ready;
-        fail('Should not connect with invalid token');
-      } on WebSocketChannelException catch (e) {
-        caughtError = e;
-        print('  Error: $e');
-      }
-
-      expect(caughtError, isNotNull);
-      expect(caughtError.toString(), contains('401'));
-      print('  ✅ Invalid token correctly rejected with HTTP 401');
     });
+
+    test(
+      '2. Invalid token - HTTP 401 rejection (not WebSocket close code)',
+      () async {
+        final uri = Uri.parse('ws://$host/v1/database/$database/subscribe');
+
+        final channel = IOWebSocketChannel.connect(
+          uri,
+          protocols: ['v1.bsatn.spacetimedb'],
+          headers: {'Authorization': 'Bearer invalid_garbage_token_12345'},
+        );
+
+        Object? caughtError;
+        try {
+          await channel.ready;
+          fail('Should not connect with invalid token');
+        } on WebSocketChannelException catch (e) {
+          caughtError = e;
+          print('  Error: $e');
+        }
+
+        expect(caughtError, isNotNull);
+        expect(caughtError.toString(), contains('401'));
+        print('  ✅ Invalid token correctly rejected with HTTP 401');
+      },
+    );
 
     test('3. Malformed Authorization header - HTTP 400 rejection', () async {
       final uri = Uri.parse('ws://$host/v1/database/$database/subscribe');
@@ -135,7 +151,9 @@ void main() {
     });
 
     test('4. Non-existent database - HTTP 400 rejection', () async {
-      final uri = Uri.parse('ws://$host/v1/database/nonexistent_db_xyz/subscribe');
+      final uri = Uri.parse(
+        'ws://$host/v1/database/nonexistent_db_xyz/subscribe',
+      );
 
       final channel = IOWebSocketChannel.connect(
         uri,
@@ -202,9 +220,11 @@ void main() {
       expect(caughtError, isNotNull);
       // Should be either TimeoutException or SocketException
       expect(
-        caughtError is TimeoutException || caughtError.toString().contains('SocketException'),
+        caughtError is TimeoutException ||
+            caughtError.toString().contains('SocketException'),
         isTrue,
-        reason: 'Network failure should throw TimeoutException or SocketException',
+        reason:
+            'Network failure should throw TimeoutException or SocketException',
       );
       print('  ✅ Network failure correctly throws exception');
     });

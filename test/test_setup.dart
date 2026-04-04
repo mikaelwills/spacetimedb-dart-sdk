@@ -46,8 +46,16 @@ Future<void> _killExistingServer() async {
   }
 }
 
-Future<ProcessResult> _run(String executable, List<String> args, {String? workingDirectory}) async {
-  final result = await Process.run(executable, args, workingDirectory: workingDirectory);
+Future<ProcessResult> _run(
+  String executable,
+  List<String> args, {
+  String? workingDirectory,
+}) async {
+  final result = await Process.run(
+    executable,
+    args,
+    workingDirectory: workingDirectory,
+  );
   return result;
 }
 
@@ -77,7 +85,7 @@ Future<void> setupTestEnvironment() async {
       if (result.exitCode != 0) throw Exception('CLI check failed');
     } catch (e) {
       throw Exception(
-        'SpacetimeDB CLI not found. Install from https://spacetimedb.com/install'
+        'SpacetimeDB CLI not found. Install from https://spacetimedb.com/install',
       );
     }
 
@@ -85,11 +93,12 @@ Future<void> setupTestEnvironment() async {
     await _killExistingServer();
 
     print('Starting fresh in-memory SpacetimeDB server...');
-    Process.start(
-      'spacetime',
-      ['start', '--in-memory', '--listen-addr', '0.0.0.0:3000'],
-      mode: ProcessStartMode.detached,
-    );
+    Process.start('spacetime', [
+      'start',
+      '--in-memory',
+      '--listen-addr',
+      '0.0.0.0:3000',
+    ], mode: ProcessStartMode.detached);
 
     for (var i = 0; i < 15; i++) {
       await Future.delayed(const Duration(seconds: 1));
@@ -103,10 +112,11 @@ Future<void> setupTestEnvironment() async {
     }
 
     print('Logging into local server...');
-    final loginResult = await _run(
-      'spacetime',
-      ['login', '--server-issued-login', _testServerUrl],
-    );
+    final loginResult = await _run('spacetime', [
+      'login',
+      '--server-issued-login',
+      _testServerUrl,
+    ]);
     if (loginResult.exitCode != 0) {
       print('Warning: Login failed: ${loginResult.stderr}');
     }
@@ -117,20 +127,21 @@ Future<void> setupTestEnvironment() async {
     }
 
     print('Building test module...');
-    final buildResult = await _run(
-      'spacetime', ['build'],
-      workingDirectory: testModuleDir.path,
-    );
+    final buildResult = await _run('spacetime', [
+      'build',
+    ], workingDirectory: testModuleDir.path);
     if (buildResult.exitCode != 0) {
       throw Exception('Build failed: ${buildResult.stderr}');
     }
 
     print('Publishing test module to $_testServerUrl...');
-    final publishResult = await _run(
-      'spacetime',
-      ['publish', '-s', _testServerUrl, '-y', 'notesdb'],
-      workingDirectory: testModuleDir.path,
-    );
+    final publishResult = await _run('spacetime', [
+      'publish',
+      '-s',
+      _testServerUrl,
+      '-y',
+      'notesdb',
+    ], workingDirectory: testModuleDir.path);
     if (publishResult.exitCode != 0) {
       final stderr = publishResult.stderr.toString();
       if (!stderr.contains('wasm-opt')) {
@@ -142,10 +153,14 @@ Future<void> setupTestEnvironment() async {
     print('Published notesdb');
 
     print('Generating test code from local project...');
-    final generateResult = await _run(
-      'dart',
-      ['run', 'spacetimedb_dart_sdk:generate', '--project-path', 'spacetime_test_module', '--output', 'test/generated'],
-    );
+    final generateResult = await _run('dart', [
+      'run',
+      'spacetimedb_dart_sdk:generate',
+      '--project-path',
+      'spacetime_test_module',
+      '--output',
+      'test/generated',
+    ]);
     if (generateResult.exitCode != 0) {
       print('Generate stdout: ${generateResult.stdout}');
       print('Generate stderr: ${generateResult.stderr}');
@@ -156,8 +171,8 @@ Future<void> setupTestEnvironment() async {
     File(_markerPath).writeAsStringSync(DateTime.now().toIso8601String());
     print('Test environment ready\n');
   } finally {
-    lock?.unlockSync();
-    lock?.closeSync();
+    lock.unlockSync();
+    lock.closeSync();
   }
 }
 

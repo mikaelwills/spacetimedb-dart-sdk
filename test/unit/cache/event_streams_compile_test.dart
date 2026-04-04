@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'package:fixnum/fixnum.dart';
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 
@@ -42,7 +41,10 @@ void main() {
     });
 
     test('convenience filter streams exist', () {
-      expect(table.insertsFromReducers, isA<Stream<TableInsertEvent<String>>>());
+      expect(
+        table.insertsFromReducers,
+        isA<Stream<TableInsertEvent<String>>>(),
+      );
       expect(table.myInserts, isA<Stream<TableInsertEvent<String>>>());
       expect(table.eventsFromReducers, isA<Stream<TableEvent<String>>>());
       expect(table.myEvents, isA<Stream<TableEvent<String>>>());

@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-import 'package:fixnum/fixnum.dart';
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 
@@ -48,13 +47,15 @@ void main() {
       }
 
       // Should compile and run without errors
-      testEvent(ReducerEvent(
-        timestamp: Int64.ZERO,
-        status: Committed(),
-        callerIdentity: Uint8List(32),
-        reducerName: 'test',
-        reducerArgs: {},
-      ));
+      testEvent(
+        ReducerEvent(
+          timestamp: Int64.ZERO,
+          status: Committed(),
+          callerIdentity: Uint8List(32),
+          reducerName: 'test',
+          reducerArgs: {},
+        ),
+      );
       testEvent(SubscribeAppliedEvent());
       testEvent(UnknownTransactionEvent());
       testEvent(OptimisticEvent(requestId: 'test-123'));
@@ -74,7 +75,10 @@ void main() {
 
     test('OutOfEnergy has correct toString', () {
       final status = OutOfEnergy('Budget: 1000/500');
-      expect(status.toString(), equals('OutOfEnergy(budgetInfo: Budget: 1000/500)'));
+      expect(
+        status.toString(),
+        equals('OutOfEnergy(budgetInfo: Budget: 1000/500)'),
+      );
     });
 
     test('pattern matching works on UpdateStatus', () {
@@ -219,11 +223,7 @@ void main() {
     });
 
     test('TableUpdateEvent can be created', () {
-      final event = TableUpdateEvent<String>(
-        mockContext,
-        'old row',
-        'new row',
-      );
+      final event = TableUpdateEvent<String>(mockContext, 'old row', 'new row');
 
       expect(event.context, equals(mockContext));
       expect(event.oldRow, equals('old row'));
@@ -255,9 +255,7 @@ void main() {
 
       // Should compile and run without errors
       handleTableEvent(TableInsertEvent<String>(mockContext, 'test'));
-      handleTableEvent(
-        TableUpdateEvent<String>(mockContext, 'old', 'new'),
-      );
+      handleTableEvent(TableUpdateEvent<String>(mockContext, 'old', 'new'));
       handleTableEvent(TableDeleteEvent<String>(mockContext, 'test'));
     });
 

@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-import 'package:fixnum/fixnum.dart';
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 
@@ -113,10 +112,7 @@ void main() {
         reducerArgs: {'key': 'value'},
       );
 
-      final context = EventContext(
-        myConnectionId: null,
-        event: event,
-      );
+      final context = EventContext(myConnectionId: null, event: event);
 
       expect(context.event, isA<ReducerEvent>());
       final contextEvent = context.event;

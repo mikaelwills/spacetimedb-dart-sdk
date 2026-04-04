@@ -1,3 +1,4 @@
+// ignore_for_file: avoid_print
 typedef SdkLogCallback = void Function(String level, String message);
 
 class SdkLogger {
@@ -16,9 +17,12 @@ class SdkLogger {
     }
   }
 
-  static void i(String msg) => onLog != null ? onLog!('I', msg) : print('📘 [SDK] $msg');
-  static void w(String msg) => onLog != null ? onLog!('W', msg) : print('⚠️ [SDK] $msg');
-  static void e(String msg) => onLog != null ? onLog!('E', msg) : print('❌ [SDK] $msg');
+  static void i(String msg) =>
+      onLog != null ? onLog!('I', msg) : print('📘 [SDK] $msg');
+  static void w(String msg) =>
+      onLog != null ? onLog!('W', msg) : print('⚠️ [SDK] $msg');
+  static void e(String msg) =>
+      onLog != null ? onLog!('E', msg) : print('❌ [SDK] $msg');
 
   static String _getLocation() {
     for (final line in StackTrace.current.toString().split('\n')) {

@@ -4,12 +4,6 @@ import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
-import 'package:spacetimedb_dart_sdk/src/subscription/subscription_manager.dart';
-import 'package:spacetimedb_dart_sdk/src/offline/impl/json_file_storage.dart';
-import 'package:spacetimedb_dart_sdk/src/cache/table_cache.dart';
-import 'package:spacetimedb_dart_sdk/src/offline/pending_mutation.dart';
-import 'package:spacetimedb_dart_sdk/src/offline/optimistic_state_manager.dart';
-import 'package:spacetimedb_dart_sdk/src/offline/optimistic_change.dart';
 
 import '../generated/note.dart';
 import '../generated/note_status.dart';
@@ -34,12 +28,12 @@ void main() {
     });
 
     Note createNote(int id, String title) => Note(
-          id: id,
-          title: title,
-          content: 'Test content',
-          timestamp: Int64(DateTime.now().millisecondsSinceEpoch),
-          status: const NoteStatusDraft(),
-        );
+      id: id,
+      title: title,
+      content: 'Test content',
+      timestamp: Int64(DateTime.now().millisecondsSinceEpoch),
+      status: const NoteStatusDraft(),
+    );
 
     group('Persistence - Real File System', () {
       test('Table snapshot persists to real JSON file', () async {
@@ -70,7 +64,11 @@ void main() {
         await storage.enqueueMutation(mutation);
 
         final file = File('${tempDir.path}/pending_mutations.json');
-        expect(await file.exists(), isTrue, reason: 'Mutations file must exist');
+        expect(
+          await file.exists(),
+          isTrue,
+          reason: 'Mutations file must exist',
+        );
 
         final content = await file.readAsString();
         expect(content.contains('test-req-1'), isTrue);
@@ -117,14 +115,20 @@ void main() {
           host: 'localhost:9999',
           database: 'notesdb',
         );
-        final manager = SubscriptionManager(deadConnection, offlineStorage: storage);
+        final manager = SubscriptionManager(
+          deadConnection,
+          offlineStorage: storage,
+        );
         manager.cache.registerDecoder<Note>('note', NoteDecoder());
 
         await manager.syncPendingMutations();
 
         pending = await storage.getPendingMutations();
-        expect(pending.length, equals(1),
-            reason: 'Network error must PAUSE queue, not discard');
+        expect(
+          pending.length,
+          equals(1),
+          reason: 'Network error must PAUSE queue, not discard',
+        );
 
         await manager.dispose();
         await deadConnection.dispose();
@@ -148,7 +152,10 @@ void main() {
           host: 'localhost:9999',
           database: 'notesdb',
         );
-        final manager = SubscriptionManager(deadConnection, offlineStorage: storage);
+        final manager = SubscriptionManager(
+          deadConnection,
+          offlineStorage: storage,
+        );
         manager.cache.registerDecoder<Note>('note', NoteDecoder());
 
         await manager.loadFromOfflineCache();
@@ -183,15 +190,21 @@ void main() {
           host: 'localhost:9999',
           database: 'notesdb',
         );
-        final manager = SubscriptionManager(deadConnection, offlineStorage: storage);
+        final manager = SubscriptionManager(
+          deadConnection,
+          offlineStorage: storage,
+        );
         manager.cache.registerDecoder<Note>('note', NoteDecoder());
 
         await manager.loadFromOfflineCache();
 
         final table = manager.cache.getTableByName('note')! as TableCache<Note>;
         expect(table.find(1), isNotNull, reason: 'Existing note loaded');
-        expect(table.find(99), isNotNull,
-            reason: 'Optimistic insert must be applied from pending mutation');
+        expect(
+          table.find(99),
+          isNotNull,
+          reason: 'Optimistic insert must be applied from pending mutation',
+        );
         expect(table.find(99)?.title, equals('Optimistic'));
 
         await manager.dispose();
@@ -205,7 +218,10 @@ void main() {
           host: 'localhost:9999',
           database: 'notesdb',
         );
-        final manager = SubscriptionManager(deadConnection, offlineStorage: storage);
+        final manager = SubscriptionManager(
+          deadConnection,
+          offlineStorage: storage,
+        );
         manager.cache.registerDecoder<Note>('note', NoteDecoder());
         manager.cache.activateEmptyTable('note');
 
@@ -218,15 +234,17 @@ void main() {
         final sub2 = table.deleteStream.listen(deleteEvents.add);
 
         final note = createNote(1, 'Stream Test');
-        optimistic.applyOptimisticChanges(
-            'req-1', [OptimisticChange.insert('note', note.toJson())]);
+        optimistic.applyOptimisticChanges('req-1', [
+          OptimisticChange.insert('note', note.toJson()),
+        ]);
 
         await Future.delayed(const Duration(milliseconds: 10));
         expect(insertEvents.length, equals(1));
         expect(insertEvents.first.title, equals('Stream Test'));
 
-        optimistic.applyOptimisticChanges(
-            'req-2', [OptimisticChange.delete('note', note.toJson())]);
+        optimistic.applyOptimisticChanges('req-2', [
+          OptimisticChange.delete('note', note.toJson()),
+        ]);
 
         await Future.delayed(const Duration(milliseconds: 10));
         expect(deleteEvents.length, equals(1));
@@ -241,20 +259,20 @@ void main() {
     group('Sync Error Handling - Full Integration', () {
       test('Full Loop: Server Logic Rejection triggers Rollback', () async {
         final failingConnection = FailingMockConnection();
-        final manager =
-            SubscriptionManager(failingConnection, offlineStorage: storage);
+        final manager = SubscriptionManager(
+          failingConnection,
+          offlineStorage: storage,
+        );
         manager.cache.registerDecoder<Note>('note', NoteDecoder());
 
-        final noteId = 999;
+        const noteId = 999;
         final note = createNote(noteId, 'Bad Note');
         final mutation = PendingMutation(
           requestId: 'fail-req-1',
           reducerName: 'create_note',
           encodedArgs: Uint8List(0),
           createdAt: DateTime.now(),
-          optimisticChanges: [
-            OptimisticChange.insert('note', note.toJson()),
-          ],
+          optimisticChanges: [OptimisticChange.insert('note', note.toJson())],
         );
 
         await storage.enqueueMutation(mutation);
@@ -265,71 +283,93 @@ void main() {
 
         final table = manager.cache.getTableByName('note')! as TableCache<Note>;
 
-        expect(table.find(noteId), isNotNull,
-            reason: 'Optimistic row should exist before sync');
+        expect(
+          table.find(noteId),
+          isNotNull,
+          reason: 'Optimistic row should exist before sync',
+        );
 
         await manager.syncPendingMutations();
 
-        expect(table.find(noteId), isNull,
-            reason:
-                'CRITICAL: SubscriptionManager must automate the rollback on failure');
+        expect(
+          table.find(noteId),
+          isNull,
+          reason:
+              'CRITICAL: SubscriptionManager must automate the rollback on failure',
+        );
 
         final pending = await storage.getPendingMutations();
-        expect(pending.isEmpty, isTrue,
-            reason: 'Logic error should discard mutation from disk');
+        expect(
+          pending.isEmpty,
+          isTrue,
+          reason: 'Logic error should discard mutation from disk',
+        );
 
         await manager.dispose();
         await failingConnection.dispose();
       });
 
-      test('Offline-first: Optimistic changes survive network issues', () async {
-        final silentConnection = SilentMockConnection();
-        final manager =
-            SubscriptionManager(silentConnection, offlineStorage: storage);
-        manager.cache.registerDecoder<Note>('note', NoteDecoder());
-        manager.cache.activateEmptyTable('note');
+      test(
+        'Offline-first: Optimistic changes survive network issues',
+        () async {
+          final silentConnection = SilentMockConnection();
+          final manager = SubscriptionManager(
+            silentConnection,
+            offlineStorage: storage,
+          );
+          manager.cache.registerDecoder<Note>('note', NoteDecoder());
+          manager.cache.activateEmptyTable('note');
 
-        await silentConnection.connect();
-        silentConnection.setStatusSilently(ConnectionStatus.connected);
+          await silentConnection.connect();
+          silentConnection.setStatusSilently(ConnectionStatus.connected);
 
-        final noteId = 888;
-        final note = createNote(noteId, 'Timeout Note');
-        final table = manager.cache.getTableByName('note')! as TableCache<Note>;
+          const noteId = 888;
+          final note = createNote(noteId, 'Timeout Note');
+          final table =
+              manager.cache.getTableByName('note')! as TableCache<Note>;
 
-        final result = await manager.reducers.callWith(
-          'create_note',
-          (enc) => enc.writeU32(noteId),
-          optimisticChanges: [OptimisticChange.insert('note', note.toJson())],
-        );
+          final result = await manager.reducers.callWith(
+            'create_note',
+            (enc) => enc.writeU32(noteId),
+            optimisticChanges: [OptimisticChange.insert('note', note.toJson())],
+          );
 
-        expect(result.isPending, isTrue,
-            reason: 'Offline-first always returns pending immediately');
+          expect(
+            result.isPending,
+            isTrue,
+            reason: 'Offline-first always returns pending immediately',
+          );
 
-        expect(table.find(noteId), isNotNull,
-            reason: 'Optimistic insert should be applied immediately');
+          expect(
+            table.find(noteId),
+            isNotNull,
+            reason: 'Optimistic insert should be applied immediately',
+          );
 
-        await Future.delayed(const Duration(milliseconds: 100));
+          await Future.delayed(const Duration(milliseconds: 100));
 
-        expect(table.find(noteId), isNotNull,
-            reason: 'CRITICAL: Optimistic changes must survive network delays');
+          expect(
+            table.find(noteId),
+            isNotNull,
+            reason: 'CRITICAL: Optimistic changes must survive network delays',
+          );
 
-        final pending = await storage.getPendingMutations();
-        expect(pending.length, equals(1),
-            reason: 'Mutation should be queued for later sync');
+          final pending = await storage.getPendingMutations();
+          expect(
+            pending.length,
+            equals(1),
+            reason: 'Mutation should be queued for later sync',
+          );
 
-        await manager.dispose();
-        await silentConnection.dispose();
-      });
+          await manager.dispose();
+          await silentConnection.dispose();
+        },
+      );
     });
   });
 }
 
-class SilentMockConnection extends MockConnection {
-  @override
-  void send(Uint8List data) {
-    super.send(data);
-  }
-}
+class SilentMockConnection extends MockConnection {}
 
 class FailingMockConnection extends MockConnection {
   @override
@@ -371,7 +411,9 @@ class FailingMockConnection extends MockConnection {
     encoder.writeU8(1);
     encoder.writeU8(1);
     encoder.writeString(errorMessage);
-    encoder.writeU64(Int64(DateTime.now().microsecondsSinceEpoch) * Int64(1000));
+    encoder.writeU64(
+      Int64(DateTime.now().microsecondsSinceEpoch) * Int64(1000),
+    );
     encoder.writeBytes(Uint8List(32));
     encoder.writeBytes(Uint8List(16));
     encoder.writeString('create_note');

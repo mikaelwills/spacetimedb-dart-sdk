@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'package:fixnum/fixnum.dart';
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 
@@ -73,10 +72,7 @@ void main() {
       final stream = emitter.on('test_reducer');
 
       // Use expectLater to verify stream emits twice
-      final expectation = expectLater(
-        stream,
-        emitsInOrder([context, context]),
-      );
+      final expectation = expectLater(stream, emitsInOrder([context, context]));
 
       emitter.emit('test_reducer', context);
       emitter.emit('test_reducer', context);
@@ -135,7 +131,10 @@ void main() {
       final sub3 = emitter.on('reducer3').listen((_) {});
 
       expect(emitter.activeReducers.length, equals(3));
-      expect(emitter.activeReducers, containsAll(['reducer1', 'reducer2', 'reducer3']));
+      expect(
+        emitter.activeReducers,
+        containsAll(['reducer1', 'reducer2', 'reducer3']),
+      );
 
       sub1.cancel();
       sub2.cancel();
@@ -295,7 +294,7 @@ void main() {
       emitter.emit(
         'test_reducer',
         EventContext(
-        myConnectionId: null,
+          myConnectionId: null,
           event: ReducerEvent(
             timestamp: Int64(123),
             status: Committed(),
@@ -310,7 +309,7 @@ void main() {
       emitter.emit(
         'test_reducer',
         EventContext(
-        myConnectionId: null,
+          myConnectionId: null,
           event: ReducerEvent(
             timestamp: Int64(456),
             status: Failed('error'),
@@ -344,7 +343,10 @@ void main() {
         final event = ctx.event as ReducerEvent;
 
         if (event.callerConnectionId != null) {
-          final isMyTransaction = _bytesEqual(event.callerConnectionId, myConnectionId);
+          final isMyTransaction = _bytesEqual(
+            event.callerConnectionId,
+            myConnectionId,
+          );
           if (isMyTransaction) {
             if (!myTransactionCompleter.isCompleted) {
               myTransactionCompleter.complete();
@@ -361,7 +363,7 @@ void main() {
       emitter.emit(
         'test_reducer',
         EventContext(
-        myConnectionId: null,
+          myConnectionId: null,
           event: ReducerEvent(
             timestamp: Int64(123),
             status: Committed(),
@@ -377,7 +379,7 @@ void main() {
       emitter.emit(
         'test_reducer',
         EventContext(
-        myConnectionId: null,
+          myConnectionId: null,
           event: ReducerEvent(
             timestamp: Int64(456),
             status: Committed(),
