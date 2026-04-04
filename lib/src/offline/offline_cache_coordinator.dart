@@ -34,7 +34,6 @@ class OfflineCacheCoordinator {
       await ensureInitialized();
 
       for (final tableName in _cache.registeredTableNames) {
-        _cache.activateEmptyTable(tableName);
         if (_cache.isEventTable(tableName)) continue;
         final rows = await _storage.loadTableSnapshot(tableName);
         if (rows != null && rows.isNotEmpty) {

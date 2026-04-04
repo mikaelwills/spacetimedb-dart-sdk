@@ -36,7 +36,6 @@ class SubscriptionManager {
   String? _address;
   Uint8List? _connectionId;
 
-  List<String> _pendingTableNames = [];
   final Set<String> _activeSubscriptionQueries = {};
 
   late final OptimisticStateManager _optimisticState;
@@ -263,9 +262,6 @@ class SubscriptionManager {
     );
 
     if (_activeSubscriptionQueries.isNotEmpty) {
-      _pendingTableNames = _extractTableNames(
-        _activeSubscriptionQueries.toList(),
-      );
       final resubscribe = SubscribeMessage(_activeSubscriptionQueries.toList());
       _connection.send(resubscribe.encode());
     }
@@ -280,24 +276,6 @@ class SubscriptionManager {
       'Handling InitialSubscription with ${message.tableUpdates.length} table updates',
     );
 
-    for (final tableUpdate in message.tableUpdates) {
-      SdkLogger.i(
-        '  Linking table "${tableUpdate.tableName}" to ID ${tableUpdate.tableId}',
-      );
-      cache.linkTableId(tableUpdate.tableId, tableUpdate.tableName);
-    }
-
-    final activatedTableNames =
-        message.tableUpdates.map((t) => t.tableName).toSet();
-    for (final tableName in _pendingTableNames) {
-      if (!activatedTableNames.contains(tableName)) {
-        if (cache.activateEmptyTable(tableName)) {
-          SdkLogger.i('  Activating empty table "$tableName"');
-        }
-      }
-    }
-    _pendingTableNames = [];
-
     final event = SubscribeAppliedEvent();
     final context = EventContext(myConnectionId: _connectionId, event: event);
 
@@ -310,11 +288,11 @@ class SubscriptionManager {
     }
 
     for (final tableUpdate in message.tableUpdates) {
-      if (!cache.hasTable(tableUpdate.tableId)) continue;
+      final table = cache.getTableByName(tableUpdate.tableName);
+      if (table == null) continue;
 
-      final table = cache.getTable(tableUpdate.tableId);
       SdkLogger.i(
-        '  Table ${tableUpdate.tableId} ("${tableUpdate.tableName}"): ${tableUpdate.updates.length} updates',
+        '  Table "${tableUpdate.tableName}": ${tableUpdate.updates.length} updates',
       );
 
       _optimisticState.clearNonOptimisticRows(tableUpdate.tableName);
@@ -344,10 +322,7 @@ class SubscriptionManager {
         event: UnknownTransactionEvent(),
       );
       for (final tableUpdate in message.tableUpdates) {
-        final table = cache.linkTableId(
-          tableUpdate.tableId,
-          tableUpdate.tableName,
-        );
+        final table = cache.getTableByName(tableUpdate.tableName);
         if (table == null) continue;
         for (final update in tableUpdate.updates) {
           table.applyTransactionUpdate(
@@ -436,10 +411,7 @@ class SubscriptionManager {
 
     final touchedKeysByTable = <String, Set<dynamic>>{};
     for (final tableUpdate in message.tableUpdates) {
-      final table = cache.linkTableId(
-        tableUpdate.tableId,
-        tableUpdate.tableName,
-      );
+      final table = cache.getTableByName(tableUpdate.tableName);
       if (table == null) continue;
 
       final touchedKeys = <dynamic>{};
@@ -482,10 +454,7 @@ class SubscriptionManager {
         event: UnknownTransactionEvent(),
       );
       for (final tableUpdate in message.tableUpdates) {
-        final table = cache.linkTableId(
-          tableUpdate.tableId,
-          tableUpdate.tableName,
-        );
+        final table = cache.getTableByName(tableUpdate.tableName);
         if (table == null) continue;
         for (final update in tableUpdate.updates) {
           table.applyTransactionUpdate(
@@ -530,10 +499,7 @@ class SubscriptionManager {
 
     final touchedKeysByTable = <String, Set<dynamic>>{};
     for (final tableUpdate in message.tableUpdates) {
-      final table = cache.linkTableId(
-        tableUpdate.tableId,
-        tableUpdate.tableName,
-      );
+      final table = cache.getTableByName(tableUpdate.tableName);
       if (table == null) continue;
 
       final touchedKeys = <dynamic>{};
@@ -565,28 +531,11 @@ class SubscriptionManager {
 
   Future<void> subscribe(List<String> queries) async {
     _activeSubscriptionQueries.addAll(queries);
-    _pendingTableNames = _extractTableNames(queries);
 
     final message = SubscribeMessage(queries);
     _connection.send(message.encode());
 
     await onInitialSubscription.first;
-  }
-
-  List<String> _extractTableNames(List<String> queries) {
-    final tableNames = <String>[];
-    final regex = RegExp(
-      r'FROM\s+([a-zA-Z_][a-zA-Z0-9_]*)',
-      caseSensitive: false,
-    );
-
-    for (final query in queries) {
-      final match = regex.firstMatch(query);
-      if (match != null) {
-        tableNames.add(match.group(1)!);
-      }
-    }
-    return tableNames;
   }
 
   void subscribeSingle(String query, {int requestId = 0, int queryId = 0}) {

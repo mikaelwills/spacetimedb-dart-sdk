@@ -23,7 +23,6 @@ void main() async {
   final subscriptionManager = SubscriptionManager(connection);
 
   subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
-  subscriptionManager.cache.activateTable(4096, 'note');
 
   // Get table by name (type-safe)
   final noteTable = subscriptionManager.cache.getTableByTypedName<Note>('note');

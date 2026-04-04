@@ -51,22 +51,14 @@ class OptimisticStateManager {
     final entries = <OptimisticEntry>[];
 
     for (final change in changes) {
-      var table = _cache.getTableByName(change.tableName);
+      final table = _cache.getTableByName(change.tableName);
       if (table == null) {
-        if (_cache.hasBuilder(change.tableName)) {
-          _cache.activateEmptyTable(change.tableName);
-          table = _cache.getTableByName(change.tableName);
-          SdkLogger.d(
-            'Auto-activated table "${change.tableName}" for optimistic change',
-          );
-        } else {
-          SdkLogger.w(
-            'Table "${change.tableName}" not found and no builder registered',
-          );
-          continue;
-        }
+        SdkLogger.w(
+          'Table "${change.tableName}" not found and no decoder registered',
+        );
+        continue;
       }
-      if (table == null || !table.decoder.supportsJsonSerialization) continue;
+      if (!table.decoder.supportsJsonSerialization) continue;
 
       switch (change.type) {
         case OptimisticChangeType.insert:

@@ -56,7 +56,6 @@ void main() {
     setUp(() {
       clientCache = ClientCache();
       clientCache.registerDecoder<Note>('note', NoteDecoder());
-      clientCache.activateEmptyTable('note');
       cache = clientCache.getTableByTypedName<Note>('note');
       optimistic = OptimisticStateManager(clientCache);
       dummyContext = EventContext.optimistic(requestId: 'dummy');

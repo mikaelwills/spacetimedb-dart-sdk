@@ -18,7 +18,6 @@ void main() {
 
     setUp(() {
       table = TableCache<String>(
-        tableId: 1,
         tableName: 'test',
         decoder: MockDecoder(),
       );
