@@ -40,7 +40,6 @@ spacetime_test_module/target/
 
 # Generated code (users generate their own)
 lib/generated/
-test/generated/
 
 .CLAUDE.md
 .claude/settings.local.json
