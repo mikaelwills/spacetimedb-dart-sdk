@@ -390,7 +390,8 @@ void main() {
         expect(
           instanceAfter,
           equals(instanceBefore),
-          reason: 'Table instance should be preserved after first server snapshot',
+          reason:
+              'Table instance should be preserved after first server snapshot',
         );
 
         final createCompleter = Completer<void>();
@@ -1283,8 +1284,7 @@ void main() {
           ],
         );
 
-        final noteTable =
-            subManager.cache.getTableByTypedName<Note>('note');
+        final noteTable = subManager.cache.getTableByTypedName<Note>('note');
         expect(
           noteTable.getRow(noteId),
           isNotNull,

@@ -17,10 +17,7 @@ void main() {
     late TableCache<String> table;
 
     setUp(() {
-      table = TableCache<String>(
-        tableName: 'test',
-        decoder: MockDecoder(),
-      );
+      table = TableCache<String>(tableName: 'test', decoder: MockDecoder());
     });
 
     test('event stream getters exist and have correct types', () {
