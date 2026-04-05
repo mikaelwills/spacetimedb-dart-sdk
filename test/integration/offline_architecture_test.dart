@@ -242,44 +242,28 @@ void main() {
 
         noteTable = subManager.cache.getTableByTypedName<Note>('note');
 
-        final createCompleter = Completer<void>();
-        final createSub = subManager.reducerEmitter.on('create_note').listen((
-          _,
-        ) {
-          if (!createCompleter.isCompleted) {
-            createCompleter.complete();
-          }
-        });
-
         final testTitle = 'DeleteTest-${DateTime.now().microsecondsSinceEpoch}';
+        final insertFuture = noteTable.insertStream
+            .firstWhere((n) => n.title == testTitle)
+            .timeout(_timeout);
+
         await subManager.reducers.callWith('create_note', (encoder) {
           encoder.writeString(testTitle);
           encoder.writeString('Content to delete');
         });
 
-        await createCompleter.future.timeout(_timeout);
-        await createSub.cancel();
-
-        final noteToDelete = noteTable.iter().firstWhere(
-          (n) => n.title == testTitle,
-        );
+        final noteToDelete = await insertFuture;
         final noteId = noteToDelete.id;
 
-        final deleteCompleter = Completer<void>();
-        final deleteSub = subManager.reducerEmitter.on('delete_note').listen((
-          _,
-        ) {
-          if (!deleteCompleter.isCompleted) {
-            deleteCompleter.complete();
-          }
-        });
+        final deleteFuture = noteTable.deleteStream
+            .firstWhere((n) => n.id == noteId)
+            .timeout(_timeout);
 
         await subManager.reducers.callWith('delete_note', (encoder) {
           encoder.writeU32(noteId);
         });
 
-        await deleteCompleter.future.timeout(_timeout);
-        await deleteSub.cancel();
+        await deleteFuture;
 
         expect(
           noteTable.getRow(noteId),
