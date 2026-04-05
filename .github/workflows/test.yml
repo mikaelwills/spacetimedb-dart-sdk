@@ -7,9 +7,14 @@ on:
     branches: [ main, master ]
 
 env:
-  # Pin SpacetimeDB CLI version deliberately. Upgrade is a conscious act.
-  # Verified against local `spacetime --version` on 2026-04-05.
-  SPACETIMEDB_VERSION: '2.0.5'
+  # SpacetimeDB CLI version we expect the install script to produce. The
+  # upstream install script always resolves to latest, so this is a label
+  # that the "Assert CLI version" step enforces as a dead-man switch: if
+  # upstream ships a new release and CI gets a cache miss, the version
+  # assertion fails loudly and we upgrade this env var deliberately (and
+  # verify nothing broke) rather than silently tracking latest. Update this
+  # in lockstep when `spacetime version upgrade` happens locally.
+  SPACETIMEDB_VERSION: '2.1.0'
 
 jobs:
   analyze:
@@ -79,37 +84,42 @@ jobs:
         with:
           workspaces: spacetime_test_module
 
-      - name: Cache SpacetimeDB CLI binaries
+      - name: Cache SpacetimeDB CLI install
         id: cache-spacetime
         uses: actions/cache@v4
         with:
-          path: ~/.local/bin
+          path: |
+            ~/.local/bin/spacetime
+            ~/.local/share/spacetime
           key: spacetimedb-${{ runner.os }}-${{ env.SPACETIMEDB_VERSION }}
 
-      - name: Install SpacetimeDB CLI (direct tarball for true version pin)
+      - name: Install SpacetimeDB CLI
         if: steps.cache-spacetime.outputs.cache-hit != 'true'
-        # The upstream install script (`install.spacetimedb.com`) always
-        # resolves to the latest release regardless of SPACETIME_DOWNLOAD_ROOT,
-        # so we bypass it and download the versioned tarball directly from the
-        # GitHub release asset. Tarball contains two binaries at root:
-        # `spacetimedb-cli` (the `spacetime` command) and `spacetimedb-standalone`.
-        run: |
-          set -euo pipefail
-          mkdir -p "$HOME/.local/bin"
-          url="https://github.com/clockworklabs/SpacetimeDB/releases/download/v${SPACETIMEDB_VERSION}/spacetime-x86_64-unknown-linux-gnu.tar.gz"
-          curl --proto '=https' --tlsv1.2 -sSfL "$url" | tar -xz -C "$HOME/.local/bin"
-          # The `spacetime` command is `spacetimedb-cli`; create a symlink so
-          # the test harness's `spacetime ...` invocations resolve.
-          ln -sf "$HOME/.local/bin/spacetimedb-cli" "$HOME/.local/bin/spacetime"
-          chmod +x "$HOME/.local/bin/spacetimedb-cli" "$HOME/.local/bin/spacetimedb-standalone"
+        # Use the upstream install script (supported path that sets up the
+        # CLI's version-dispatch layout). `-y` skips the interactive confirm.
+        run: curl --proto '=https' --tlsv1.2 -sSf https://install.spacetimedb.com | sh -s -- -y
 
       - name: Add SpacetimeDB to PATH
         run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Verify SpacetimeDB install (diagnostic)
+      - name: Assert CLI version matches pin (dead-man switch)
+        # The install script always installs whatever is currently `latest`,
+        # so this step enforces that the installed version matches our pin.
+        # If upstream ships a new release and this step fails, bump
+        # SPACETIMEDB_VERSION above after verifying the new version doesn't
+        # break anything locally.
         run: |
-          ls -la "$HOME/.local/bin/"
-          spacetime --version
+          set -euo pipefail
+          installed="$(spacetime --version | grep -oE 'tool version [0-9]+\.[0-9]+\.[0-9]+' | awk '{print $3}')"
+          echo "Installed: $installed"
+          echo "Expected:  $SPACETIMEDB_VERSION"
+          if [ "$installed" != "$SPACETIMEDB_VERSION" ]; then
+            echo "ERROR: SpacetimeDB CLI version drift detected." >&2
+            echo "Upstream has published a new release. Bump SPACETIMEDB_VERSION" >&2
+            echo "in .github/workflows/test.yml after verifying the new version" >&2
+            echo "does not break the test suite locally." >&2
+            exit 1
+          fi
 
       - uses: subosito/flutter-action@v2
         with:
