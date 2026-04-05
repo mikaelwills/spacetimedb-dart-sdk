@@ -14,6 +14,7 @@ const _timeout = Duration(seconds: 10);
 
 void main() {
   setUpAll(ensureTestEnvironment);
+  tearDownAll(cleanupTestEnvironment);
 
   group('Phase 1: Zombie Slayer Tests', () {
     late Directory tempDir;

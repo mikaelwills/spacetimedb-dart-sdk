@@ -12,6 +12,7 @@ import '../helpers/integration_test_helper.dart';
 
 void main() {
   setUpAll(ensureTestEnvironment);
+  tearDownAll(cleanupTestEnvironment);
 
   Future<({SpacetimeDbConnection connection, SubscriptionManager subManager})>
   connectAndRegister() async {

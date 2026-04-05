@@ -12,6 +12,7 @@ const _timeout = Duration(seconds: 10);
 
 void main() {
   setUpAll(ensureTestEnvironment);
+  tearDownAll(cleanupTestEnvironment);
 
   group('Offline Storage Integration Tests', () {
     late Directory tempDir;

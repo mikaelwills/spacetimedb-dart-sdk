@@ -11,6 +11,7 @@ import '../helpers/integration_test_helper.dart';
 
 void main() {
   setUpAll(ensureTestEnvironment);
+  tearDownAll(cleanupTestEnvironment);
 
   test(
     'Multi-delete in single transaction emits multiple delete events',

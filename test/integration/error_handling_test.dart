@@ -10,6 +10,7 @@ import '../helpers/integration_test_helper.dart';
 
 void main() {
   setUpAll(ensureTestEnvironment);
+  tearDownAll(cleanupTestEnvironment);
   late SpacetimeDbConnection connection;
   late SubscriptionManager subManager;
 

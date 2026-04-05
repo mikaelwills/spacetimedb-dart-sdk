@@ -26,6 +26,7 @@ void main() {
 
   // Ensure test environment is set up before running any tests
   setUpAll(ensureTestEnvironment);
+  tearDownAll(cleanupTestEnvironment);
 
   setUp(() async {
     connection = SpacetimeDbConnection(

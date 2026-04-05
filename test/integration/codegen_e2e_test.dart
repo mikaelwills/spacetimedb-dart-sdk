@@ -6,8 +6,12 @@ import 'package:spacetimedb_dart_sdk/src/codegen/dart_generator.dart';
 import 'package:path/path.dart' as path;
 
 import '../test_helpers.dart';
+import '../helpers/integration_test_helper.dart';
 
 void main() {
+  setUpAll(ensureTestEnvironment);
+  tearDownAll(cleanupTestEnvironment);
+
   group('Codegen E2E', () {
     late Directory tempDir;
     late String sdkPath;

@@ -4,6 +4,13 @@
 # Global timeout for all tests
 timeout: 30s
 
+# Run test files sequentially. Integration tests spin up a shared SpacetimeDB
+# server in setUpAll and tear it down in tearDownAll, so parallel file
+# execution would have one file killing the server out from under another
+# file that is still running against it. Keep this at 1 unless you've made
+# the per-file setup parallel-safe.
+concurrency: 1
+
 # Paths
 paths:
   - test/

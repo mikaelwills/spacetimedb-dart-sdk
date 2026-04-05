@@ -2,9 +2,13 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
+import '../helpers/integration_test_helper.dart';
 
 /// Integration tests for SpacetimeDB connection against REAL server
 void main() {
+  setUpAll(ensureTestEnvironment);
+  tearDownAll(cleanupTestEnvironment);
+
   const testHost = 'localhost:3000';
   const testDatabase = 'notesdb';
 

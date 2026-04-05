@@ -11,6 +11,7 @@ import '../helpers/integration_test_helper.dart';
 
 void main() {
   setUpAll(ensureTestEnvironment);
+  tearDownAll(cleanupTestEnvironment);
   // Increase timeout for integration tests involving network
   test(
     'CRUD operations (Create, Read, Update, Delete)',

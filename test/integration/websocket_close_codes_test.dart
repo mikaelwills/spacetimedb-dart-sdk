@@ -1,9 +1,9 @@
 // ignore_for_file: avoid_print
 import 'dart:async';
-import 'dart:io';
 import 'package:test/test.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import '../helpers/integration_test_helper.dart';
 
 /// WebSocket Close Codes Investigation for SpacetimeDB
 ///
@@ -39,20 +39,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 /// Run with: dart test test/integration/websocket_close_codes_test.dart
 
 void main() {
-  // Ensure SpacetimeDB is running before tests
-  setUpAll(() async {
-    try {
-      final socket = await Socket.connect(
-        'localhost',
-        3000,
-        timeout: const Duration(seconds: 2),
-      );
-      socket.destroy();
-      print('✅ SpacetimeDB is running on localhost:3000');
-    } catch (e) {
-      fail('SpacetimeDB is not running. Start with: spacetime start');
-    }
-  });
+  setUpAll(ensureTestEnvironment);
+  tearDownAll(cleanupTestEnvironment);
 
   const host = 'localhost:3000';
   const database = 'notesdb';

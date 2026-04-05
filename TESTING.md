@@ -66,9 +66,14 @@ dart test -r expanded
 
 ## Clean Up
 
+Tests now tear down the SpacetimeDB server and delete `notesdb` automatically at
+the end of each test file via `tearDownAll(cleanupTestEnvironment)`. No manual
+cleanup is normally required. If a run is killed mid-execution and leaves a
+stale server on port 3000:
+
 ```bash
 spacetime delete notesdb -y
-rm .test_setup_done
+pkill -f 'spacetimedb-standalone.*3000'
 ```
 
 ## Test Module

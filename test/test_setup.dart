@@ -3,7 +3,6 @@ import 'dart:io';
 
 const _testServerHost = 'localhost:3000';
 const _testServerUrl = 'http://$_testServerHost';
-const _markerPath = '.test_setup_done';
 const _lockPath = '.test_setup_lock';
 
 Future<bool> _isServerReachable() async {
@@ -17,26 +16,6 @@ Future<bool> _isServerReachable() async {
   } catch (e) {
     return false;
   }
-}
-
-bool _isMarkerFresh() {
-  final marker = File(_markerPath);
-  if (!marker.existsSync()) return false;
-  try {
-    final timestamp = marker.readAsStringSync();
-    final setupTime = DateTime.parse(timestamp);
-    return DateTime.now().difference(setupTime).inMinutes < 5;
-  } catch (_) {
-    return false;
-  }
-}
-
-Future<void> _waitForSetup() async {
-  for (var i = 0; i < 120; i++) {
-    await Future.delayed(const Duration(seconds: 1));
-    if (_isMarkerFresh()) return;
-  }
-  throw Exception('Timed out waiting for test environment setup');
 }
 
 Future<void> _killExistingServer() async {
@@ -60,26 +39,11 @@ Future<ProcessResult> _run(
 }
 
 Future<void> setupTestEnvironment() async {
-  if (_isMarkerFresh() && await _isServerReachable()) {
-    return;
-  }
-
   final lockFile = File(_lockPath);
-  RandomAccessFile? lock;
-  try {
-    lock = lockFile.openSync(mode: FileMode.write);
-    lock.lockSync(FileLock.exclusive);
-  } catch (_) {
-    print('Another process is setting up test environment, waiting...');
-    await _waitForSetup();
-    return;
-  }
+  final lock = lockFile.openSync(mode: FileMode.write);
+  lock.lockSync(FileLock.exclusive);
 
   try {
-    if (_isMarkerFresh() && await _isServerReachable()) {
-      return;
-    }
-
     try {
       final result = await _run('spacetime', ['version', 'list']);
       if (result.exitCode != 0) throw Exception('CLI check failed');
@@ -168,7 +132,6 @@ Future<void> setupTestEnvironment() async {
     }
     print('Generated test code in test/generated/');
 
-    File(_markerPath).writeAsStringSync(DateTime.now().toIso8601String());
     print('Test environment ready\n');
   } finally {
     lock.unlockSync();
@@ -182,9 +145,6 @@ Future<void> teardownTestEnvironment() async {
   await _run('spacetime', ['delete', 'notesdb', '-s', _testServerUrl, '--yes']);
   await _killExistingServer();
 
-  try {
-    File(_markerPath).deleteSync();
-  } catch (_) {}
   try {
     File(_lockPath).deleteSync();
   } catch (_) {}
