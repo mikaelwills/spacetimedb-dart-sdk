@@ -34,7 +34,6 @@ void main() {
     setUp(() {
       clientCache = ClientCache();
       clientCache.registerDecoder<Note>('note', NoteDecoder());
-      clientCache.activateEmptyTable('note');
       table = clientCache.getTableByTypedName<Note>('note');
       manager = OptimisticStateManager(clientCache);
     });

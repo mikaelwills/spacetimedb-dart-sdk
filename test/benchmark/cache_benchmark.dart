@@ -15,14 +15,13 @@ void main() async {
   final subscriptionManager = SubscriptionManager(connection);
 
   subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
-  subscriptionManager.cache.activateTable(4096, 'note');
 
   print('📡 Connecting...');
   await connection.connect();
   subscriptionManager.subscribe(['SELECT * FROM note']);
   await Future.delayed(const Duration(milliseconds: 500));
 
-  final cache = subscriptionManager.cache.getTable<Note>(4096);
+  final cache = subscriptionManager.cache.getTableByTypedName<Note>('note');
   print('✅ Loaded ${cache.count()} notes\n');
 
   // BENCHMARK 1: Cache queries (in-memory)

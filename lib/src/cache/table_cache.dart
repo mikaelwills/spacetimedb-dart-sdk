@@ -20,7 +20,7 @@ import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
 ///
 /// Example:
 /// ```dart
-/// final noteTable = subscriptionManager.cache.getTable<Note>(4096);
+/// final noteTable = subscriptionManager.cache.getTableByTypedName<Note>('note');
 ///
 /// // Listen to changes
 /// noteTable.insertStream.listen((note) {
@@ -44,7 +44,6 @@ import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
 /// }
 /// ```
 class TableCache<T> {
-  final int tableId;
   final String tableName;
   final RowDecoder<T> decoder;
   final bool isEvent;
@@ -71,7 +70,6 @@ class TableCache<T> {
       StreamController<TableEvent<T>>.broadcast();
 
   TableCache({
-    required this.tableId,
     required this.tableName,
     required this.decoder,
     this.isEvent = false,

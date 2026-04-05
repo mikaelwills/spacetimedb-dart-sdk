@@ -336,7 +336,7 @@ void main() {
     }
 
     test(
-      'Table Instance Preservation: listeners survive linkTableId',
+      'Table Instance Preservation: listeners survive first server snapshot',
       () async {
         tempDir = await Directory.systemTemp.createTemp('listener_test_');
         storage = JsonFileStorage(basePath: tempDir.path);
@@ -390,7 +390,7 @@ void main() {
         expect(
           instanceAfter,
           equals(instanceBefore),
-          reason: 'Table instance should be preserved after linkTableId',
+          reason: 'Table instance should be preserved after first server snapshot',
         );
 
         final createCompleter = Completer<void>();
@@ -417,7 +417,7 @@ void main() {
           receivedEvents,
           isNotEmpty,
           reason:
-              'Listener on old instance should still receive events after linkTableId',
+              'Listener on pre-connect instance should still receive events after first server snapshot',
         );
       },
       timeout: const Timeout(Duration(seconds: 30)),
@@ -1249,15 +1249,21 @@ void main() {
     }
 
     test(
-      'Auto-activate: Offline creation works with empty/cleared cache',
+      'Offline creation works before first server connection',
       () async {
         await setup();
         addTearDown(cleanup);
 
+        final tableBeforeLoad = subManager.cache.getTableByName('note');
         expect(
-          subManager.cache.getTableByName('note'),
-          isNull,
-          reason: 'Table should not exist yet',
+          tableBeforeLoad,
+          isNotNull,
+          reason: 'Table should exist immediately after registerDecoder',
+        );
+        expect(
+          (tableBeforeLoad! as TableCache<Note>).count(),
+          equals(0),
+          reason: 'Table should start empty before any data arrives',
         );
 
         await subManager.loadFromOfflineCache();
@@ -1277,14 +1283,8 @@ void main() {
           ],
         );
 
-        final table = subManager.cache.getTableByName('note');
-        expect(
-          table,
-          isNotNull,
-          reason: 'Table should be auto-activated by optimistic change',
-        );
-
-        final noteTable = table as TableCache<Note>;
+        final noteTable =
+            subManager.cache.getTableByTypedName<Note>('note');
         expect(
           noteTable.getRow(noteId),
           isNotNull,

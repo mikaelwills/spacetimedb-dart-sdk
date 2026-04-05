@@ -16,6 +16,7 @@ class ClientGenerator {
 
     // Header
     buf.writeln('// GENERATED CODE - DO NOT MODIFY BY HAND');
+    buf.writeln('// ignore_for_file: avoid_print');
     buf.writeln();
     buf.writeln("import 'dart:async';");
     buf.writeln();

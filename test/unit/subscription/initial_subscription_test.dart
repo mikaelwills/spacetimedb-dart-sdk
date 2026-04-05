@@ -18,7 +18,6 @@ void main() {
 
     setUp(() {
       table = TableCache<String>(
-        tableId: 1,
         tableName: 'test',
         decoder: MockDecoder(),
       );
@@ -307,7 +306,6 @@ void main() {
   group('Phase 6: Integration Patterns', () {
     test('convenience filter: only initial data', () async {
       final table = TableCache<String>(
-        tableId: 1,
         tableName: 'test',
         decoder: MockDecoder(),
       );
@@ -372,7 +370,6 @@ void main() {
 
     test('convenience filter: skip initial data load', () async {
       final table = TableCache<String>(
-        tableId: 1,
         tableName: 'test',
         decoder: MockDecoder(),
       );

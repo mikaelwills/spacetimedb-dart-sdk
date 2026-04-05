@@ -94,6 +94,15 @@ void main(List<String> arguments) async {
     final generator = DartGenerator(schema);
     await generator.writeToDirectory(output);
 
+    print('\nFormatting generated files...');
+    final formatResult = await Process.run('dart', ['format', output]);
+    if (formatResult.exitCode != 0) {
+      print('Warning: dart format failed (exit ${formatResult.exitCode})');
+      if (formatResult.stderr.toString().isNotEmpty) {
+        print(formatResult.stderr);
+      }
+    }
+
     print('\n✅ Code generation complete!');
     print('Generated files in: $output');
   } on FormatException catch (e) {

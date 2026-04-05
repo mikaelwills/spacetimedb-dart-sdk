@@ -223,7 +223,6 @@ void main() {
           offlineStorage: storage,
         );
         manager.cache.registerDecoder<Note>('note', NoteDecoder());
-        manager.cache.activateEmptyTable('note');
 
         final table = manager.cache.getTableByName('note')! as TableCache<Note>;
         final optimistic = OptimisticStateManager(manager.cache);
@@ -318,7 +317,6 @@ void main() {
             offlineStorage: storage,
           );
           manager.cache.registerDecoder<Note>('note', NoteDecoder());
-          manager.cache.activateEmptyTable('note');
 
           await silentConnection.connect();
           silentConnection.setStatusSilently(ConnectionStatus.connected);
