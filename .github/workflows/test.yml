@@ -6,6 +6,16 @@ on:
   pull_request:
     branches: [ main, master ]
 
+env:
+  # SpacetimeDB CLI version we expect the install script to produce. The
+  # upstream install script always resolves to latest, so this is a label
+  # that the "Assert CLI version" step enforces as a dead-man switch: if
+  # upstream ships a new release and CI gets a cache miss, the version
+  # assertion fails loudly and we upgrade this env var deliberately (and
+  # verify nothing broke) rather than silently tracking latest. Update this
+  # in lockstep when `spacetime version upgrade` happens locally.
+  SPACETIMEDB_VERSION: '2.1.0'
+
 jobs:
   analyze:
     name: Analyze
@@ -57,3 +67,67 @@ jobs:
 
       - name: Check formatting
         run: dart format --set-exit-if-changed .
+
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable + wasm32 target
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add wasm32-unknown-unknown
+
+      - name: Cache cargo build for test module
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: spacetime_test_module
+
+      - name: Cache SpacetimeDB CLI install
+        id: cache-spacetime
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/bin/spacetime
+            ~/.local/share/spacetime
+          key: spacetimedb-${{ runner.os }}-${{ env.SPACETIMEDB_VERSION }}
+
+      - name: Install SpacetimeDB CLI
+        if: steps.cache-spacetime.outputs.cache-hit != 'true'
+        # Use the upstream install script (supported path that sets up the
+        # CLI's version-dispatch layout). `-y` skips the interactive confirm.
+        run: curl --proto '=https' --tlsv1.2 -sSf https://install.spacetimedb.com | sh -s -- -y
+
+      - name: Add SpacetimeDB to PATH
+        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Assert CLI version matches pin (dead-man switch)
+        # The install script always installs whatever is currently `latest`,
+        # so this step enforces that the installed version matches our pin.
+        # If upstream ships a new release and this step fails, bump
+        # SPACETIMEDB_VERSION above after verifying the new version doesn't
+        # break anything locally.
+        run: |
+          set -euo pipefail
+          installed="$(spacetime --version | grep -oE 'tool version [0-9]+\.[0-9]+\.[0-9]+' | awk '{print $3}')"
+          echo "Installed: $installed"
+          echo "Expected:  $SPACETIMEDB_VERSION"
+          if [ "$installed" != "$SPACETIMEDB_VERSION" ]; then
+            echo "ERROR: SpacetimeDB CLI version drift detected." >&2
+            echo "Upstream has published a new release. Bump SPACETIMEDB_VERSION" >&2
+            echo "in .github/workflows/test.yml after verifying the new version" >&2
+            echo "does not break the test suite locally." >&2
+            exit 1
+          fi
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.6'
+          channel: 'stable'
+
+      - name: Install Dart dependencies
+        run: flutter pub get
+
+      - name: Run integration tests
+        run: dart test test/integration/
