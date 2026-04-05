@@ -90,7 +90,15 @@ jobs:
 
       - name: Install SpacetimeDB CLI
         if: steps.cache-spacetime.outputs.cache-hit != 'true'
-        run: curl --proto '=https' --tlsv1.2 -sSf https://install.spacetimedb.com | sh
+        env:
+          # Pin the installer to the versioned release assets instead of
+          # letting the script fall back to `latest`. The script reads
+          # SPACETIME_DOWNLOAD_ROOT as the base URL for the installer binary.
+          SPACETIME_DOWNLOAD_ROOT: https://github.com/clockworklabs/SpacetimeDB/releases/download/v${{ env.SPACETIMEDB_VERSION }}
+        # `-y` skips the interactive confirmation — the installer errors with
+        # "IO error: not a terminal" without it in CI. `sh -s --` forwards the
+        # flag to the downloaded installer binary.
+        run: curl --proto '=https' --tlsv1.2 -sSf https://install.spacetimedb.com | sh -s -- -y
 
       - name: Add SpacetimeDB to PATH
         run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
