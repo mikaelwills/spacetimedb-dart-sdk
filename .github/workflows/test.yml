@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ main, master ]
 
+env:
+  # Pin SpacetimeDB CLI version deliberately. Upgrade is a conscious act.
+  # Verified against local `spacetime --version` on 2026-04-05.
+  SPACETIMEDB_VERSION: '2.0.5'
+
 jobs:
   analyze:
     name: Analyze
@@ -57,3 +62,55 @@ jobs:
 
       - name: Check formatting
         run: dart format --set-exit-if-changed .
+
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable + wasm32 target
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add wasm32-unknown-unknown
+
+      - name: Cache cargo build for test module
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: spacetime_test_module
+
+      - name: Cache SpacetimeDB CLI install
+        id: cache-spacetime
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/bin/spacetime
+            ~/.local/share/spacetime
+          key: spacetimedb-${{ runner.os }}-${{ env.SPACETIMEDB_VERSION }}
+
+      - name: Install SpacetimeDB CLI
+        if: steps.cache-spacetime.outputs.cache-hit != 'true'
+        run: curl --proto '=https' --tlsv1.2 -sSf https://install.spacetimedb.com | sh
+
+      - name: Add SpacetimeDB to PATH
+        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Verify SpacetimeDB install layout (diagnostic)
+        run: |
+          echo "--- ~/.local/bin ---"
+          ls -la "$HOME/.local/bin/spacetime" || true
+          echo "--- ~/.local/share/spacetime ---"
+          ls -la "$HOME/.local/share/spacetime" || true
+          echo "--- version ---"
+          spacetime --version || true
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.6'
+          channel: 'stable'
+
+      - name: Install Dart dependencies
+        run: flutter pub get
+
+      - name: Run integration tests
+        run: dart test test/integration/

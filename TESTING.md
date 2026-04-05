@@ -61,7 +61,7 @@ dart test -r expanded
 |-------|----------|
 | Connection refused | Run `spacetime start` |
 | Database not found | Run `./tool/setup_test_db.sh` |
-| Tests timeout | Integration tests have 60s timeout (see `dart_test.yaml`) |
+| Tests timeout | Individual tests use explicit `@Timeout(...)` annotations; global default is 30s |
 | Command not found | Install CLI from https://spacetimedb.com/install |
 
 ## Clean Up
@@ -83,3 +83,18 @@ Located in `spacetime_test_module/`:
 - Reducers: `create_note`, `update_note`, `delete_note`, `init`
 
 Code is auto-generated to `test/generated/` when tests run.
+
+## CI
+
+The full integration suite runs automatically on every pull request and every
+push to `main` / `master`. The GitHub Actions `Integration Tests` job installs
+Rust + the `wasm32-unknown-unknown` target, installs the pinned SpacetimeDB CLI
+(version set via `SPACETIMEDB_VERSION` in `.github/workflows/test.yml`), and
+runs `dart test test/integration/`. Per-file `setUpAll` / `tearDownAll` handles
+server lifecycle automatically — no pre-step is needed.
+
+If CI fails on your PR, open the Actions tab on your PR and click into the
+`Integration Tests` job log. The failure is almost always in a specific test
+file's output; a flaky network assertion on a cold runner is rare but
+possible. Re-running the job is a reasonable first debugging step if the
+failure looks timing-related.

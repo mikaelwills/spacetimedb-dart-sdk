@@ -19,6 +19,8 @@ Requires Dart 3.5.4+ and SpacetimeDB CLI.
 4. Ensure `dart test` passes
 5. Submit PR
 
+CI runs the full integration suite against a real SpacetimeDB on every PR — if you only touched pure-Dart code you don't need a local SpacetimeDB install to submit, the CI check will catch any regressions. See `TESTING.md` for details.
+
 ## Code Style
 
 - Follow [Effective Dart](https://dart.dev/guides/language/effective-dart)
