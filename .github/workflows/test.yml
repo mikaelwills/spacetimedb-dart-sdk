@@ -79,38 +79,37 @@ jobs:
         with:
           workspaces: spacetime_test_module
 
-      - name: Cache SpacetimeDB CLI install
+      - name: Cache SpacetimeDB CLI binaries
         id: cache-spacetime
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.local/bin/spacetime
-            ~/.local/share/spacetime
+          path: ~/.local/bin
           key: spacetimedb-${{ runner.os }}-${{ env.SPACETIMEDB_VERSION }}
 
-      - name: Install SpacetimeDB CLI
+      - name: Install SpacetimeDB CLI (direct tarball for true version pin)
         if: steps.cache-spacetime.outputs.cache-hit != 'true'
-        env:
-          # Pin the installer to the versioned release assets instead of
-          # letting the script fall back to `latest`. The script reads
-          # SPACETIME_DOWNLOAD_ROOT as the base URL for the installer binary.
-          SPACETIME_DOWNLOAD_ROOT: https://github.com/clockworklabs/SpacetimeDB/releases/download/v${{ env.SPACETIMEDB_VERSION }}
-        # `-y` skips the interactive confirmation — the installer errors with
-        # "IO error: not a terminal" without it in CI. `sh -s --` forwards the
-        # flag to the downloaded installer binary.
-        run: curl --proto '=https' --tlsv1.2 -sSf https://install.spacetimedb.com | sh -s -- -y
+        # The upstream install script (`install.spacetimedb.com`) always
+        # resolves to the latest release regardless of SPACETIME_DOWNLOAD_ROOT,
+        # so we bypass it and download the versioned tarball directly from the
+        # GitHub release asset. Tarball contains two binaries at root:
+        # `spacetimedb-cli` (the `spacetime` command) and `spacetimedb-standalone`.
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          url="https://github.com/clockworklabs/SpacetimeDB/releases/download/v${SPACETIMEDB_VERSION}/spacetime-x86_64-unknown-linux-gnu.tar.gz"
+          curl --proto '=https' --tlsv1.2 -sSfL "$url" | tar -xz -C "$HOME/.local/bin"
+          # The `spacetime` command is `spacetimedb-cli`; create a symlink so
+          # the test harness's `spacetime ...` invocations resolve.
+          ln -sf "$HOME/.local/bin/spacetimedb-cli" "$HOME/.local/bin/spacetime"
+          chmod +x "$HOME/.local/bin/spacetimedb-cli" "$HOME/.local/bin/spacetimedb-standalone"
 
       - name: Add SpacetimeDB to PATH
         run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Verify SpacetimeDB install layout (diagnostic)
+      - name: Verify SpacetimeDB install (diagnostic)
         run: |
-          echo "--- ~/.local/bin ---"
-          ls -la "$HOME/.local/bin/spacetime" || true
-          echo "--- ~/.local/share/spacetime ---"
-          ls -la "$HOME/.local/share/spacetime" || true
-          echo "--- version ---"
-          spacetime --version || true
+          ls -la "$HOME/.local/bin/"
+          spacetime --version
 
       - uses: subosito/flutter-action@v2
         with:
