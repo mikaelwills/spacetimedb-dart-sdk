@@ -1,8 +1,12 @@
 /// Type system models for SpacetimeDB schema
 library;
 
+import 'package:spacetimedb_dart_sdk/src/codegen/ir/algebraic_type.dart';
+
+export 'package:spacetimedb_dart_sdk/src/codegen/ir/algebraic_type.dart';
+
 class TypeSpace {
-  final List<AlgebraicType> types;
+  final List<TypeSpaceEntry> types;
 
   TypeSpace({required this.types});
 
@@ -12,31 +16,31 @@ class TypeSpace {
     return TypeSpace(
       types:
           typesJson is List
-              ? typesJson.map((t) => AlgebraicType.fromJson(t)).toList()
+              ? typesJson.map((t) => TypeSpaceEntry.fromJson(t)).toList()
               : [],
     );
   }
 }
 
-class AlgebraicType {
+class TypeSpaceEntry {
   final ProductType? product;
   final SumType? sum;
 
-  AlgebraicType({this.product, this.sum});
+  TypeSpaceEntry({this.product, this.sum});
 
   bool get isProduct => product != null;
   bool get isSum => sum != null;
 
-  factory AlgebraicType.fromJson(Map<String, dynamic> json) {
+  factory TypeSpaceEntry.fromJson(Map<String, dynamic> json) {
     if (json.containsKey('Product')) {
-      return AlgebraicType(product: ProductType.fromJson(json['Product']));
+      return TypeSpaceEntry(product: ProductType.fromJson(json['Product']));
     }
 
     if (json.containsKey('Sum')) {
-      return AlgebraicType(sum: SumType.fromJson(json['Sum']));
+      return TypeSpaceEntry(sum: SumType.fromJson(json['Sum']));
     }
 
-    return AlgebraicType();
+    return TypeSpaceEntry();
   }
 }
 
@@ -57,17 +61,21 @@ class ProductType {
 
 class ProductElement {
   final String? name;
-  final Map<String, dynamic> algebraicType;
+  final AlgebraicType type;
 
-  ProductElement({this.name, required this.algebraicType});
+  ProductElement({this.name, required this.type});
 
   factory ProductElement.fromJson(Map<String, dynamic> json) {
     final nameObj = json['name'];
     final fieldName = nameObj['some'] ?? "";
 
+    final rawType = json['algebraic_type'];
+    final typeJson =
+        rawType is Map<String, dynamic> ? rawType : <String, dynamic>{};
+
     return ProductElement(
       name: fieldName,
-      algebraicType: json['algebraic_type'] ?? {},
+      type: AlgebraicType.fromJson(typeJson),
     );
   }
 }
@@ -122,24 +130,28 @@ class SumType {
 
 class SumVariant {
   final String? name;
-  final AlgebraicType algebraicType;
-  final Map<String, dynamic> algebraicTypeJson;
+  final TypeSpaceEntry algebraicType;
+  final AlgebraicType parsedType;
 
   SumVariant({
     this.name,
     required this.algebraicType,
-    required this.algebraicTypeJson,
+    required this.parsedType,
   });
 
   factory SumVariant.fromJson(Map<String, dynamic> json) {
     final nameObj = json['name'];
     final variantName = nameObj?['some'] ?? "";
-    final algebraicTypeJson = json['algebraic_type'] ?? {};
+    final rawAlgebraicType = json['algebraic_type'];
+    final algebraicTypeJson =
+        rawAlgebraicType is Map<String, dynamic>
+            ? rawAlgebraicType
+            : <String, dynamic>{};
 
     return SumVariant(
       name: variantName.isNotEmpty ? variantName : null,
-      algebraicType: AlgebraicType.fromJson(algebraicTypeJson),
-      algebraicTypeJson: algebraicTypeJson,
+      algebraicType: TypeSpaceEntry.fromJson(algebraicTypeJson),
+      parsedType: AlgebraicType.fromJson(algebraicTypeJson),
     );
   }
 }

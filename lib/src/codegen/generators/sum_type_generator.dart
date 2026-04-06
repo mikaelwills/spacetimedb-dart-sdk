@@ -1,5 +1,4 @@
 import '../models/type_models.dart';
-import '../type_mapper.dart';
 
 enum VariantType { unit, tupleSingle, tupleMultiple, struct }
 
@@ -143,19 +142,19 @@ class $className extends $enumName {
     String variantName,
   ) {
     final type = variant.algebraicType;
-    final Map<String, dynamic> algebraicType;
+    final AlgebraicType fieldType;
 
     if (type.product != null && type.product!.elements.isNotEmpty) {
-      algebraicType = type.product!.elements[0].algebraicType;
+      fieldType = type.product!.elements[0].type;
     } else {
-      algebraicType = variant.algebraicTypeJson;
+      fieldType = variant.parsedType;
     }
 
-    final dartType = TypeMapper.toDartType(algebraicType);
-    final decoderMethod = TypeMapper.getDecoderMethod(algebraicType);
-    final encoderMethod = TypeMapper.getEncoderMethod(algebraicType);
-    final toJsonValue = _getToJsonValue('value', algebraicType);
-    final fromJsonValue = _getFromJsonValue('value', algebraicType, dartType);
+    final dartType = fieldType.toDartTypeName();
+    final decoderMethod = fieldType.decoderMethod;
+    final encoderMethod = fieldType.encoderMethod;
+    final toJsonValue = _getToJsonValue('value', fieldType);
+    final fromJsonValue = _getFromJsonValue('value', fieldType, dartType);
 
     return '''
 class $className extends $enumName {
@@ -199,13 +198,13 @@ class $className extends $enumName {
     for (var i = 0; i < elements.length; i++) {
       final element = elements[i];
       final fieldName = 'field$i';
-      final dartType = TypeMapper.toDartType(element.algebraicType);
-      final decoderMethod = TypeMapper.getDecoderMethod(element.algebraicType);
-      final encoderMethod = TypeMapper.getEncoderMethod(element.algebraicType);
-      final toJsonValue = _getToJsonValue(fieldName, element.algebraicType);
+      final dartType = element.type.toDartTypeName();
+      final decoderMethod = element.type.decoderMethod;
+      final encoderMethod = element.type.encoderMethod;
+      final toJsonValue = _getToJsonValue(fieldName, element.type);
       final fromJsonValue = _getFromJsonValue(
         fieldName,
-        element.algebraicType,
+        element.type,
         dartType,
       );
 
@@ -265,13 +264,13 @@ ${toJsonFields.join('\n')}
 
     for (final element in elements) {
       final fieldName = element.name ?? 'field';
-      final dartType = TypeMapper.toDartType(element.algebraicType);
-      final decoderMethod = TypeMapper.getDecoderMethod(element.algebraicType);
-      final encoderMethod = TypeMapper.getEncoderMethod(element.algebraicType);
-      final toJsonValue = _getToJsonValue(fieldName, element.algebraicType);
+      final dartType = element.type.toDartTypeName();
+      final decoderMethod = element.type.decoderMethod;
+      final encoderMethod = element.type.encoderMethod;
+      final toJsonValue = _getToJsonValue(fieldName, element.type);
       final fromJsonValue = _getFromJsonValue(
         fieldName,
-        element.algebraicType,
+        element.type,
         dartType,
       );
 
@@ -325,14 +324,14 @@ ${toJsonFields.join('\n')}
   VariantType _getVariantType(SumVariant variant) {
     final type = variant.algebraicType;
 
-    // If it's not a Product, check if it's a primitive (tuple single variant)
+    if (type.product == null &&
+        type.sum == null &&
+        variant.parsedType.isPrimitive) {
+      return VariantType.tupleSingle;
+    }
+
     if (type.product == null) {
-      // Check if it's a primitive type (U8, U64, String, etc.)
-      if (type.sum == null) {
-        // It's a primitive - treat as tuple single
-        return VariantType.tupleSingle;
-      }
-      return VariantType.unit; // No payload
+      return VariantType.unit;
     }
 
     final elements = type.product!.elements;
@@ -341,7 +340,6 @@ ${toJsonFields.join('\n')}
       return VariantType.unit;
     }
 
-    // Check if all elements are unnamed (tuple variant)
     final allUnnamed = elements.every((e) => e.name == null || e.name!.isEmpty);
 
     if (allUnnamed) {
@@ -358,38 +356,25 @@ ${toJsonFields.join('\n')}
     return input[0].toUpperCase() + input.substring(1);
   }
 
-  String _getToJsonValue(String fieldName, Map<String, dynamic> algebraicType) {
-    if (algebraicType.containsKey('U64') || algebraicType.containsKey('I64')) {
-      return '$fieldName.toInt()';
-    }
-    return fieldName;
-  }
+  String _getToJsonValue(String fieldName, AlgebraicType type) =>
+      switch (type) {
+        PrimitiveType(kind: PrimitiveKind.u64 || PrimitiveKind.i64) =>
+          '$fieldName.toInt()',
+        _ => fieldName,
+      };
 
   String _getFromJsonValue(
     String fieldName,
-    Map<String, dynamic> algebraicType,
+    AlgebraicType type,
     String dartType,
-  ) {
-    if (algebraicType.containsKey('U64') || algebraicType.containsKey('I64')) {
-      return "Int64(json['$fieldName'] ?? 0)";
-    }
-    if (algebraicType.containsKey('String')) {
-      return "json['$fieldName'] ?? ''";
-    }
-    if (algebraicType.containsKey('Bool')) {
-      return "json['$fieldName'] ?? false";
-    }
-    if (algebraicType.containsKey('F32') || algebraicType.containsKey('F64')) {
-      return "(json['$fieldName'] ?? 0.0).toDouble()";
-    }
-    if (algebraicType.containsKey('U8') ||
-        algebraicType.containsKey('U16') ||
-        algebraicType.containsKey('U32') ||
-        algebraicType.containsKey('I8') ||
-        algebraicType.containsKey('I16') ||
-        algebraicType.containsKey('I32')) {
-      return "json['$fieldName'] ?? 0";
-    }
-    return "json['$fieldName']";
-  }
+  ) => switch (type) {
+    PrimitiveType(kind: PrimitiveKind.u64 || PrimitiveKind.i64) =>
+      "Int64(json['$fieldName'] ?? 0)",
+    PrimitiveType(kind: PrimitiveKind.string) => "json['$fieldName'] ?? ''",
+    PrimitiveType(kind: PrimitiveKind.bool_) => "json['$fieldName'] ?? false",
+    PrimitiveType(kind: PrimitiveKind.f32 || PrimitiveKind.f64) =>
+      "(json['$fieldName'] ?? 0.0).toDouble()",
+    PrimitiveType() when type.isInt => "json['$fieldName'] ?? 0",
+    _ => "json['$fieldName']",
+  };
 }

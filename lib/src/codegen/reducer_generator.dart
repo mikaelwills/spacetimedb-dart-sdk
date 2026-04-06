@@ -1,17 +1,13 @@
 import 'package:spacetimedb_dart_sdk/src/codegen/models.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/type_mapper.dart';
 
-/// Generates reducer call methods and argument decoders
 class ReducerGenerator {
   final List<ReducerSchema> reducers;
 
   ReducerGenerator(this.reducers);
 
-  /// Generate Reducers class with call methods and completion callbacks
   String generate() {
     final buf = StringBuffer();
 
-    // Header
     buf.writeln('// GENERATED CODE - DO NOT MODIFY BY HAND');
     buf.writeln();
     buf.writeln("import 'dart:async';");
@@ -21,7 +17,6 @@ class ReducerGenerator {
     buf.writeln("import 'reducer_args.dart';");
     buf.writeln();
 
-    // Class definition
     buf.writeln('/// Generated reducer methods with async/await support');
     buf.writeln('///');
     buf.writeln('/// All methods return Future<TransactionResult> containing:');
@@ -40,13 +35,11 @@ class ReducerGenerator {
     buf.writeln('  Reducers(this._reducerCaller, this._reducerEmitter);');
     buf.writeln();
 
-    // Generate call method for each reducer
     for (final reducer in reducers) {
       _generateReducerMethod(buf, reducer);
       buf.writeln();
     }
 
-    // Generate completion callback for each reducer
     for (final reducer in reducers) {
       _generateCompletionCallback(buf, reducer);
       buf.writeln();
@@ -57,15 +50,9 @@ class ReducerGenerator {
     return buf.toString();
   }
 
-  /// Generate reducer argument classes and decoders
-  ///
-  /// This creates a separate file `reducer_args.dart` with:
-  /// - Args classes (CreateNoteArgs, etc.)
-  /// - Decoder classes (CreateNoteArgsDecoder, etc.)
   String generateArgDecoders() {
     final buf = StringBuffer();
 
-    // Header
     buf.writeln(
       '// GENERATED REDUCER ARGUMENT CLASSES AND DECODERS - DO NOT MODIFY BY HAND',
     );
@@ -75,7 +62,6 @@ class ReducerGenerator {
     );
     buf.writeln();
 
-    // Generate args class and decoder for each reducer
     for (final reducer in reducers) {
       _generateReducerArgsClass(buf, reducer);
       buf.writeln();
@@ -122,7 +108,7 @@ class ReducerGenerator {
       buf.writeln('{');
       for (final param in reducer.params.elements) {
         final paramName = _toCamelCase(param.name ?? 'unknown');
-        final dartType = TypeMapper.toDartType(param.algebraicType);
+        final dartType = param.type.toDartTypeName();
         buf.writeln('    required $dartType $paramName,');
       }
       buf.writeln('    List<OptimisticChange>? optimisticChanges,');
@@ -133,8 +119,7 @@ class ReducerGenerator {
     buf.writeln('    final encoder = BsatnEncoder();');
     for (final param in reducer.params.elements) {
       final paramName = _toCamelCase(param.name ?? 'unknown');
-      final method = TypeMapper.getEncoderMethod(param.algebraicType);
-      buf.writeln('    encoder.$method($paramName);');
+      buf.writeln('    encoder.${param.type.encoderMethod}($paramName);');
     }
     buf.writeln();
 
@@ -144,39 +129,20 @@ class ReducerGenerator {
     buf.writeln('  }');
   }
 
-  /// Generate completion callback method for a reducer
-  ///
-  /// Example generated code:
-  /// ```dart
-  /// StreamSubscription<void> onCreateNote(
-  ///   void Function(EventContext ctx, String title, String content) callback
-  /// ) {
-  ///   return _reducerEmitter.on('create_note').listen((EventContext ctx) {
-  ///     if (ctx.event is! ReducerEvent) return;
-  ///     final event = ctx.event;
-  ///     final args = event.reducerArgs;
-  ///     if (args is! CreateNoteArgs) return;
-  ///     callback(ctx, args.title, args.content);
-  ///   });
-  /// }
-  /// ```
   void _generateCompletionCallback(StringBuffer buf, ReducerSchema reducer) {
     final methodName = 'on${_toPascalCase(reducer.name)}';
     final argsClassName = '${_toPascalCase(reducer.name)}Args';
 
-    // Build callback signature
     buf.write('  StreamSubscription<void> $methodName(');
     buf.write('void Function(EventContext ctx');
 
-    // Add typed parameters to callback
     for (final param in reducer.params.elements) {
       final paramName = _toCamelCase(param.name ?? 'unknown');
-      final dartType = TypeMapper.toDartType(param.algebraicType);
+      final dartType = param.type.toDartTypeName();
       buf.write(', $dartType $paramName');
     }
     buf.writeln(') callback) {');
 
-    // Implementation
     buf.writeln(
       "    return _reducerEmitter.on('${reducer.name}').listen((EventContext ctx) {",
     );
@@ -193,7 +159,6 @@ class ReducerGenerator {
     );
     buf.write('      callback(ctx');
 
-    // Extract each arg field
     for (final param in reducer.params.elements) {
       final paramName = _toCamelCase(param.name ?? 'unknown');
       buf.write(', args.$paramName');
@@ -203,26 +168,21 @@ class ReducerGenerator {
     buf.writeln('  }');
   }
 
-  /// Generate the strongly-typed args class for a reducer
   void _generateReducerArgsClass(StringBuffer buf, ReducerSchema reducer) {
     final className = '${_toPascalCase(reducer.name)}Args';
 
     buf.writeln('/// Arguments for the ${reducer.name} reducer');
     buf.writeln('class $className {');
 
-    // Generate fields
     for (final param in reducer.params.elements) {
       final paramName = _toCamelCase(param.name ?? 'unknown');
-      final dartType = TypeMapper.toDartType(param.algebraicType);
+      final dartType = param.type.toDartTypeName();
       buf.writeln('  final $dartType $paramName;');
     }
 
-    // Generate constructor
     if (reducer.params.elements.isEmpty) {
-      // Empty constructor for reducers with no parameters
       buf.writeln('  $className();');
     } else {
-      // Constructor with parameters
       buf.write('  $className({');
       for (final param in reducer.params.elements) {
         final paramName = _toCamelCase(param.name ?? 'unknown');
@@ -234,7 +194,6 @@ class ReducerGenerator {
     buf.writeln('}');
   }
 
-  /// Generate the decoder for a reducer's arguments
   void _generateReducerDecoder(StringBuffer buf, ReducerSchema reducer) {
     final argsClassName = '${_toPascalCase(reducer.name)}Args';
     final decoderClassName = '${_toPascalCase(reducer.name)}ArgsDecoder';
@@ -247,10 +206,9 @@ class ReducerGenerator {
     buf.writeln('  $argsClassName? decode(BsatnDecoder decoder) {');
     buf.writeln('    try {');
 
-    // Decode each parameter
     for (final param in reducer.params.elements) {
       final paramName = _toCamelCase(param.name ?? 'unknown');
-      _generateArgDecode(buf, paramName, param.algebraicType);
+      _generateArgDecode(buf, paramName, param.type);
     }
 
     buf.writeln();
@@ -268,57 +226,20 @@ class ReducerGenerator {
     buf.writeln('}');
   }
 
-  /// 🌟 GOLD STANDARD: Handle both primitive and complex types
-  ///
-  /// This is the critical branching logic that makes the SDK "first in class".
-  /// It handles nested structs and enums inside reducer arguments.
   void _generateArgDecode(
     StringBuffer buf,
     String fieldName,
-    Map<String, dynamic> algebraicType,
+    AlgebraicType type,
   ) {
-    if (_isPrimitive(algebraicType)) {
-      // Case A: Primitive type (int, String, bool, etc.)
-      // Use BsatnDecoder's built-in read methods
-      final method = TypeMapper.getDecoderMethod(algebraicType);
-      buf.writeln('      final $fieldName = decoder.$method();');
+    if (type.isPrimitive) {
+      buf.writeln('      final $fieldName = decoder.${type.decoderMethod}();');
     } else {
-      // Case B: Complex type (custom struct or enum)
-      // Use the static decode method of the generated class
-      final typeName = _getDartClassName(algebraicType);
+      final typeName = _getDartClassName(type);
       buf.writeln('      final $fieldName = $typeName.decode(decoder);');
     }
   }
 
-  bool _isPrimitive(Map<String, dynamic> algebraicType) {
-    const primitiveKeys = [
-      'U8',
-      'U16',
-      'U32',
-      'U64',
-      'I8',
-      'I16',
-      'I32',
-      'I64',
-      'F32',
-      'F64',
-      'Bool',
-      'String',
-    ];
-
-    if (primitiveKeys.any((key) => algebraicType.containsKey(key))) return true;
-    if (TypeMapper.isIdentityProduct(algebraicType)) return true;
-    if (TypeMapper.isTimestampProduct(algebraicType)) return true;
-    if (TypeMapper.isByteArray(algebraicType)) return true;
-
-    return false;
-  }
-
-  /// Get the Dart class name for a complex type
-  String _getDartClassName(Map<String, dynamic> algebraicType) {
-    // For now, return a placeholder - this will be enhanced when we handle
-    // complex types in the schema parsing
-    // TODO: Extract actual type name from algebraicType structure
+  String _getDartClassName(AlgebraicType type) {
     return 'UnknownType';
   }
 
