@@ -6,7 +6,7 @@ class ViewSchema {
   final bool isPublic;
   final bool isAnonymous;
   final ProductType params;
-  final Map<String, dynamic> returnType;
+  final AlgebraicType? returnType;
 
   ViewSchema({
     required this.name,
@@ -14,17 +14,23 @@ class ViewSchema {
     required this.isPublic,
     required this.isAnonymous,
     required this.params,
-    required this.returnType,
+    this.returnType,
   });
 
   factory ViewSchema.fromJson(Map<String, dynamic> json) {
+    final rawReturnType = json['return_type'];
+    AlgebraicType? returnType;
+    if (rawReturnType is Map<String, dynamic> && rawReturnType.isNotEmpty) {
+      returnType = AlgebraicType.fromJson(rawReturnType);
+    }
+
     return ViewSchema(
       name: json['source_name'] ?? json['name'] ?? '',
       index: json['index'] ?? 0,
       isPublic: json['is_public'] ?? false,
       isAnonymous: json['is_anonymous'] ?? false,
       params: ProductType.fromJson(json['params'] ?? {}),
-      returnType: json['return_type'] ?? {},
+      returnType: returnType,
     );
   }
 }
