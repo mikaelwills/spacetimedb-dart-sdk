@@ -15,8 +15,9 @@ void main() {
       );
       expect(
         schema.views.length,
-        equals(2),
-        reason: 'Test module has two views: all_notes and first_note',
+        equals(3),
+        reason:
+            'Test module has three views: all_notes, first_note, notes_query_all',
       );
 
       final allNotesView = schema.views.firstWhere(
@@ -31,21 +32,21 @@ void main() {
       final schema = await SchemaExtractor.fromProject('spacetime_test_module');
       final viewGenerator = ViewGenerator(schema);
 
-      final view = schema.views.first;
+      final allNotesView = schema.views.firstWhere(
+        (v) => v.name == 'all_notes',
+      );
 
-      // all_notes returns Vec<Note>, so row type should be "Note"
-      final rowType = viewGenerator.getViewRowType(view);
+      final rowType = viewGenerator.getViewRowType(allNotesView);
       expect(
         rowType,
         equals('Note'),
         reason: 'View should return Note type (mapped from table)',
       );
 
-      // Check type reference matches the Note table's product type ref
       final noteTable = schema.tables.firstWhere((t) => t.name == 'note');
       final expectedTypeRef = noteTable.productTypeRef;
 
-      final viewTypeRef = viewGenerator.getViewTypeRef(view);
+      final viewTypeRef = viewGenerator.getViewTypeRef(allNotesView);
       expect(
         viewTypeRef,
         equals(expectedTypeRef),
@@ -54,14 +55,33 @@ void main() {
       );
     });
 
+    test('ViewGenerator detects query-builder pattern', () async {
+      final schema = await SchemaExtractor.fromProject('spacetime_test_module');
+      final viewGenerator = ViewGenerator(schema);
+
+      final queryView = schema.views.firstWhere(
+        (v) => v.name == 'notes_query_all',
+      );
+
+      expect(
+        viewGenerator.getViewReturnPattern(queryView),
+        equals(ViewReturnType.query),
+      );
+
+      final rowType = viewGenerator.getViewRowType(queryView);
+      expect(rowType, equals('Note'));
+
+      final noteTable = schema.tables.firstWhere((t) => t.name == 'note');
+      final viewTypeRef = viewGenerator.getViewTypeRef(queryView);
+      expect(viewTypeRef, equals(noteTable.productTypeRef));
+    });
+
     test('generated client includes view accessor', () async {
       final schema = await SchemaExtractor.fromProject('spacetime_test_module');
 
-      // Generate the actual client code
       final clientGenerator = ClientGenerator(schema);
       final clientCode = clientGenerator.generate();
 
-      // Verify view accessor getter exists
       expect(
         clientCode,
         contains('TableCache<Note> get allNotes {'),
@@ -74,7 +94,6 @@ void main() {
         reason: 'View accessor should query cache with view name',
       );
 
-      // Verify view registration in connect method
       expect(
         clientCode,
         contains('// Auto-register view decoders'),
@@ -87,6 +106,27 @@ void main() {
           "subscriptionManager.cache.registerDecoder<Note>('all_notes', NoteDecoder());",
         ),
         reason: 'View should be registered with decoder',
+      );
+    });
+
+    test('generated client includes query-builder view accessor', () async {
+      final schema = await SchemaExtractor.fromProject('spacetime_test_module');
+
+      final clientGenerator = ClientGenerator(schema);
+      final clientCode = clientGenerator.generate();
+
+      expect(clientCode, contains('TableCache<Note> get notesQueryAll {'));
+
+      expect(
+        clientCode,
+        contains("getTableByTypedName<Note>('notes_query_all')"),
+      );
+
+      expect(
+        clientCode,
+        contains(
+          "subscriptionManager.cache.registerDecoder<Note>('notes_query_all', NoteDecoder());",
+        ),
       );
     });
   });

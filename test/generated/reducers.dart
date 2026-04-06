@@ -185,32 +185,6 @@ class Reducers {
     );
   }
 
-  /// Call the init reducer
-  ///
-  /// Returns [TransactionResult] with execution metadata:
-  /// - `result.isSuccess` - Check if reducer committed
-  /// - `result.energyConsumed` - Energy used (null for lightweight responses)
-  /// - `result.executionDuration` - How long it took (null for lightweight responses)
-  ///
-  /// Pass [optimisticChanges] to immediately update the local cache for offline-first UX.
-  /// Changes are rolled back if the server rejects them.
-  ///
-  /// Throws [ReducerException] if the reducer fails or runs out of energy.
-  /// Throws [TimeoutException] if the reducer doesn't complete within the timeout.
-  Future<TransactionResult> init({
-    List<OptimisticChange>? optimisticChanges,
-    bool isEventTable = false,
-  }) async {
-    final encoder = BsatnEncoder();
-
-    return await _reducerCaller.call(
-      'init',
-      encoder.toBytes(),
-      optimisticChanges: optimisticChanges,
-      isEventTable: isEventTable,
-    );
-  }
-
   /// Call the update_note reducer
   ///
   /// Returns [TransactionResult] with execution metadata:
@@ -342,21 +316,6 @@ class Reducers {
 
       // Extract fields from strongly-typed object - NO CASTING
       callback(ctx, args.noteId);
-    });
-  }
-
-  StreamSubscription<void> onInit(void Function(EventContext ctx) callback) {
-    return _reducerEmitter.on('init').listen((EventContext ctx) {
-      // Pattern match to extract ReducerEvent
-      final event = ctx.event;
-      if (event is! ReducerEvent) return;
-
-      // Type guard - ensures args is correct type
-      final args = event.reducerArgs;
-      if (args is! InitArgs) return;
-
-      // Extract fields from strongly-typed object - NO CASTING
-      callback(ctx);
     });
   }
 

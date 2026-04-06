@@ -69,12 +69,6 @@ void main() {
       expect(reducersContent, contains('required String content,'));
       expect(
         reducersContent,
-        contains(
-          'Future<TransactionResult> init({List<OptimisticChange>? optimisticChanges, bool isEventTable = false}) async {',
-        ),
-      );
-      expect(
-        reducersContent,
         contains('Future<TransactionResult> updateNote({'),
       );
       expect(reducersContent, contains('required int noteId,'));
@@ -82,12 +76,6 @@ void main() {
         reducersContent,
         contains(
           "return await _reducerCaller.call('create_note', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable)",
-        ),
-      );
-      expect(
-        reducersContent,
-        contains(
-          "return await _reducerCaller.call('init', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable)",
         ),
       );
       expect(

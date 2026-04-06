@@ -22,11 +22,11 @@ sealed class NoteStatus {
   factory NoteStatus.fromJson(Map<String, dynamic> json) {
     final type = json['type'] ?? '';
     switch (type) {
-      case 'Draft':
+      case 'draft':
         return NoteStatusDraft.fromJson(json);
-      case 'Published':
+      case 'published':
         return NoteStatusPublished.fromJson(json);
-      case 'Archived':
+      case 'archived':
         return NoteStatusArchived.fromJson(json);
       default:
         throw Exception('Unknown NoteStatus variant: $type');
@@ -54,7 +54,7 @@ class NoteStatusDraft extends NoteStatus {
   }
 
   @override
-  Map<String, dynamic> toJson() => {'type': 'Draft'};
+  Map<String, dynamic> toJson() => {'type': 'draft'};
 }
 
 class NoteStatusPublished extends NoteStatus {
@@ -78,7 +78,7 @@ class NoteStatusPublished extends NoteStatus {
 
   @override
   Map<String, dynamic> toJson() => {
-    'type': 'Published',
+    'type': 'published',
     'value': value.toInt(),
   };
 }
@@ -100,5 +100,5 @@ class NoteStatusArchived extends NoteStatus {
   }
 
   @override
-  Map<String, dynamic> toJson() => {'type': 'Archived'};
+  Map<String, dynamic> toJson() => {'type': 'archived'};
 }

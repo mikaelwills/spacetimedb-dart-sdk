@@ -122,23 +122,6 @@ class DeleteNoteArgsDecoder implements ReducerArgDecoder<DeleteNoteArgs> {
   }
 }
 
-/// Arguments for the init reducer
-class InitArgs {
-  InitArgs();
-}
-
-/// Decoder for init reducer arguments
-class InitArgsDecoder implements ReducerArgDecoder<InitArgs> {
-  @override
-  InitArgs? decode(BsatnDecoder decoder) {
-    try {
-      return InitArgs();
-    } catch (e) {
-      return null; // Deserialization failed
-    }
-  }
-}
-
 /// Arguments for the update_note reducer
 class UpdateNoteArgs {
   final int noteId;
