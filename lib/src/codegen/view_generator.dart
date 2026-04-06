@@ -1,19 +1,9 @@
 import 'package:spacetimedb_dart_sdk/src/codegen/models.dart';
 
 /// View return type pattern
-enum ViewReturnType {
-  /// Returns Vec<T> - multiple rows
-  array,
+enum ViewReturnType { array, option, single, query, unknown }
 
-  /// Returns Option<T> - single optional row
-  option,
-
-  /// Returns T directly - single row
-  single,
-
-  /// Unknown or unsupported return type
-  unknown,
-}
+const kQueryViewReturnTag = '__query__';
 
 /// Helper class to analyze views and determine their row types
 class ViewGenerator {
@@ -52,6 +42,10 @@ class ViewGenerator {
       }
     }
 
+    if (_isQueryProduct(returnType)) {
+      return ViewReturnType.query;
+    }
+
     // Direct type reference: {"Ref": N}
     if (returnType.containsKey('Ref')) {
       return ViewReturnType.single;
@@ -88,8 +82,10 @@ class ViewGenerator {
         }
         return null;
 
+      case ViewReturnType.query:
+        return _determineRowType(_queryProductInnerType(returnType));
+
       case ViewReturnType.single:
-        // Direct type reference
         return _determineRowType(returnType);
 
       case ViewReturnType.unknown:
@@ -138,8 +134,13 @@ class ViewGenerator {
         }
         return null;
 
+      case ViewReturnType.query:
+        final inner = _queryProductInnerType(returnType);
+        if (inner == null) return null;
+        final refValue = inner['Ref'];
+        return refValue is int ? refValue : null;
+
       case ViewReturnType.single:
-        // Direct type reference
         if (!returnType.containsKey('Ref')) return null;
 
         final refValue = returnType['Ref'];
@@ -175,6 +176,30 @@ class ViewGenerator {
     }
 
     return null;
+  }
+
+  bool _isQueryProduct(Map<String, dynamic> returnType) {
+    final product = returnType['Product'];
+    if (product is! Map<String, dynamic>) return false;
+    final elements = product['elements'];
+    if (elements is! List || elements.length != 1) return false;
+    final element = elements[0];
+    if (element is! Map<String, dynamic>) return false;
+    final name = element['name'];
+    return name is Map && name['some'] == kQueryViewReturnTag;
+  }
+
+  Map<String, dynamic>? _queryProductInnerType(
+    Map<String, dynamic> returnType,
+  ) {
+    final product = returnType['Product'];
+    if (product is! Map<String, dynamic>) return null;
+    final elements = product['elements'];
+    if (elements is! List || elements.isEmpty) return null;
+    final element = elements[0];
+    if (element is! Map<String, dynamic>) return null;
+    final inner = element['algebraic_type'];
+    return inner is Map<String, dynamic> ? inner : null;
   }
 
   String _toPascalCase(String input) {

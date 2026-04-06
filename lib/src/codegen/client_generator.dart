@@ -151,8 +151,15 @@ class ClientGenerator {
             buf.writeln('  }');
             break;
 
+          case ViewReturnType.query:
+            buf.writeln('  TableCache<$rowType> get $viewName {');
+            buf.writeln(
+              "    return subscriptions.cache.getTableByTypedName<$rowType>('${view.name}');",
+            );
+            buf.writeln('  }');
+            break;
+
           case ViewReturnType.single:
-            // T - returns T (single row, non-optional)
             buf.writeln('  $rowType get $viewName {');
             buf.writeln(
               "    final cache = subscriptions.cache.getTableByTypedName<$rowType>('${view.name}');",
