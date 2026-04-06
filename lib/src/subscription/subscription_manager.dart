@@ -131,8 +131,6 @@ class SubscriptionManager {
   // --- Connection Monitoring ---
 
   void _startConnectionMonitoring() {
-    if (_mutationSyncer == null) return;
-
     bool wasReconnecting = false;
 
     _connectionStatusSubscription = _connection.onStateChanged.listen((state) {
@@ -140,11 +138,14 @@ class SubscriptionManager {
         wasReconnecting = true;
       } else if (state is Connected && wasReconnecting) {
         wasReconnecting = false;
-        _mutationSyncer!.resetRetryAttempts();
+        _mutationSyncer?.resetRetryAttempts();
         _onReconnected();
-      } else if (state is Disconnected) {
+      } else if (state is Disconnected ||
+          state is FatalError ||
+          state is AuthError) {
         wasReconnecting = false;
-        _mutationSyncer!.cancelRetry();
+        _mutationSyncer?.cancelRetry();
+        reducers.failAllPendingRequests(state.displayName);
       }
     });
   }
@@ -156,7 +157,7 @@ class SubscriptionManager {
       );
       final message = SubscribeMessage(_activeSubscriptionQueries.toList());
       _connection.send(message.encode());
-    } else {
+    } else if (_mutationSyncer != null) {
       SdkLogger.i(
         'No active subscriptions, syncing pending mutations directly...',
       );

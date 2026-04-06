@@ -95,6 +95,19 @@ class JsonFileStorage implements OfflineStorage {
         return data.cast<Map<String, dynamic>>();
       } catch (e) {
         SdkLogger.e('Failed to parse table snapshot for "$tableName": $e');
+        final backupFile = File('${file.path}.bak');
+        if (await backupFile.exists()) {
+          try {
+            final backupContent = await backupFile.readAsString();
+            final data = jsonDecode(backupContent) as List;
+            SdkLogger.i(
+              'Recovered table snapshot for "$tableName" from backup',
+            );
+            return data.cast<Map<String, dynamic>>();
+          } catch (backupError) {
+            SdkLogger.e('Backup also corrupted for "$tableName": $backupError');
+          }
+        }
         return null;
       }
     });
@@ -129,6 +142,23 @@ class JsonFileStorage implements OfflineStorage {
           .toList();
     } catch (e) {
       SdkLogger.e('Failed to parse pending mutations: $e');
+      final backupFile = File('${_mutationsFile!.path}.bak');
+      if (await backupFile.exists()) {
+        try {
+          final backupContent = await backupFile.readAsString();
+          final data = jsonDecode(backupContent) as List;
+          SdkLogger.i('Recovered ${data.length} pending mutations from backup');
+          return data
+              .map((e) => PendingMutation.fromJson(e as Map<String, dynamic>))
+              .toList();
+        } catch (backupError) {
+          SdkLogger.e(
+            'Backup also corrupted, pending mutations lost: $backupError',
+          );
+        }
+      } else {
+        SdkLogger.e('No backup file available, pending mutations lost');
+      }
       return [];
     }
   }

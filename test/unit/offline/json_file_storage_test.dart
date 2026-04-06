@@ -43,7 +43,7 @@ void main() {
         await newStorage.dispose().timeout(_timeout);
       });
 
-      test('handles corrupted main file gracefully', () async {
+      test('recovers from backup when main file is corrupted', () async {
         await storage
             .saveTableSnapshot('notes', [
               {'id': 1, 'title': 'Test'},
@@ -51,9 +51,54 @@ void main() {
             .timeout(_timeout);
 
         final mainFile = File('${tempDir.path}/table_notes.json');
+        final backupFile = File('${tempDir.path}/table_notes.json.bak');
+        await backupFile
+            .writeAsString(await mainFile.readAsString())
+            .timeout(_timeout);
         await mainFile
             .writeAsString('corrupted{invalid json')
             .timeout(_timeout);
+
+        final loaded = await storage
+            .loadTableSnapshot('notes')
+            .timeout(_timeout);
+        expect(loaded, isNotNull);
+        expect(loaded!.first['title'], equals('Test'));
+      });
+
+      test(
+        'recovers mutations from backup when main file is corrupted',
+        () async {
+          await storage
+              .enqueueMutation(_createMutation('req-1'))
+              .timeout(_timeout);
+
+          final mainFile = File('${tempDir.path}/pending_mutations.json');
+          final backupFile = File('${tempDir.path}/pending_mutations.json.bak');
+          await backupFile
+              .writeAsString(await mainFile.readAsString())
+              .timeout(_timeout);
+          await mainFile.writeAsString('corrupted{invalid').timeout(_timeout);
+
+          final loaded = await storage.getPendingMutations().timeout(_timeout);
+          expect(loaded.length, equals(1));
+          expect(loaded.first.requestId, equals('req-1'));
+        },
+      );
+
+      test('returns null when both main and backup are corrupted', () async {
+        await storage
+            .saveTableSnapshot('notes', [
+              {'id': 1, 'title': 'Test'},
+            ])
+            .timeout(_timeout);
+
+        final mainFile = File('${tempDir.path}/table_notes.json');
+        final backupFile = File('${tempDir.path}/table_notes.json.bak');
+        await mainFile
+            .writeAsString('corrupted{invalid json')
+            .timeout(_timeout);
+        await backupFile.writeAsString('also corrupted{').timeout(_timeout);
 
         final loaded = await storage
             .loadTableSnapshot('notes')
