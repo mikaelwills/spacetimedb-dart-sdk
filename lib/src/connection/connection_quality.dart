@@ -1,29 +1,12 @@
-import 'package:spacetimedb_dart_sdk/src/connection/connection_status.dart';
+import 'package:spacetimedb_dart_sdk/src/connection/connection_state.dart';
 
-/// Connection quality metrics
-///
-/// Provides detailed information about the connection health,
-/// including reconnection attempts, latency, and error information.
 class ConnectionQuality {
-  /// Current connection status
-  final ConnectionStatus status;
-
-  /// Number of reconnection attempts (0 if never disconnected)
+  final ConnectionState status;
   final int reconnectAttempts;
-
-  /// Time since last successful connection
   final Duration? timeSinceLastConnection;
-
-  /// Average round-trip time for messages (if available)
   final Duration? averageLatency;
-
-  /// Last error message, if any
   final String? lastError;
-
-  /// Time when last ping was sent
   final DateTime? lastPingSent;
-
-  /// Time when last pong was received
   final DateTime? lastPongReceived;
 
   ConnectionQuality({
@@ -36,23 +19,20 @@ class ConnectionQuality {
     this.lastPongReceived,
   });
 
-  /// Compute connection health score (0.0 to 1.0)
   double get healthScore {
-    if (status == ConnectionStatus.connected) {
-      // Factor in latency and time since last pong
+    if (status is Connected) {
       if (lastPongReceived != null) {
         final timeSincePong = DateTime.now().difference(lastPongReceived!);
-        if (timeSincePong.inSeconds > 60) return 0.5; // Stale
+        if (timeSincePong.inSeconds > 60) return 0.5;
       }
-      return 1.0; // Good
+      return 1.0;
     }
-    if (status == ConnectionStatus.reconnecting) {
-      return 0.3; // Poor
+    if (status is Reconnecting) {
+      return 0.3;
     }
-    return 0.0; // Disconnected or error
+    return 0.0;
   }
 
-  /// Human-readable quality description
   String get qualityDescription {
     if (healthScore >= 0.8) return 'Excellent';
     if (healthScore >= 0.5) return 'Good';

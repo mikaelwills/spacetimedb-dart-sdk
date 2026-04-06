@@ -2,30 +2,30 @@ import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 
 void main() {
-  group('ConnectionStatus Enum Helpers', () {
+  group('ConnectionState Sealed Class Helpers', () {
     test('Display names are correct', () {
-      expect(ConnectionStatus.disconnected.displayName, 'Disconnected');
-      expect(ConnectionStatus.connecting.displayName, 'Connecting...');
-      expect(ConnectionStatus.connected.displayName, 'Connected');
-      expect(ConnectionStatus.reconnecting.displayName, 'Reconnecting...');
-      expect(ConnectionStatus.fatalError.displayName, 'Connection Failed');
+      expect(const Disconnected().displayName, 'Disconnected');
+      expect(const Connecting().displayName, 'Connecting...');
+      expect(const Connected().displayName, 'Connected');
+      expect(const Reconnecting(attempt: 1).displayName, 'Reconnecting...');
+      expect(const FatalError().displayName, 'Connection Failed');
+      expect(const AuthError().displayName, 'Authentication Failed');
     });
 
     test('isConnected helper works correctly', () {
-      expect(ConnectionStatus.connected.isConnected, true);
-      expect(ConnectionStatus.connecting.isConnected, false);
-      expect(ConnectionStatus.disconnected.isConnected, false);
+      expect(const Connected().isConnected, true);
+      expect(const Connecting().isConnected, false);
+      expect(const Disconnected().isConnected, false);
     });
 
     test('canRetry helper works correctly', () {
-      // We can only retry if we are fully stopped
-      expect(ConnectionStatus.disconnected.canRetry, true);
-      expect(ConnectionStatus.fatalError.canRetry, true);
+      expect(const Disconnected().canRetry, true);
+      expect(const FatalError().canRetry, true);
+      expect(const AuthError().canRetry, true);
 
-      // We cannot retry if we are currently trying
-      expect(ConnectionStatus.connected.canRetry, false);
-      expect(ConnectionStatus.connecting.canRetry, false);
-      expect(ConnectionStatus.reconnecting.canRetry, false);
+      expect(const Connected().canRetry, false);
+      expect(const Connecting().canRetry, false);
+      expect(const Reconnecting(attempt: 1).canRetry, false);
     });
   });
 
@@ -33,21 +33,18 @@ void main() {
     test('Calculates scores correctly based on status and latency', () {
       final now = DateTime.now();
 
-      // Excellent
       final excellent = ConnectionQuality(
-        status: ConnectionStatus.connected,
+        status: const Connected(),
         lastPongReceived: now,
       );
       expect(excellent.healthScore, 1.0);
       expect(excellent.qualityDescription, 'Excellent');
 
-      // Poor (Reconnecting)
-      final poor = ConnectionQuality(status: ConnectionStatus.reconnecting);
+      final poor = ConnectionQuality(status: const Reconnecting(attempt: 1));
       expect(poor.healthScore, 0.3);
       expect(poor.qualityDescription, 'Poor');
 
-      // Dead
-      final dead = ConnectionQuality(status: ConnectionStatus.disconnected);
+      final dead = ConnectionQuality(status: const Disconnected());
       expect(dead.healthScore, 0.0);
     });
   });
@@ -70,15 +67,13 @@ void main() {
         database: 'testdb',
       );
 
-      // Subscribe to quality stream
       final qualityFuture = connection.connectionQuality.first.timeout(
         const Duration(milliseconds: 100),
       );
 
-      // Should receive initial quality value immediately (disconnected state)
       final quality = await qualityFuture;
 
-      expect(quality.status, ConnectionStatus.disconnected);
+      expect(quality.status, isA<Disconnected>());
       expect(quality.healthScore, 0.0);
       expect(quality.reconnectAttempts, 0);
 

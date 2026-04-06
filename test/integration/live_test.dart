@@ -44,7 +44,7 @@ void main() async {
 
   // Listen for connection state changes
   connection.onStateChanged.listen((state) {
-    print('🔄 Connection state: ${state.name}');
+    print('🔄 Connection state: ${state.displayName}');
   });
 
   // 3. Set up listeners

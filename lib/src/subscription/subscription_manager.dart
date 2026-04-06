@@ -6,7 +6,7 @@ import 'package:spacetimedb_dart_sdk/src/cache/client_cache.dart';
 import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
 
 import '../connection/spacetimedb_connection.dart';
-import '../connection/connection_status.dart';
+import '../connection/connection_state.dart';
 import '../messages/message_decoder.dart';
 import '../messages/server_messages.dart';
 import '../messages/client_messages.dart';
@@ -67,7 +67,7 @@ class SubscriptionManager {
       StreamController<ProcedureResultMessage>.broadcast();
 
   StreamSubscription<Uint8List>? _messageSubscription;
-  StreamSubscription<ConnectionStatus>? _connectionStatusSubscription;
+  StreamSubscription<ConnectionState>? _connectionStatusSubscription;
 
   SubscriptionManager(this._connection, {OfflineStorage? offlineStorage}) {
     _optimisticState = OptimisticStateManager(cache);
@@ -142,20 +142,19 @@ class SubscriptionManager {
   void _startConnectionMonitoring() {
     if (_mutationSyncer == null) return;
 
-    ConnectionStatus? previousStatus;
+    bool wasReconnecting = false;
 
-    _connectionStatusSubscription = _connection.connectionStatus.listen((
-      status,
-    ) {
-      if (status == ConnectionStatus.connected &&
-          previousStatus == ConnectionStatus.reconnecting) {
+    _connectionStatusSubscription = _connection.onStateChanged.listen((state) {
+      if (state is Reconnecting) {
+        wasReconnecting = true;
+      } else if (state is Connected && wasReconnecting) {
+        wasReconnecting = false;
         _mutationSyncer!.resetRetryAttempts();
         _onReconnected();
-      } else if (status == ConnectionStatus.disconnected) {
+      } else if (state is Disconnected) {
+        wasReconnecting = false;
         _mutationSyncer!.cancelRetry();
       }
-
-      previousStatus = status;
     });
   }
 

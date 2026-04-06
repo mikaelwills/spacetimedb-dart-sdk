@@ -4,7 +4,6 @@ import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 import '../helpers/integration_test_helper.dart';
 
-/// Integration tests for SpacetimeDB connection against REAL server
 void main() {
   setUpAll(ensureTestEnvironment);
   tearDownAll(cleanupTestEnvironment);
@@ -12,20 +11,18 @@ void main() {
   const testHost = 'localhost:3000';
   const testDatabase = 'notesdb';
 
-  // Helper: Robustly wait for a state change
-  Future<void> waitForState(
-    SpacetimeDbConnection connection,
-    ConnectionState targetState, {
+  Future<void> waitForState<T extends ConnectionState>(
+    SpacetimeDbConnection connection, {
     Duration timeout = const Duration(seconds: 5),
   }) async {
-    if (connection.state == targetState) return;
+    if (connection.state is T) return;
     await connection.onStateChanged
-        .firstWhere((state) => state == targetState)
+        .firstWhere((state) => state is T)
         .timeout(
           timeout,
           onTimeout: () {
             throw TimeoutException(
-              'Timed out waiting for state $targetState. Current: ${connection.state}',
+              'Timed out waiting for state $T. Current: ${connection.state}',
             );
           },
         );
@@ -56,16 +53,15 @@ void main() {
       () async {
         final states = <ConnectionState>[];
 
-        // Setup listener BEFORE action
         final sub = connection.onStateChanged.listen(states.add);
 
         try {
           await connection.connect();
-          await waitForState(connection, ConnectionState.connected);
+          await waitForState<Connected>(connection);
 
           expect(connection.isConnected, true);
-          expect(states, contains(ConnectionState.connecting));
-          expect(states, contains(ConnectionState.connected));
+          expect(states.any((s) => s is Connecting), true);
+          expect(states.any((s) => s is Connected), true);
         } finally {
           await sub.cancel();
         }
@@ -74,22 +70,20 @@ void main() {
 
     test('disconnect() cleanly closes connection', () async {
       await connection.connect();
-      await waitForState(connection, ConnectionState.connected);
+      await waitForState<Connected>(connection);
 
       await connection.disconnect();
-      await waitForState(connection, ConnectionState.disconnected);
+      await waitForState<Disconnected>(connection);
 
       expect(connection.isConnected, false);
     });
 
     test('Manual reconnect() works', () async {
       await connection.connect();
-      await waitForState(connection, ConnectionState.connected);
+      await waitForState<Connected>(connection);
 
       await connection.reconnect();
-      // Reconnect triggers a disconnect/connect cycle.
-      // We just need to ensure we end up connected.
-      await waitForState(connection, ConnectionState.connected);
+      await waitForState<Connected>(connection);
 
       expect(connection.isConnected, true);
     });
@@ -109,10 +103,8 @@ void main() {
 
     test('Server responds to Keep-Alive Probe (Intentional Error)', () async {
       await connection.connect();
-      await waitForState(connection, ConnectionState.connected);
+      await waitForState<Connected>(connection);
 
-      // We probe with a non-existent table name that serves as self-documenting "Ping"
-      // The server returns an error, which proves it's alive and processing requests
       const pingQuery = 'SELECT * FROM __spacetime_dart_sdk_keepalive__';
 
       final messageId = Uint8List.fromList(List.filled(16, 0xDD));
@@ -122,25 +114,18 @@ void main() {
         queryString: pingQuery,
       );
 
-      // 1. Setup Future listener BEFORE sending
       final responseFuture = connection.onMessage
           .map(MessageDecoder.decode)
-          // We explicitly want OneOffQueryResponse
           .where((msg) => msg is OneOffQueryResponse)
           .cast<OneOffQueryResponse>()
-          // Match ID to ensure it's OUR ping
           .where((msg) => _listEquals(msg.messageId, messageId))
           .first
           .timeout(const Duration(seconds: 10));
 
-      // 2. Send
       connection.send(message.encode());
 
-      // 3. Await
       final response = await responseFuture;
 
-      // 4. VERIFICATION: We EXPECT an error!
-      // The error proves the server processed our request - the error IS the pong
       expect(
         response.error,
         isNotNull,
@@ -152,7 +137,6 @@ void main() {
         reason: 'Error should indicate table does not exist',
       );
 
-      // If we got here, the Round Trip was successful
       expect(connection.isConnected, true);
     });
   });
@@ -162,10 +146,10 @@ void main() {
       'Connection to invalid host fails and allows retry',
       () async {
         final connection = SpacetimeDbConnection(
-          host: 'invalid-host-name-xyz', // Will cause DNS failure
+          host: 'invalid-host-name-xyz',
           database: 'db',
           config: const ConnectionConfig(
-            autoReconnect: false, // Disable auto so we settle on "Disconnected"
+            autoReconnect: false,
             maxReconnectAttempts: 0,
           ),
         );
@@ -173,36 +157,28 @@ void main() {
         try {
           try {
             await connection.connect();
-          } catch (_) {
-            // Expected to throw exception immediately upon socket creation failure
-          }
+          } catch (_) {}
 
-          // FIX: Increased timeout to 20s.
-          // DNS resolution and TCP connection timeouts are handled by the OS/Dart runtime.
-          // These often default to 10s-30s. A 5s test timeout is too optimistic for a failure case.
-          await waitForState(
+          await waitForState<Disconnected>(
             connection,
-            ConnectionState.disconnected,
             timeout: const Duration(seconds: 20),
           );
 
-          // NOW it should be retryable
-          expect(connection.status.canRetry, true);
+          expect(connection.state.canRetry, true);
           expect(connection.isConnected, false);
         } finally {
           await connection.dispose();
         }
       },
       timeout: const Timeout(Duration(seconds: 30)),
-    ); // Test-level timeout
+    );
 
     test('Connection to invalid database handles result', () async {
       final connection = SpacetimeDbConnection(
         host: testHost,
-        // Use a timestamp to ensure the DB definitely doesn't exist
         database: 'INVALID_DB_${DateTime.now().millisecondsSinceEpoch}',
         config: const ConnectionConfig(
-          autoReconnect: false, // Ensure we don't loop in "reconnecting"
+          autoReconnect: false,
           maxReconnectAttempts: 0,
         ),
       );
@@ -210,20 +186,14 @@ void main() {
       try {
         try {
           await connection.connect();
-        } catch (e) {
-          // Expected: WebSocketException (HTTP 400/404 from server)
-        }
+        } catch (e) {}
 
-        // FIX: Explicitly wait for the state to settle to Disconnected.
-        // Even if the socket closes immediately, the State Machine takes a few ms
-        // to process the 'done' event and update the state.
-        await waitForState(
+        await waitForState<Disconnected>(
           connection,
-          ConnectionState.disconnected,
           timeout: const Duration(seconds: 5),
         );
 
-        expect(connection.state, ConnectionState.disconnected);
+        expect(connection.state, isA<Disconnected>());
         expect(connection.isConnected, false);
       } finally {
         await connection.dispose();
@@ -232,7 +202,6 @@ void main() {
   });
 }
 
-// Helper for byte comparison
 bool _listEquals(Uint8List a, Uint8List b) {
   if (a.length != b.length) return false;
   for (int i = 0; i < a.length; i++) {
