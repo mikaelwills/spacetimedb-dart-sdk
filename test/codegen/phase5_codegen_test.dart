@@ -83,7 +83,7 @@ void main() {
       expect(code, contains('final ReducerEmitter _reducerEmitter;'));
       expect(
         code,
-        contains('Reducers(this._reducerCaller, this._reducerEmitter);'),
+        contains('Reducers(this._reducerCaller, this._reducerEmitter'),
       );
 
       // Should generate onCreateNote method
@@ -154,7 +154,7 @@ void main() {
 
       // Should catch errors and return null
       expect(code, contains('} catch (e) {'));
-      expect(code, contains('return null; // Deserialization failed'));
+      expect(code, contains('return null;'));
     });
 
     test('ClientGenerator wires ReducerEmitter', () {
@@ -165,12 +165,8 @@ void main() {
       expect(code, contains("import 'reducer_args.dart';"));
 
       // Should expose reducerEmitter getter
-      expect(
-        code,
-        contains(
-          'ReducerEmitter get reducerEmitter => subscriptions.reducerEmitter;',
-        ),
-      );
+      expect(code, contains('ReducerEmitter get reducerEmitter'));
+      expect(code, contains('return subscriptions.reducerEmitter;'));
 
       // Should pass ReducerCaller and ReducerEmitter to Reducers
       expect(

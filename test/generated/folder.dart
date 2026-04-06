@@ -3,11 +3,21 @@
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 
 class Folder {
-  final String path;
-  final String name;
-  final Int64 createdAt;
-
   Folder({required this.path, required this.name, required this.createdAt});
+
+  factory Folder.fromJson(Map<String, dynamic> json) {
+    return Folder(
+      path: json['path'] ?? '',
+      name: json['name'] ?? '',
+      createdAt: Int64(json['createdAt'] ?? 0),
+    );
+  }
+
+  final String path;
+
+  final String name;
+
+  final Int64 createdAt;
 
   void encodeBsatn(BsatnEncoder encoder) {
     encoder.writeString(path);
@@ -26,14 +36,6 @@ class Folder {
   Map<String, dynamic> toJson() {
     return {'path': path, 'name': name, 'createdAt': createdAt.toInt()};
   }
-
-  factory Folder.fromJson(Map<String, dynamic> json) {
-    return Folder(
-      path: json['path'] ?? '',
-      name: json['name'] ?? '',
-      createdAt: Int64(json['createdAt'] ?? 0),
-    );
-  }
 }
 
 class FolderDecoder extends RowDecoder<Folder> {
@@ -48,11 +50,17 @@ class FolderDecoder extends RowDecoder<Folder> {
   }
 
   @override
-  Map<String, dynamic>? toJson(Folder row) => row.toJson();
+  Map<String, dynamic>? toJson(Folder row) {
+    return row.toJson();
+  }
 
   @override
-  Folder? fromJson(Map<String, dynamic> json) => Folder.fromJson(json);
+  Folder? fromJson(Map<String, dynamic> json) {
+    return Folder.fromJson(json);
+  }
 
   @override
-  bool get supportsJsonSerialization => true;
+  bool get supportsJsonSerialization {
+    return true;
+  }
 }

@@ -1,4 +1,6 @@
+import 'package:code_builder/code_builder.dart';
 import 'package:spacetimedb_dart_sdk/src/codegen/models.dart';
+import 'package:spacetimedb_dart_sdk/src/codegen/codegen_emitter.dart';
 
 class TableGenerator {
   final DatabaseSchema schema;
@@ -7,160 +9,321 @@ class TableGenerator {
   TableGenerator(this.schema, this.table);
 
   String generate() {
-    final buf = StringBuffer();
-
-    buf.writeln('// GENERATED CODE - DO NOT MODIFY BY HAND');
-    buf.writeln();
-    buf.writeln(
-      "import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';",
-    );
-
     final productType = schema.typeSpace.types[table.productTypeRef].product;
     if (productType == null) {
       throw Exception('Table ${table.name} has no product type');
     }
 
-    final imports = <String>{};
+    final className = toPascalCase(table.name);
+    final imports = <Directive>[];
+
+    imports.add(
+      Directive.import(
+        'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart',
+      ),
+    );
+
     for (final element in productType.elements) {
       if (element.type.isRef) {
         final refTypeName = element.type.refTypeName(schema.types);
         if (refTypeName != null) {
-          final fileName = _toSnakeCase(refTypeName);
-          imports.add("import '$fileName.dart';");
+          final fileName = toSnakeCase(refTypeName);
+          imports.add(Directive.import('$fileName.dart'));
         }
       }
     }
 
-    for (final import in imports) {
-      buf.writeln(import);
-    }
-    buf.writeln();
+    final lib = Library(
+      (b) =>
+          b
+            ..directives.addAll(imports)
+            ..body.addAll([
+              _buildDataClass(className, productType),
+              _buildDecoderClass(className, productType),
+            ]),
+    );
 
-    final className = _toPascalCase(table.name);
-    buf.writeln('class $className {');
+    return emitLibrary(lib, header: kGeneratedHeader);
+  }
 
-    for (final element in productType.elements) {
-      final fieldName = _toCamelCase(element.name ?? 'unknown');
-      final dartType = element.type.toDartTypeName(
-        typeSpace: schema.typeSpace,
-        typeDefs: schema.types,
+  Class _buildDataClass(String className, ProductType productType) {
+    return Class((b) {
+      b.name = className;
+
+      for (final element in productType.elements) {
+        final fieldName = toCamelCase(element.name ?? 'unknown');
+        final dartType = element.type.toDartTypeName(
+          typeSpace: schema.typeSpace,
+          typeDefs: schema.types,
+        );
+        b.fields.add(
+          Field(
+            (f) =>
+                f
+                  ..name = fieldName
+                  ..type = refer(dartType)
+                  ..modifier = FieldModifier.final$,
+          ),
+        );
+      }
+
+      b.constructors.add(
+        Constructor((c) {
+          for (final element in productType.elements) {
+            final fieldName = toCamelCase(element.name ?? 'unknown');
+            c.optionalParameters.add(
+              Parameter(
+                (p) =>
+                    p
+                      ..name = fieldName
+                      ..named = true
+                      ..required = true
+                      ..toThis = true,
+              ),
+            );
+          }
+        }),
       );
-      buf.writeln('  final $dartType $fieldName;');
-    }
-    buf.writeln();
 
-    buf.writeln('  $className({');
+      b.methods.add(_buildEncodeBsatn(productType));
+      b.methods.add(_buildDecodeBsatn(className, productType));
+      b.methods.add(_buildToJson(productType));
+      b.constructors.add(_buildFromJson(className, productType));
+    });
+  }
+
+  Method _buildEncodeBsatn(ProductType productType) {
+    final body = StringBuffer();
     for (final element in productType.elements) {
-      final fieldName = _toCamelCase(element.name ?? 'unknown');
-      buf.writeln('    required this.$fieldName,');
-    }
-    buf.writeln('  });');
-    buf.writeln();
-
-    buf.writeln('  void encodeBsatn(BsatnEncoder encoder) {');
-    for (final element in productType.elements) {
-      final fieldName = _toCamelCase(element.name ?? 'unknown');
-
+      final fieldName = toCamelCase(element.name ?? 'unknown');
       if (element.type.isRef) {
-        buf.writeln('    $fieldName.encode(encoder);');
+        body.writeln('$fieldName.encode(encoder);');
       } else {
-        buf.writeln('    encoder.${element.type.encoderMethod}($fieldName);');
+        body.writeln('encoder.${element.type.encoderMethod}($fieldName);');
       }
     }
-    buf.writeln('  }');
-    buf.writeln();
 
-    buf.writeln('  static $className decodeBsatn(BsatnDecoder decoder) {');
-    buf.writeln('    return $className(');
+    return Method(
+      (m) =>
+          m
+            ..name = 'encodeBsatn'
+            ..returns = refer('void')
+            ..requiredParameters.add(
+              Parameter(
+                (p) =>
+                    p
+                      ..name = 'encoder'
+                      ..type = refer('BsatnEncoder'),
+              ),
+            )
+            ..body = Code(body.toString()),
+    );
+  }
+
+  Method _buildDecodeBsatn(String className, ProductType productType) {
+    final args = StringBuffer();
     for (final element in productType.elements) {
-      final fieldName = _toCamelCase(element.name ?? 'unknown');
-
+      final fieldName = toCamelCase(element.name ?? 'unknown');
       if (element.type.isRef) {
         final typeName = element.type.toDartTypeName(
           typeSpace: schema.typeSpace,
           typeDefs: schema.types,
         );
-        buf.writeln('      $fieldName: $typeName.decode(decoder),');
+        args.writeln('$fieldName: $typeName.decode(decoder),');
       } else {
-        buf.writeln(
-          '      $fieldName: decoder.${element.type.decoderMethod}(),',
-        );
+        args.writeln('$fieldName: decoder.${element.type.decoderMethod}(),');
       }
     }
-    buf.writeln('    );');
-    buf.writeln('  }');
-    buf.writeln();
 
-    buf.writeln('  Map<String, dynamic> toJson() {');
-    buf.writeln('    return {');
+    return Method(
+      (m) =>
+          m
+            ..name = 'decodeBsatn'
+            ..static = true
+            ..returns = refer(className)
+            ..requiredParameters.add(
+              Parameter(
+                (p) =>
+                    p
+                      ..name = 'decoder'
+                      ..type = refer('BsatnDecoder'),
+              ),
+            )
+            ..body = Code('return $className($args);'),
+    );
+  }
+
+  Method _buildToJson(ProductType productType) {
+    final entries = StringBuffer();
     for (final element in productType.elements) {
-      final fieldName = _toCamelCase(element.name ?? 'unknown');
+      final fieldName = toCamelCase(element.name ?? 'unknown');
       final jsonValue = _getToJsonExpression(fieldName, element.type);
-      buf.writeln("      '$fieldName': $jsonValue,");
+      entries.writeln("'$fieldName': $jsonValue,");
     }
-    buf.writeln('    };');
-    buf.writeln('  }');
-    buf.writeln();
 
-    buf.writeln('  factory $className.fromJson(Map<String, dynamic> json) {');
-    buf.writeln('    return $className(');
+    return Method(
+      (m) =>
+          m
+            ..name = 'toJson'
+            ..returns = refer('Map<String, dynamic>')
+            ..body = Code('return {$entries};'),
+    );
+  }
+
+  Constructor _buildFromJson(String className, ProductType productType) {
+    final args = StringBuffer();
     for (final element in productType.elements) {
-      final fieldName = _toCamelCase(element.name ?? 'unknown');
+      final fieldName = toCamelCase(element.name ?? 'unknown');
       final fromJsonExpr = _getFromJsonExpression(fieldName, element.type);
-      buf.writeln('      $fieldName: $fromJsonExpr,');
+      args.writeln('$fieldName: $fromJsonExpr,');
     }
-    buf.writeln('    );');
-    buf.writeln('  }');
-    buf.writeln();
 
-    buf.writeln('}');
-    buf.writeln();
+    return Constructor(
+      (c) =>
+          c
+            ..factory = true
+            ..name = 'fromJson'
+            ..requiredParameters.add(
+              Parameter(
+                (p) =>
+                    p
+                      ..name = 'json'
+                      ..type = refer('Map<String, dynamic>'),
+              ),
+            )
+            ..body = Code('return $className($args);'),
+    );
+  }
 
-    buf.writeln('class ${className}Decoder extends RowDecoder<$className> {');
-    buf.writeln('  @override');
-    buf.writeln('  $className decode(BsatnDecoder decoder) {');
-    buf.writeln('    return $className.decodeBsatn(decoder);');
-    buf.writeln('  }');
-    buf.writeln();
-    buf.writeln('  @override');
+  Class _buildDecoderClass(String className, ProductType productType) {
+    return Class((b) {
+      b.name = '${className}Decoder';
+      b.extend = refer('RowDecoder<$className>');
 
-    if (table.primaryKey.isNotEmpty && productType.elements.isNotEmpty) {
-      final pkIndex = table.primaryKey.first;
-      if (pkIndex < productType.elements.length) {
-        final pkElement = productType.elements[pkIndex];
-        final pkFieldName = _toCamelCase(pkElement.name ?? 'unknown');
-        final pkDartType = pkElement.type.toDartTypeName(
-          typeSpace: schema.typeSpace,
-          typeDefs: schema.types,
-        );
-        buf.writeln('  $pkDartType? getPrimaryKey($className row) {');
-        buf.writeln('    return row.$pkFieldName;');
+      b.methods.add(
+        Method(
+          (m) =>
+              m
+                ..name = 'decode'
+                ..annotations.add(refer('override'))
+                ..returns = refer(className)
+                ..requiredParameters.add(
+                  Parameter(
+                    (p) =>
+                        p
+                          ..name = 'decoder'
+                          ..type = refer('BsatnDecoder'),
+                  ),
+                )
+                ..body = Code('return $className.decodeBsatn(decoder);'),
+        ),
+      );
+
+      if (table.primaryKey.isNotEmpty && productType.elements.isNotEmpty) {
+        final pkIndex = table.primaryKey.first;
+        if (pkIndex < productType.elements.length) {
+          final pkElement = productType.elements[pkIndex];
+          final pkFieldName = toCamelCase(pkElement.name ?? 'unknown');
+          final pkDartType = pkElement.type.toDartTypeName(
+            typeSpace: schema.typeSpace,
+            typeDefs: schema.types,
+          );
+          b.methods.add(
+            Method(
+              (m) =>
+                  m
+                    ..name = 'getPrimaryKey'
+                    ..annotations.add(refer('override'))
+                    ..returns = refer('$pkDartType?')
+                    ..requiredParameters.add(
+                      Parameter(
+                        (p) =>
+                            p
+                              ..name = 'row'
+                              ..type = refer(className),
+                      ),
+                    )
+                    ..body = Code('return row.$pkFieldName;'),
+            ),
+          );
+        } else {
+          _addNullPkMethod(b, className);
+        }
       } else {
-        buf.writeln('  dynamic getPrimaryKey($className row) {');
-        buf.writeln('    return null;');
+        _addNullPkMethod(b, className);
       }
-    } else {
-      buf.writeln('  dynamic getPrimaryKey($className row) {');
-      buf.writeln('    return null;');
-    }
 
-    buf.writeln('  }');
-    buf.writeln();
-    buf.writeln('  @override');
-    buf.writeln(
-      '  Map<String, dynamic>? toJson($className row) => row.toJson();',
-    );
-    buf.writeln();
-    buf.writeln('  @override');
-    buf.writeln(
-      '  $className? fromJson(Map<String, dynamic> json) => $className.fromJson(json);',
-    );
-    buf.writeln();
-    buf.writeln('  @override');
-    buf.writeln('  bool get supportsJsonSerialization => true;');
-    buf.writeln('}');
+      b.methods.add(
+        Method(
+          (m) =>
+              m
+                ..name = 'toJson'
+                ..annotations.add(refer('override'))
+                ..returns = refer('Map<String, dynamic>?')
+                ..requiredParameters.add(
+                  Parameter(
+                    (p) =>
+                        p
+                          ..name = 'row'
+                          ..type = refer(className),
+                  ),
+                )
+                ..body = const Code('return row.toJson();'),
+        ),
+      );
 
-    return buf.toString();
+      b.methods.add(
+        Method(
+          (m) =>
+              m
+                ..name = 'fromJson'
+                ..annotations.add(refer('override'))
+                ..returns = refer('$className?')
+                ..requiredParameters.add(
+                  Parameter(
+                    (p) =>
+                        p
+                          ..name = 'json'
+                          ..type = refer('Map<String, dynamic>'),
+                  ),
+                )
+                ..body = Code('return $className.fromJson(json);'),
+        ),
+      );
+
+      b.methods.add(
+        Method(
+          (m) =>
+              m
+                ..name = 'supportsJsonSerialization'
+                ..annotations.add(refer('override'))
+                ..type = MethodType.getter
+                ..returns = refer('bool')
+                ..body = const Code('return true;'),
+        ),
+      );
+    });
+  }
+
+  void _addNullPkMethod(ClassBuilder b, String className) {
+    b.methods.add(
+      Method(
+        (m) =>
+            m
+              ..name = 'getPrimaryKey'
+              ..annotations.add(refer('override'))
+              ..returns = refer('dynamic')
+              ..requiredParameters.add(
+                Parameter(
+                  (p) =>
+                      p
+                        ..name = 'row'
+                        ..type = refer(className),
+                ),
+              )
+              ..body = const Code('return null;'),
+      ),
+    );
   }
 
   String _getToJsonExpression(String fieldName, AlgebraicType type) =>
@@ -224,39 +387,5 @@ class TableGenerator {
         "(json['$fieldName'] ?? []).cast<int>().map((e) => Int64(e)).toList()",
       _ => "List<$innerDartType>.from(json['$fieldName'] ?? [])",
     };
-  }
-
-  String _toPascalCase(String input) {
-    return input
-        .split('_')
-        .map((word) {
-          return word[0].toUpperCase() + word.substring(1).toLowerCase();
-        })
-        .join('');
-  }
-
-  String _toSnakeCase(String input) {
-    return input
-        .replaceAllMapped(
-          RegExp(r'[A-Z]'),
-          (match) => '_${match.group(0)!.toLowerCase()}',
-        )
-        .replaceFirst(RegExp(r'^_'), '');
-  }
-
-  String _toCamelCase(String input) {
-    final parts = input.split('_');
-    if (parts.isEmpty) return input;
-
-    final first = parts.first.toLowerCase();
-    final rest = parts
-        .skip(1)
-        .map((word) {
-          if (word.isEmpty) return word;
-          return word[0].toUpperCase() + word.substring(1).toLowerCase();
-        })
-        .join('');
-
-    return first + rest;
   }
 }

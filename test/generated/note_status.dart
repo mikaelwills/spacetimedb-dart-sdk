@@ -54,12 +54,12 @@ class NoteStatusDraft extends NoteStatus {
   }
 
   @override
-  Map<String, dynamic> toJson() => {'type': 'draft'};
+  Map<String, dynamic> toJson() {
+    return {'type': 'draft'};
+  }
 }
 
 class NoteStatusPublished extends NoteStatus {
-  final Int64 value;
-
   const NoteStatusPublished(this.value);
 
   factory NoteStatusPublished.decode(BsatnDecoder decoder) {
@@ -70,6 +70,8 @@ class NoteStatusPublished extends NoteStatus {
     return NoteStatusPublished(Int64(json['value'] ?? 0));
   }
 
+  final Int64 value;
+
   @override
   void encode(BsatnEncoder encoder) {
     encoder.writeU8(1);
@@ -77,10 +79,9 @@ class NoteStatusPublished extends NoteStatus {
   }
 
   @override
-  Map<String, dynamic> toJson() => {
-    'type': 'published',
-    'value': value.toInt(),
-  };
+  Map<String, dynamic> toJson() {
+    return {'type': 'published', 'value': value.toInt()};
+  }
 }
 
 class NoteStatusArchived extends NoteStatus {
@@ -100,5 +101,7 @@ class NoteStatusArchived extends NoteStatus {
   }
 
   @override
-  Map<String, dynamic> toJson() => {'type': 'archived'};
+  Map<String, dynamic> toJson() {
+    return {'type': 'archived'};
+  }
 }

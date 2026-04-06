@@ -1,3 +1,5 @@
+import 'package:code_builder/code_builder.dart' hide TypeDef;
+import '../../codegen/codegen_emitter.dart';
 import '../models/type_models.dart';
 
 enum VariantType { unit, tupleSingle, tupleMultiple, struct }
@@ -16,126 +18,168 @@ class SumTypeGenerator {
   });
 
   String generate() {
-    final buffer = StringBuffer();
-
-    buffer.writeln('// GENERATED CODE - DO NOT MODIFY BY HAND');
-    buffer.writeln();
-    buffer.writeln(
-      "import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';",
-    );
-    buffer.writeln();
-
-    buffer.writeln(_generateSealedClass());
-    buffer.writeln();
-
+    final variantClasses = <Spec>[];
     for (var i = 0; i < sumType.variants.length; i++) {
-      buffer.writeln(_generateVariantClass(sumType.variants[i], i));
-      buffer.writeln();
+      variantClasses.add(_buildVariantClass(sumType.variants[i], i));
     }
 
-    return buffer.toString();
+    final lib = Library(
+      (b) =>
+          b
+            ..directives.add(
+              Directive.import(
+                'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart',
+              ),
+            )
+            ..body.addAll([_buildSealedClass(), ...variantClasses]),
+    );
+
+    return emitLibrary(lib, header: kGeneratedHeader);
   }
 
-  String _generateSealedClass() {
-    return '''
+  Code _buildSealedClass() {
+    final switchCases = StringBuffer();
+    for (var i = 0; i < sumType.variants.length; i++) {
+      final variant = sumType.variants[i];
+      final variantClassName = _getVariantClassName(variant, i);
+      switchCases.writeln('case $i: return $variantClassName.decode(decoder);');
+    }
+
+    final fromJsonCases = StringBuffer();
+    for (var i = 0; i < sumType.variants.length; i++) {
+      final variant = sumType.variants[i];
+      final variantClassName = _getVariantClassName(variant, i);
+      final variantName = variant.name ?? 'Variant$i';
+      fromJsonCases.writeln(
+        "case '$variantName': return $variantClassName.fromJson(json);",
+      );
+    }
+
+    return Code('''
 sealed class $enumName {
   const $enumName();
 
   factory $enumName.decode(BsatnDecoder decoder) {
     final tag = decoder.readU8();
     switch (tag) {
-${_generateSwitchCases()}
-      default: throw Exception('Unknown $enumName variant: \$tag');
+$switchCases      default: throw Exception('Unknown $enumName variant: \$tag');
     }
   }
 
   factory $enumName.fromJson(Map<String, dynamic> json) {
     final type = json['type'] ?? '';
     switch (type) {
-${_generateFromJsonSwitchCases()}
-      default: throw Exception('Unknown $enumName variant: \$type');
+$fromJsonCases      default: throw Exception('Unknown $enumName variant: \$type');
     }
   }
 
   void encode(BsatnEncoder encoder);
   Map<String, dynamic> toJson();
-}''';
+}
+''');
   }
 
-  String _generateSwitchCases() {
-    final cases = <String>[];
-    for (var i = 0; i < sumType.variants.length; i++) {
-      final variant = sumType.variants[i];
-      final variantClassName = _getVariantClassName(variant, i);
-      cases.add('      case $i: return $variantClassName.decode(decoder);');
-    }
-    return cases.join('\n');
-  }
-
-  String _generateFromJsonSwitchCases() {
-    final cases = <String>[];
-    for (var i = 0; i < sumType.variants.length; i++) {
-      final variant = sumType.variants[i];
-      final variantClassName = _getVariantClassName(variant, i);
-      final variantName = variant.name ?? 'Variant$i';
-      cases.add(
-        "      case '$variantName': return $variantClassName.fromJson(json);",
-      );
-    }
-    return cases.join('\n');
-  }
-
-  String _generateVariantClass(SumVariant variant, int tag) {
+  Class _buildVariantClass(SumVariant variant, int tag) {
     final variantType = _getVariantType(variant);
     final className = _getVariantClassName(variant, tag);
     final variantName = variant.name ?? 'Variant$tag';
 
-    switch (variantType) {
-      case VariantType.unit:
-        return _generateUnitVariant(className, tag, variantName);
-      case VariantType.tupleSingle:
-        return _generateTupleSingleVariant(
-          className,
-          variant,
-          tag,
-          variantName,
-        );
-      case VariantType.tupleMultiple:
-        return _generateTupleMultipleVariant(
-          className,
-          variant,
-          tag,
-          variantName,
-        );
-      case VariantType.struct:
-        return _generateStructVariant(className, variant, tag, variantName);
-    }
+    return switch (variantType) {
+      VariantType.unit => _buildUnitVariant(className, tag, variantName),
+      VariantType.tupleSingle => _buildTupleSingleVariant(
+        className,
+        variant,
+        tag,
+        variantName,
+      ),
+      VariantType.tupleMultiple => _buildTupleMultipleVariant(
+        className,
+        variant,
+        tag,
+        variantName,
+      ),
+      VariantType.struct => _buildStructVariant(
+        className,
+        variant,
+        tag,
+        variantName,
+      ),
+    };
   }
 
-  String _generateUnitVariant(String className, int tag, String variantName) {
-    return '''
-class $className extends $enumName {
-  const $className();
-
-  factory $className.decode(BsatnDecoder decoder) {
-    return const $className();
+  Class _buildUnitVariant(String className, int tag, String variantName) {
+    return Class(
+      (b) =>
+          b
+            ..name = className
+            ..extend = refer(enumName)
+            ..constructors.add(Constructor((c) => c..constant = true))
+            ..constructors.add(
+              Constructor(
+                (c) =>
+                    c
+                      ..factory = true
+                      ..name = 'decode'
+                      ..requiredParameters.add(
+                        Parameter(
+                          (p) =>
+                              p
+                                ..name = 'decoder'
+                                ..type = refer('BsatnDecoder'),
+                        ),
+                      )
+                      ..body = Code('return const $className();'),
+              ),
+            )
+            ..constructors.add(
+              Constructor(
+                (c) =>
+                    c
+                      ..factory = true
+                      ..name = 'fromJson'
+                      ..requiredParameters.add(
+                        Parameter(
+                          (p) =>
+                              p
+                                ..name = 'json'
+                                ..type = refer('Map<String, dynamic>'),
+                        ),
+                      )
+                      ..body = Code('return const $className();'),
+              ),
+            )
+            ..methods.add(
+              Method(
+                (m) =>
+                    m
+                      ..name = 'encode'
+                      ..annotations.add(refer('override'))
+                      ..returns = refer('void')
+                      ..requiredParameters.add(
+                        Parameter(
+                          (p) =>
+                              p
+                                ..name = 'encoder'
+                                ..type = refer('BsatnEncoder'),
+                        ),
+                      )
+                      ..body = Code('encoder.writeU8($tag);'),
+              ),
+            )
+            ..methods.add(
+              Method(
+                (m) =>
+                    m
+                      ..name = 'toJson'
+                      ..annotations.add(refer('override'))
+                      ..returns = refer('Map<String, dynamic>')
+                      ..body = Code("return {'type': '$variantName'};"),
+              ),
+            ),
+    );
   }
 
-  factory $className.fromJson(Map<String, dynamic> json) {
-    return const $className();
-  }
-
-  @override
-  void encode(BsatnEncoder encoder) {
-    encoder.writeU8($tag);
-  }
-
-  @override
-  Map<String, dynamic> toJson() => {'type': '$variantName'};
-}''';
-  }
-
-  String _generateTupleSingleVariant(
+  Class _buildTupleSingleVariant(
     String className,
     SumVariant variant,
     int tag,
@@ -156,167 +200,378 @@ class $className extends $enumName {
     final toJsonValue = _getToJsonValue('value', fieldType);
     final fromJsonValue = _getFromJsonValue('value', fieldType, dartType);
 
-    return '''
-class $className extends $enumName {
-  final $dartType value;
-
-  const $className(this.value);
-
-  factory $className.decode(BsatnDecoder decoder) {
-    return $className(decoder.$decoderMethod());
+    return Class(
+      (b) =>
+          b
+            ..name = className
+            ..extend = refer(enumName)
+            ..fields.add(
+              Field(
+                (f) =>
+                    f
+                      ..name = 'value'
+                      ..type = refer(dartType)
+                      ..modifier = FieldModifier.final$,
+              ),
+            )
+            ..constructors.add(
+              Constructor(
+                (c) =>
+                    c
+                      ..constant = true
+                      ..requiredParameters.add(
+                        Parameter(
+                          (p) =>
+                              p
+                                ..name = 'value'
+                                ..toThis = true,
+                        ),
+                      ),
+              ),
+            )
+            ..constructors.add(
+              Constructor(
+                (c) =>
+                    c
+                      ..factory = true
+                      ..name = 'decode'
+                      ..requiredParameters.add(
+                        Parameter(
+                          (p) =>
+                              p
+                                ..name = 'decoder'
+                                ..type = refer('BsatnDecoder'),
+                        ),
+                      )
+                      ..body = Code(
+                        'return $className(decoder.$decoderMethod());',
+                      ),
+              ),
+            )
+            ..constructors.add(
+              Constructor(
+                (c) =>
+                    c
+                      ..factory = true
+                      ..name = 'fromJson'
+                      ..requiredParameters.add(
+                        Parameter(
+                          (p) =>
+                              p
+                                ..name = 'json'
+                                ..type = refer('Map<String, dynamic>'),
+                        ),
+                      )
+                      ..body = Code('return $className($fromJsonValue);'),
+              ),
+            )
+            ..methods.add(
+              Method(
+                (m) =>
+                    m
+                      ..name = 'encode'
+                      ..annotations.add(refer('override'))
+                      ..returns = refer('void')
+                      ..requiredParameters.add(
+                        Parameter(
+                          (p) =>
+                              p
+                                ..name = 'encoder'
+                                ..type = refer('BsatnEncoder'),
+                        ),
+                      )
+                      ..body = Code(
+                        'encoder.writeU8($tag); encoder.$encoderMethod(value);',
+                      ),
+              ),
+            )
+            ..methods.add(
+              Method(
+                (m) =>
+                    m
+                      ..name = 'toJson'
+                      ..annotations.add(refer('override'))
+                      ..returns = refer('Map<String, dynamic>')
+                      ..body = Code(
+                        "return {'type': '$variantName', 'value': $toJsonValue};",
+                      ),
+              ),
+            ),
+    );
   }
 
-  factory $className.fromJson(Map<String, dynamic> json) {
-    return $className($fromJsonValue);
-  }
-
-  @override
-  void encode(BsatnEncoder encoder) {
-    encoder.writeU8($tag);
-    encoder.$encoderMethod(value);
-  }
-
-  @override
-  Map<String, dynamic> toJson() => {'type': '$variantName', 'value': $toJsonValue};
-}''';
-  }
-
-  String _generateTupleMultipleVariant(
+  Class _buildTupleMultipleVariant(
     String className,
     SumVariant variant,
     int tag,
     String variantName,
   ) {
     final elements = variant.algebraicType.product!.elements;
-    final fields = <String>[];
-    final params = <String>[];
-    final decodeStatements = <String>[];
-    final encodeStatements = <String>[];
-    final toJsonFields = <String>[];
-    final fromJsonArgs = <String>[];
 
-    for (var i = 0; i < elements.length; i++) {
-      final element = elements[i];
-      final fieldName = 'field$i';
-      final dartType = element.type.toDartTypeName();
-      final decoderMethod = element.type.decoderMethod;
-      final encoderMethod = element.type.encoderMethod;
-      final toJsonValue = _getToJsonValue(fieldName, element.type);
-      final fromJsonValue = _getFromJsonValue(
-        fieldName,
-        element.type,
-        dartType,
+    return Class((b) {
+      b
+        ..name = className
+        ..extend = refer(enumName);
+
+      final constructorParams = <Parameter>[];
+      final decodeArgs = StringBuffer();
+      final encodeBody = StringBuffer('encoder.writeU8($tag);\n');
+      final toJsonEntries = StringBuffer("'type': '$variantName',\n");
+      final fromJsonArgs = StringBuffer();
+
+      for (var i = 0; i < elements.length; i++) {
+        final element = elements[i];
+        final fieldName = 'field$i';
+        final dartType = element.type.toDartTypeName();
+        final toJsonValue = _getToJsonValue(fieldName, element.type);
+        final fromJsonValue = _getFromJsonValue(
+          fieldName,
+          element.type,
+          dartType,
+        );
+
+        b.fields.add(
+          Field(
+            (f) =>
+                f
+                  ..name = fieldName
+                  ..type = refer(dartType)
+                  ..modifier = FieldModifier.final$,
+          ),
+        );
+
+        constructorParams.add(
+          Parameter(
+            (p) =>
+                p
+                  ..name = fieldName
+                  ..toThis = true,
+          ),
+        );
+        decodeArgs.writeln('decoder.${element.type.decoderMethod}(),');
+        encodeBody.writeln(
+          'encoder.${element.type.encoderMethod}($fieldName);',
+        );
+        toJsonEntries.writeln("'$fieldName': $toJsonValue,");
+        fromJsonArgs.writeln('$fromJsonValue,');
+      }
+
+      b.constructors.add(
+        Constructor(
+          (c) =>
+              c
+                ..constant = true
+                ..requiredParameters.addAll(constructorParams),
+        ),
       );
 
-      fields.add('  final $dartType $fieldName;');
-      params.add('this.$fieldName');
-      decodeStatements.add('      decoder.$decoderMethod(),');
-      encodeStatements.add('    encoder.$encoderMethod($fieldName);');
-      toJsonFields.add("      '$fieldName': $toJsonValue,");
-      fromJsonArgs.add('      $fromJsonValue,');
-    }
+      b.constructors.add(
+        Constructor(
+          (c) =>
+              c
+                ..factory = true
+                ..name = 'decode'
+                ..requiredParameters.add(
+                  Parameter(
+                    (p) =>
+                        p
+                          ..name = 'decoder'
+                          ..type = refer('BsatnDecoder'),
+                  ),
+                )
+                ..body = Code('return $className($decodeArgs);'),
+        ),
+      );
 
-    return '''
-class $className extends $enumName {
-${fields.join('\n')}
+      b.constructors.add(
+        Constructor(
+          (c) =>
+              c
+                ..factory = true
+                ..name = 'fromJson'
+                ..requiredParameters.add(
+                  Parameter(
+                    (p) =>
+                        p
+                          ..name = 'json'
+                          ..type = refer('Map<String, dynamic>'),
+                  ),
+                )
+                ..body = Code('return $className($fromJsonArgs);'),
+        ),
+      );
 
-  const $className(${params.join(', ')});
+      b.methods.add(
+        Method(
+          (m) =>
+              m
+                ..name = 'encode'
+                ..annotations.add(refer('override'))
+                ..returns = refer('void')
+                ..requiredParameters.add(
+                  Parameter(
+                    (p) =>
+                        p
+                          ..name = 'encoder'
+                          ..type = refer('BsatnEncoder'),
+                  ),
+                )
+                ..body = Code(encodeBody.toString()),
+        ),
+      );
 
-  factory $className.decode(BsatnDecoder decoder) {
-    return $className(
-${decodeStatements.join('\n')}
-    );
+      b.methods.add(
+        Method(
+          (m) =>
+              m
+                ..name = 'toJson'
+                ..annotations.add(refer('override'))
+                ..returns = refer('Map<String, dynamic>')
+                ..body = Code('return {$toJsonEntries};'),
+        ),
+      );
+    });
   }
 
-  factory $className.fromJson(Map<String, dynamic> json) {
-    return $className(
-${fromJsonArgs.join('\n')}
-    );
-  }
-
-  @override
-  void encode(BsatnEncoder encoder) {
-    encoder.writeU8($tag);
-${encodeStatements.join('\n')}
-  }
-
-  @override
-  Map<String, dynamic> toJson() => {
-    'type': '$variantName',
-${toJsonFields.join('\n')}
-  };
-}''';
-  }
-
-  String _generateStructVariant(
+  Class _buildStructVariant(
     String className,
     SumVariant variant,
     int tag,
     String variantName,
   ) {
     final elements = variant.algebraicType.product!.elements;
-    final fields = <String>[];
-    final namedParams = <String>[];
-    final decodeStatements = <String>[];
-    final encodeStatements = <String>[];
-    final toJsonFields = <String>[];
-    final fromJsonArgs = <String>[];
 
-    for (final element in elements) {
-      final fieldName = element.name ?? 'field';
-      final dartType = element.type.toDartTypeName();
-      final decoderMethod = element.type.decoderMethod;
-      final encoderMethod = element.type.encoderMethod;
-      final toJsonValue = _getToJsonValue(fieldName, element.type);
-      final fromJsonValue = _getFromJsonValue(
-        fieldName,
-        element.type,
-        dartType,
+    return Class((b) {
+      b
+        ..name = className
+        ..extend = refer(enumName);
+
+      final constructorParams = <Parameter>[];
+      final decodeArgs = StringBuffer();
+      final encodeBody = StringBuffer('encoder.writeU8($tag);\n');
+      final toJsonEntries = StringBuffer("'type': '$variantName',\n");
+      final fromJsonArgs = StringBuffer();
+
+      for (final element in elements) {
+        final fieldName = element.name ?? 'field';
+        final dartType = element.type.toDartTypeName();
+        final toJsonValue = _getToJsonValue(fieldName, element.type);
+        final fromJsonValue = _getFromJsonValue(
+          fieldName,
+          element.type,
+          dartType,
+        );
+
+        b.fields.add(
+          Field(
+            (f) =>
+                f
+                  ..name = fieldName
+                  ..type = refer(dartType)
+                  ..modifier = FieldModifier.final$,
+          ),
+        );
+
+        constructorParams.add(
+          Parameter(
+            (p) =>
+                p
+                  ..name = fieldName
+                  ..named = true
+                  ..required = true
+                  ..toThis = true,
+          ),
+        );
+        decodeArgs.writeln(
+          '$fieldName: decoder.${element.type.decoderMethod}(),',
+        );
+        encodeBody.writeln(
+          'encoder.${element.type.encoderMethod}($fieldName);',
+        );
+        toJsonEntries.writeln("'$fieldName': $toJsonValue,");
+        fromJsonArgs.writeln('$fieldName: $fromJsonValue,');
+      }
+
+      b.constructors.add(
+        Constructor(
+          (c) =>
+              c
+                ..constant = true
+                ..optionalParameters.addAll(constructorParams),
+        ),
       );
 
-      fields.add('  final $dartType $fieldName;');
-      namedParams.add('required this.$fieldName');
-      decodeStatements.add('      $fieldName: decoder.$decoderMethod(),');
-      encodeStatements.add('    encoder.$encoderMethod($fieldName);');
-      toJsonFields.add("      '$fieldName': $toJsonValue,");
-      fromJsonArgs.add('      $fieldName: $fromJsonValue,');
-    }
+      b.constructors.add(
+        Constructor(
+          (c) =>
+              c
+                ..factory = true
+                ..name = 'decode'
+                ..requiredParameters.add(
+                  Parameter(
+                    (p) =>
+                        p
+                          ..name = 'decoder'
+                          ..type = refer('BsatnDecoder'),
+                  ),
+                )
+                ..body = Code('return $className($decodeArgs);'),
+        ),
+      );
 
-    return '''
-class $className extends $enumName {
-${fields.join('\n')}
+      b.constructors.add(
+        Constructor(
+          (c) =>
+              c
+                ..factory = true
+                ..name = 'fromJson'
+                ..requiredParameters.add(
+                  Parameter(
+                    (p) =>
+                        p
+                          ..name = 'json'
+                          ..type = refer('Map<String, dynamic>'),
+                  ),
+                )
+                ..body = Code('return $className($fromJsonArgs);'),
+        ),
+      );
 
-  const $className({${namedParams.join(', ')}});
+      b.methods.add(
+        Method(
+          (m) =>
+              m
+                ..name = 'encode'
+                ..annotations.add(refer('override'))
+                ..returns = refer('void')
+                ..requiredParameters.add(
+                  Parameter(
+                    (p) =>
+                        p
+                          ..name = 'encoder'
+                          ..type = refer('BsatnEncoder'),
+                  ),
+                )
+                ..body = Code(encodeBody.toString()),
+        ),
+      );
 
-  factory $className.decode(BsatnDecoder decoder) {
-    return $className(
-${decodeStatements.join('\n')}
-    );
-  }
-
-  factory $className.fromJson(Map<String, dynamic> json) {
-    return $className(
-${fromJsonArgs.join('\n')}
-    );
-  }
-
-  @override
-  void encode(BsatnEncoder encoder) {
-    encoder.writeU8($tag);
-${encodeStatements.join('\n')}
-  }
-
-  @override
-  Map<String, dynamic> toJson() => {
-    'type': '$variantName',
-${toJsonFields.join('\n')}
-  };
-}''';
+      b.methods.add(
+        Method(
+          (m) =>
+              m
+                ..name = 'toJson'
+                ..annotations.add(refer('override'))
+                ..returns = refer('Map<String, dynamic>')
+                ..body = Code('return {$toJsonEntries};'),
+        ),
+      );
+    });
   }
 
   String _getVariantClassName(SumVariant variant, int tag) {
     if (variant.name != null && variant.name!.isNotEmpty) {
-      return '$enumName${_toPascalCase(variant.name!)}';
+      return '$enumName${_sumToPascalCase(variant.name!)}';
     }
     return '${enumName}Variant$tag';
   }
@@ -351,7 +606,7 @@ ${toJsonFields.join('\n')}
     return VariantType.struct;
   }
 
-  String _toPascalCase(String input) {
+  String _sumToPascalCase(String input) {
     if (input.isEmpty) return input;
     return input[0].toUpperCase() + input.substring(1);
   }

@@ -4,12 +4,6 @@ import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 import 'note_status.dart';
 
 class Note {
-  final int id;
-  final String title;
-  final String content;
-  final Int64 timestamp;
-  final NoteStatus status;
-
   Note({
     required this.id,
     required this.title,
@@ -17,6 +11,28 @@ class Note {
     required this.timestamp,
     required this.status,
   });
+
+  factory Note.fromJson(Map<String, dynamic> json) {
+    return Note(
+      id: json['id'] ?? 0,
+      title: json['title'] ?? '',
+      content: json['content'] ?? '',
+      timestamp: Int64(json['timestamp'] ?? 0),
+      status: NoteStatus.fromJson(
+        Map<String, dynamic>.from(json['status'] ?? {}),
+      ),
+    );
+  }
+
+  final int id;
+
+  final String title;
+
+  final String content;
+
+  final Int64 timestamp;
+
+  final NoteStatus status;
 
   void encodeBsatn(BsatnEncoder encoder) {
     encoder.writeU32(id);
@@ -45,18 +61,6 @@ class Note {
       'status': status.toJson(),
     };
   }
-
-  factory Note.fromJson(Map<String, dynamic> json) {
-    return Note(
-      id: json['id'] ?? 0,
-      title: json['title'] ?? '',
-      content: json['content'] ?? '',
-      timestamp: Int64(json['timestamp'] ?? 0),
-      status: NoteStatus.fromJson(
-        Map<String, dynamic>.from(json['status'] ?? {}),
-      ),
-    );
-  }
 }
 
 class NoteDecoder extends RowDecoder<Note> {
@@ -71,11 +75,17 @@ class NoteDecoder extends RowDecoder<Note> {
   }
 
   @override
-  Map<String, dynamic>? toJson(Note row) => row.toJson();
+  Map<String, dynamic>? toJson(Note row) {
+    return row.toJson();
+  }
 
   @override
-  Note? fromJson(Map<String, dynamic> json) => Note.fromJson(json);
+  Note? fromJson(Map<String, dynamic> json) {
+    return Note.fromJson(json);
+  }
 
   @override
-  bool get supportsJsonSerialization => true;
+  bool get supportsJsonSerialization {
+    return true;
+  }
 }
