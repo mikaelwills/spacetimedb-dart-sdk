@@ -34,7 +34,7 @@ void main() {
           'title': title,
           'content': 'Cached content',
           'timestamp': DateTime.now().microsecondsSinceEpoch,
-          'status': {'type': 'Draft'},
+          'status': {'type': 'draft'},
         },
       ]);
       await storage.setLastSyncTime('note', DateTime.now());
@@ -128,7 +128,7 @@ void main() {
                 'title': optimisticTitle,
                 'content': 'Pending content',
                 'timestamp': DateTime.now().microsecondsSinceEpoch,
-                'status': {'type': 'Draft'},
+                'status': {'type': 'draft'},
               }),
             ],
           ),
@@ -334,7 +334,7 @@ void main() {
             'title': 'Cached Note',
             'content': 'From offline',
             'timestamp': DateTime.now().microsecondsSinceEpoch,
-            'status': {'type': 'Draft'},
+            'status': {'type': 'draft'},
           },
         ]);
 
@@ -461,7 +461,7 @@ void main() {
               'title': 'EventStream-Test',
               'content': 'Content',
               'timestamp': DateTime.now().microsecondsSinceEpoch,
-              'status': {'type': 'Draft'},
+              'status': {'type': 'draft'},
             }),
           ],
         );
@@ -547,7 +547,7 @@ void main() {
               'title': 'Online-Optimistic-Test',
               'content': 'Instant feedback',
               'timestamp': DateTime.now().microsecondsSinceEpoch,
-              'status': {'type': 'Draft'},
+              'status': {'type': 'draft'},
             }),
           ],
         );
@@ -601,7 +601,7 @@ void main() {
               'title': optimisticTitle,
               'content': 'Should be confirmed',
               'timestamp': DateTime.now().microsecondsSinceEpoch,
-              'status': {'type': 'Draft'},
+              'status': {'type': 'draft'},
             }),
           ],
         );
@@ -1005,7 +1005,7 @@ void main() {
               'title': '$testPrefix-Note3',
               'content': 'Content 3',
               'timestamp': DateTime.now().microsecondsSinceEpoch,
-              'status': {'type': 'Draft'},
+              'status': {'type': 'draft'},
             }),
           ],
         );
@@ -1022,7 +1022,7 @@ void main() {
               'title': '$testPrefix-Note4',
               'content': 'Content 4',
               'timestamp': DateTime.now().microsecondsSinceEpoch,
-              'status': {'type': 'Draft'},
+              'status': {'type': 'draft'},
             }),
           ],
         );
@@ -1264,7 +1264,7 @@ void main() {
               'title': 'New User Note',
               'content': 'Content',
               'timestamp': DateTime.now().microsecondsSinceEpoch,
-              'status': {'type': 'Draft'},
+              'status': {'type': 'draft'},
             }),
           ],
         );

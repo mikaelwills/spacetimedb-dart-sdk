@@ -97,7 +97,7 @@ void main() {
                       'title': uniqueTitle,
                       'content': 'Created while offline',
                       'timestamp': DateTime.now().microsecondsSinceEpoch,
-                      'status': {'type': 'Draft'},
+                      'status': {'type': 'draft'},
                     }),
                   ],
                 )
@@ -175,7 +175,7 @@ void main() {
                       'title': uniqueTitle,
                       'content': 'Survived crash',
                       'timestamp': DateTime.now().microsecondsSinceEpoch,
-                      'status': {'type': 'Draft'},
+                      'status': {'type': 'draft'},
                     }),
                   ],
                 ),
@@ -189,7 +189,7 @@ void main() {
                   'title': 'Cached Note',
                   'content': 'From before crash',
                   'timestamp': DateTime.now().microsecondsSinceEpoch,
-                  'status': {'type': 'Draft'},
+                  'status': {'type': 'draft'},
                 },
               ])
               .timeout(_timeout);
