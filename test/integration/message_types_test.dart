@@ -3,38 +3,20 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 import '../generated/note.dart';
-import '../generated/reducer_args.dart';
 import '../helpers/integration_test_helper.dart';
-
-/// Comprehensive test for all SpacetimeDB server message types
+import '../helpers/test_env.dart';
 
 void main() {
   setUpAll(ensureTestEnvironment);
   tearDownAll(cleanupTestEnvironment);
+  late TestEnv env;
   late SpacetimeDbConnection connection;
   late SubscriptionManager subManager;
 
   setUp(() async {
-    connection = SpacetimeDbConnection(
-      host: 'localhost:3000',
-      database: 'notesdb',
-    );
-    subManager = SubscriptionManager(connection);
-
-    // PHASE 0: Register decoders
-    subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-    subManager.reducerRegistry.registerDecoder(
-      'create_note',
-      CreateNoteArgsDecoder(),
-    );
-    subManager.reducerRegistry.registerDecoder(
-      'update_note',
-      UpdateNoteArgsDecoder(),
-    );
-    subManager.reducerRegistry.registerDecoder(
-      'delete_note',
-      DeleteNoteArgsDecoder(),
-    );
+    env = await createTestEnv();
+    connection = env.connection;
+    subManager = env.subManager;
 
     await connection.connect();
     await subManager.onIdentityToken.first.timeout(const Duration(seconds: 5));
@@ -42,7 +24,7 @@ void main() {
 
   tearDown(() async {
     subManager.dispose();
-    await connection.disconnect();
+    await env.disconnect();
   });
 
   group('Server Message Type Tests', () {
@@ -134,10 +116,10 @@ void main() {
       final txUpdateFuture = subManager.onTransactionUpdate.first;
 
       // B. ACTION
-      await subManager.reducers.callWith('create_note', (encoder) {
-        encoder.writeString('TransactionUpdate Test');
-        encoder.writeString('Testing TransactionUpdate message');
-      });
+      await env.reducers.createNote(
+        title: 'TransactionUpdate Test',
+        content: 'Testing TransactionUpdate message',
+      );
 
       // C. WAIT
       final txUpdate = await txUpdateFuture.timeout(const Duration(seconds: 2));
@@ -404,10 +386,10 @@ void main() {
       });
 
       // B. ACTION
-      await subManager.reducers.callWith('create_note', (encoder) {
-        encoder.writeString('Light Update Test');
-        encoder.writeString('May receive Light or Full TransactionUpdate');
-      });
+      await env.reducers.createNote(
+        title: 'Light Update Test',
+        content: 'May receive Light or Full TransactionUpdate',
+      );
 
       // C. WAIT
       final updateType = await updateCompleter.future.timeout(

@@ -326,9 +326,11 @@ void main() {
           final table =
               manager.cache.getTableByName('note')! as TableCache<Note>;
 
-          final result = await manager.reducers.callWith(
+          final enc = BsatnEncoder();
+          enc.writeU32(noteId);
+          final result = await manager.reducers.call(
             'create_note',
-            (enc) => enc.writeU32(noteId),
+            enc.toBytes(),
             optimisticChanges: [OptimisticChange.insert('note', note.toJson())],
           );
 

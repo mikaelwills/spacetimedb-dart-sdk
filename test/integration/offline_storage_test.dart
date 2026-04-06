@@ -34,18 +34,9 @@ void main() {
       subManager = SubscriptionManager(connection, offlineStorage: storage);
 
       subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-      subManager.reducerRegistry.registerDecoder(
-        'create_note',
-        CreateNoteArgsDecoder(),
-      );
-      subManager.reducerRegistry.registerDecoder(
-        'update_note',
-        UpdateNoteArgsDecoder(),
-      );
-      subManager.reducerRegistry.registerDecoder(
-        'delete_note',
-        DeleteNoteArgsDecoder(),
-      );
+      subManager.reducerRegistry.register(createNoteDef);
+      subManager.reducerRegistry.register(updateNoteDef);
+      subManager.reducerRegistry.register(deleteNoteDef);
 
       await connection.connect();
       await subManager.onIdentityToken.first.timeout(_timeout);
@@ -84,13 +75,13 @@ void main() {
 
             final syncResultFuture = subManager.onMutationSyncResult.first;
 
+            final enc1 = BsatnEncoder();
+            enc1.writeString(uniqueTitle);
+            enc1.writeString('Created while offline');
             final result = await subManager.reducers
-                .callWith(
+                .call(
                   'create_note',
-                  (encoder) {
-                    encoder.writeString(uniqueTitle);
-                    encoder.writeString('Created while offline');
-                  },
+                  enc1.toBytes(),
                   optimisticChanges: [
                     OptimisticChange.insert('note', {
                       'id': 999999,
@@ -208,10 +199,7 @@ void main() {
           );
 
           subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-          subManager.reducerRegistry.registerDecoder(
-            'create_note',
-            CreateNoteArgsDecoder(),
-          );
+          subManager.reducerRegistry.register(createNoteDef);
 
           await subManager.loadFromOfflineCache();
 
@@ -278,11 +266,11 @@ void main() {
             for (var i = 0; i < 3; i++) {
               final uniqueTitle =
                   'Multi-$i-${DateTime.now().millisecondsSinceEpoch}';
+              final enc = BsatnEncoder();
+              enc.writeString(uniqueTitle);
+              enc.writeString('Content $i');
               final result = await subManager.reducers
-                  .callWith('create_note', (encoder) {
-                    encoder.writeString(uniqueTitle);
-                    encoder.writeString('Content $i');
-                  })
+                  .call('create_note', enc.toBytes())
                   .timeout(_timeout);
               results.add(result);
             }
@@ -352,13 +340,13 @@ void main() {
             await connection.disconnect();
             await disconnectFuture;
 
+            final syncEnc = BsatnEncoder();
+            syncEnc.writeString(
+              'SyncState-Test-${DateTime.now().millisecondsSinceEpoch}',
+            );
+            syncEnc.writeString('Testing sync state');
             await subManager.reducers
-                .callWith('create_note', (encoder) {
-                  encoder.writeString(
-                    'SyncState-Test-${DateTime.now().millisecondsSinceEpoch}',
-                  );
-                  encoder.writeString('Testing sync state');
-                })
+                .call('create_note', syncEnc.toBytes())
                 .timeout(_timeout);
 
             expect(subManager.syncState.pendingCount, equals(1));
@@ -459,27 +447,27 @@ void main() {
             ];
             final requestIds = <String>[];
 
+            final enc1 = BsatnEncoder();
+            enc1.writeString('OrderTest-$uniqueId');
+            enc1.writeString('Initial Content');
             final res1 = await subManager.reducers
-                .callWith('create_note', (encoder) {
-                  encoder.writeString('OrderTest-$uniqueId');
-                  encoder.writeString('Initial Content');
-                })
+                .call('create_note', enc1.toBytes())
                 .timeout(_timeout);
             requestIds.add(res1.pendingRequestId!);
 
+            final enc2 = BsatnEncoder();
+            enc2.writeU32(uniqueId);
+            enc2.writeString('OrderTest-$uniqueId');
+            enc2.writeString('Updated Content');
             final res2 = await subManager.reducers
-                .callWith('update_note', (encoder) {
-                  encoder.writeU32(uniqueId);
-                  encoder.writeString('OrderTest-$uniqueId');
-                  encoder.writeString('Updated Content');
-                })
+                .call('update_note', enc2.toBytes())
                 .timeout(_timeout);
             requestIds.add(res2.pendingRequestId!);
 
+            final enc3 = BsatnEncoder();
+            enc3.writeU32(uniqueId);
             final res3 = await subManager.reducers
-                .callWith('delete_note', (encoder) {
-                  encoder.writeU32(uniqueId);
-                })
+                .call('delete_note', enc3.toBytes())
                 .timeout(_timeout);
             requestIds.add(res3.pendingRequestId!);
 

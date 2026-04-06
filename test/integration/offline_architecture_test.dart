@@ -64,10 +64,7 @@ void main() {
         );
         subManager = SubscriptionManager(connection, offlineStorage: storage);
         subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-        subManager.reducerRegistry.registerDecoder(
-          'create_note',
-          CreateNoteArgsDecoder(),
-        );
+        subManager.reducerRegistry.register(createNoteDef);
 
         await subManager.loadFromOfflineCache();
         noteTable = subManager.cache.getTableByTypedName<Note>('note');
@@ -142,10 +139,7 @@ void main() {
         );
         subManager = SubscriptionManager(connection, offlineStorage: storage);
         subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-        subManager.reducerRegistry.registerDecoder(
-          'create_note',
-          CreateNoteArgsDecoder(),
-        );
+        subManager.reducerRegistry.register(createNoteDef);
 
         await subManager.loadFromOfflineCache();
         noteTable = subManager.cache.getTableByTypedName<Note>('note');
@@ -227,14 +221,8 @@ void main() {
         );
         subManager = SubscriptionManager(connection, offlineStorage: storage);
         subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-        subManager.reducerRegistry.registerDecoder(
-          'create_note',
-          CreateNoteArgsDecoder(),
-        );
-        subManager.reducerRegistry.registerDecoder(
-          'delete_note',
-          DeleteNoteArgsDecoder(),
-        );
+        subManager.reducerRegistry.register(createNoteDef);
+        subManager.reducerRegistry.register(deleteNoteDef);
 
         await connection.connect();
         await subManager.onIdentityToken.first.timeout(_timeout);
@@ -248,10 +236,10 @@ void main() {
             .firstWhere((n) => n.title == testTitle)
             .timeout(_timeout);
 
-        await subManager.reducers.callWith('create_note', (encoder) {
-          encoder.writeString(testTitle);
-          encoder.writeString('Content to delete');
-        });
+        final encCreate = BsatnEncoder();
+        encCreate.writeString(testTitle);
+        encCreate.writeString('Content to delete');
+        await subManager.reducers.call('create_note', encCreate.toBytes());
 
         final noteToDelete = await insertFuture;
         final noteId = noteToDelete.id;
@@ -260,9 +248,9 @@ void main() {
             .firstWhere((n) => n.id == noteId)
             .timeout(_timeout);
 
-        await subManager.reducers.callWith('delete_note', (encoder) {
-          encoder.writeU32(noteId);
-        });
+        final encDel = BsatnEncoder();
+        encDel.writeU32(noteId);
+        await subManager.reducers.call('delete_note', encDel.toBytes());
 
         await deleteFuture;
 
@@ -346,10 +334,7 @@ void main() {
         );
         subManager = SubscriptionManager(connection, offlineStorage: storage);
         subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-        subManager.reducerRegistry.registerDecoder(
-          'create_note',
-          CreateNoteArgsDecoder(),
-        );
+        subManager.reducerRegistry.register(createNoteDef);
 
         await subManager.loadFromOfflineCache();
         final noteTableBefore = subManager.cache.getTableByTypedName<Note>(
@@ -380,7 +365,7 @@ void main() {
         );
 
         final createCompleter = Completer<void>();
-        final createSub = subManager.reducerEmitter.on('create_note').listen((
+        final createSub = subManager.reducerEmitter.on(createNoteDef).listen((
           _,
         ) {
           if (!createCompleter.isCompleted) {
@@ -388,12 +373,12 @@ void main() {
           }
         });
 
-        await subManager.reducers.callWith('create_note', (encoder) {
-          encoder.writeString(
-            'InstanceTest-${DateTime.now().microsecondsSinceEpoch}',
-          );
-          encoder.writeString('Testing instance preservation');
-        });
+        final encInst = BsatnEncoder();
+        encInst.writeString(
+          'InstanceTest-${DateTime.now().microsecondsSinceEpoch}',
+        );
+        encInst.writeString('Testing instance preservation');
+        await subManager.reducers.call('create_note', encInst.toBytes());
 
         await createCompleter.future.timeout(_timeout);
         await createSub.cancel();
@@ -423,10 +408,7 @@ void main() {
         );
         subManager = SubscriptionManager(connection, offlineStorage: storage);
         subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-        subManager.reducerRegistry.registerDecoder(
-          'create_note',
-          CreateNoteArgsDecoder(),
-        );
+        subManager.reducerRegistry.register(createNoteDef);
 
         await connection.connect();
         await subManager.onIdentityToken.first.timeout(_timeout);
@@ -449,12 +431,12 @@ void main() {
         });
 
         final optimisticId = DateTime.now().microsecondsSinceEpoch;
-        await subManager.reducers.callWith(
+        final encEvt = BsatnEncoder();
+        encEvt.writeString('EventStream-Test');
+        encEvt.writeString('Content');
+        await subManager.reducers.call(
           'create_note',
-          (encoder) {
-            encoder.writeString('EventStream-Test');
-            encoder.writeString('Content');
-          },
+          encEvt.toBytes(),
           optimisticChanges: [
             OptimisticChange.insert('note', {
               'id': optimisticId,
@@ -499,14 +481,8 @@ void main() {
       );
       subManager = SubscriptionManager(connection, offlineStorage: storage);
       subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-      subManager.reducerRegistry.registerDecoder(
-        'create_note',
-        CreateNoteArgsDecoder(),
-      );
-      subManager.reducerRegistry.registerDecoder(
-        'delete_note',
-        DeleteNoteArgsDecoder(),
-      );
+      subManager.reducerRegistry.register(createNoteDef);
+      subManager.reducerRegistry.register(deleteNoteDef);
 
       await connection.connect();
       await subManager.onIdentityToken.first.timeout(_timeout);
@@ -535,12 +511,12 @@ void main() {
         final initialCount = noteTable.count();
         final optimisticId = DateTime.now().microsecondsSinceEpoch;
 
-        subManager.reducers.callWith(
+        final encOnl = BsatnEncoder();
+        encOnl.writeString('Online-Optimistic-Test');
+        encOnl.writeString('Instant feedback');
+        subManager.reducers.call(
           'create_note',
-          (encoder) {
-            encoder.writeString('Online-Optimistic-Test');
-            encoder.writeString('Instant feedback');
-          },
+          encOnl.toBytes(),
           optimisticChanges: [
             OptimisticChange.insert('note', {
               'id': optimisticId,
@@ -589,12 +565,12 @@ void main() {
           }
         });
 
-        final result = await subManager.reducers.callWith(
+        final encOpt = BsatnEncoder();
+        encOpt.writeString(optimisticTitle);
+        encOpt.writeString('Should be confirmed');
+        final result = await subManager.reducers.call(
           'create_note',
-          (encoder) {
-            encoder.writeString(optimisticTitle);
-            encoder.writeString('Should be confirmed');
-          },
+          encOpt.toBytes(),
           optimisticChanges: [
             OptimisticChange.insert('note', {
               'id': optimisticId,
@@ -654,10 +630,10 @@ void main() {
 
         final testTitle =
             'ZombieKiller-${DateTime.now().microsecondsSinceEpoch}';
-        await subManager.reducers.callWith('create_note', (encoder) {
-          encoder.writeString(testTitle);
-          encoder.writeString('Will be deleted');
-        });
+        final encZombie = BsatnEncoder();
+        encZombie.writeString(testTitle);
+        encZombie.writeString('Will be deleted');
+        await subManager.reducers.call('create_note', encZombie.toBytes());
 
         await createSyncCompleter.future.timeout(_timeout);
         await createSub.cancel();
@@ -682,9 +658,11 @@ void main() {
           }
         });
 
-        final result = await subManager.reducers.callWith(
+        final encDelOpt = BsatnEncoder();
+        encDelOpt.writeU32(noteId);
+        final result = await subManager.reducers.call(
           'delete_note',
-          (encoder) => encoder.writeU32(noteId),
+          encDelOpt.toBytes(),
           optimisticChanges: [
             OptimisticChange.delete('note', noteToDelete.toJson()),
           ],
@@ -753,10 +731,7 @@ void main() {
         );
         subManager = SubscriptionManager(connection, offlineStorage: storage);
         subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-        subManager.reducerRegistry.registerDecoder(
-          'create_note',
-          CreateNoteArgsDecoder(),
-        );
+        subManager.reducerRegistry.register(createNoteDef);
 
         await connection.connect();
         await subManager.onIdentityToken.first.timeout(_timeout);
@@ -776,10 +751,10 @@ void main() {
         await disconnectFuture;
 
         for (var i = 0; i < 3; i++) {
-          await subManager.reducers.callWith('create_note', (encoder) {
-            encoder.writeString('Queue-Test-$i');
-            encoder.writeString('Content $i');
-          });
+          final enc = BsatnEncoder();
+          enc.writeString('Queue-Test-$i');
+          enc.writeString('Content $i');
+          await subManager.reducers.call('create_note', enc.toBytes());
         }
 
         expect(
@@ -837,18 +812,9 @@ void main() {
         );
         subManager = SubscriptionManager(connection, offlineStorage: storage);
         subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-        subManager.reducerRegistry.registerDecoder(
-          'create_note',
-          CreateNoteArgsDecoder(),
-        );
-        subManager.reducerRegistry.registerDecoder(
-          'update_note',
-          UpdateNoteArgsDecoder(),
-        );
-        subManager.reducerRegistry.registerDecoder(
-          'delete_note',
-          DeleteNoteArgsDecoder(),
-        );
+        subManager.reducerRegistry.register(createNoteDef);
+        subManager.reducerRegistry.register(updateNoteDef);
+        subManager.reducerRegistry.register(deleteNoteDef);
 
         await connection.connect();
         await subManager.onIdentityToken.first.timeout(_timeout);
@@ -869,28 +835,31 @@ void main() {
         ];
         final requestIds = <String>[];
 
-        final res1 = await subManager.reducers.callWith('create_note', (
-          encoder,
-        ) {
-          encoder.writeString('FIFO-Test-$uniqueId');
-          encoder.writeString('Initial');
-        });
+        final fifoEnc1 = BsatnEncoder();
+        fifoEnc1.writeString('FIFO-Test-$uniqueId');
+        fifoEnc1.writeString('Initial');
+        final res1 = await subManager.reducers.call(
+          'create_note',
+          fifoEnc1.toBytes(),
+        );
         requestIds.add(res1.pendingRequestId!);
 
-        final res2 = await subManager.reducers.callWith('update_note', (
-          encoder,
-        ) {
-          encoder.writeU32(uniqueId);
-          encoder.writeString('FIFO-Test-$uniqueId');
-          encoder.writeString('Updated');
-        });
+        final fifoEnc2 = BsatnEncoder();
+        fifoEnc2.writeU32(uniqueId);
+        fifoEnc2.writeString('FIFO-Test-$uniqueId');
+        fifoEnc2.writeString('Updated');
+        final res2 = await subManager.reducers.call(
+          'update_note',
+          fifoEnc2.toBytes(),
+        );
         requestIds.add(res2.pendingRequestId!);
 
-        final res3 = await subManager.reducers.callWith('delete_note', (
-          encoder,
-        ) {
-          encoder.writeU32(uniqueId);
-        });
+        final fifoEnc3 = BsatnEncoder();
+        fifoEnc3.writeU32(uniqueId);
+        final res3 = await subManager.reducers.call(
+          'delete_note',
+          fifoEnc3.toBytes(),
+        );
         requestIds.add(res3.pendingRequestId!);
 
         final syncResults = <MutationSyncResult>[];
@@ -964,14 +933,8 @@ void main() {
         );
         subManager = SubscriptionManager(connection, offlineStorage: storage);
         subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-        subManager.reducerRegistry.registerDecoder(
-          'create_note',
-          CreateNoteArgsDecoder(),
-        );
-        subManager.reducerRegistry.registerDecoder(
-          'delete_note',
-          DeleteNoteArgsDecoder(),
-        );
+        subManager.reducerRegistry.register(createNoteDef);
+        subManager.reducerRegistry.register(deleteNoteDef);
 
         await connection.connect();
         await subManager.onIdentityToken.first.timeout(_timeout);
@@ -993,12 +956,12 @@ void main() {
             DateTime.now().millisecondsSinceEpoch % 1000000000 + 900000;
         final optimisticId4 = optimisticId3 + 1;
 
-        await subManager.reducers.callWith(
+        final encN3 = BsatnEncoder();
+        encN3.writeString('$testPrefix-Note3');
+        encN3.writeString('Content 3');
+        await subManager.reducers.call(
           'create_note',
-          (encoder) {
-            encoder.writeString('$testPrefix-Note3');
-            encoder.writeString('Content 3');
-          },
+          encN3.toBytes(),
           optimisticChanges: [
             OptimisticChange.insert('note', {
               'id': optimisticId3,
@@ -1010,12 +973,12 @@ void main() {
           ],
         );
 
-        await subManager.reducers.callWith(
+        final encN4 = BsatnEncoder();
+        encN4.writeString('$testPrefix-Note4');
+        encN4.writeString('Content 4');
+        await subManager.reducers.call(
           'create_note',
-          (encoder) {
-            encoder.writeString('$testPrefix-Note4');
-            encoder.writeString('Content 4');
-          },
+          encN4.toBytes(),
           optimisticChanges: [
             OptimisticChange.insert('note', {
               'id': optimisticId4,
@@ -1081,9 +1044,11 @@ void main() {
           }
         });
 
-        final result3 = await subManager.reducers.callWith(
+        final encDel3 = BsatnEncoder();
+        encDel3.writeU32(realId3);
+        final result3 = await subManager.reducers.call(
           'delete_note',
-          (encoder) => encoder.writeU32(realId3),
+          encDel3.toBytes(),
           optimisticChanges: [OptimisticChange.delete('note', note3.toJson())],
         );
 
@@ -1141,9 +1106,11 @@ void main() {
           }
         });
 
-        final result4 = await subManager.reducers.callWith(
+        final encDel4 = BsatnEncoder();
+        encDel4.writeU32(realId4);
+        final result4 = await subManager.reducers.call(
           'delete_note',
-          (encoder) => encoder.writeU32(realId4),
+          encDel4.toBytes(),
           optimisticChanges: [
             OptimisticChange.delete('note', freshNote4.toJson()),
           ],
@@ -1220,10 +1187,7 @@ void main() {
 
       subManager.cache.registerDecoder<Note>('note', NoteDecoder());
       subManager.cache.registerDecoder<Folder>('folder', FolderDecoder());
-      subManager.reducerRegistry.registerDecoder(
-        'create_note',
-        CreateNoteArgsDecoder(),
-      );
+      subManager.reducerRegistry.register(createNoteDef);
     }
 
     Future<void> cleanup() async {
@@ -1255,9 +1219,11 @@ void main() {
         await subManager.loadFromOfflineCache();
 
         final noteId = DateTime.now().microsecondsSinceEpoch;
-        await subManager.reducers.callWith(
+        final encNew = BsatnEncoder();
+        encNew.writeString('New User Note');
+        await subManager.reducers.call(
           'create_note',
-          (encoder) => encoder.writeString('New User Note'),
+          encNew.toBytes(),
           optimisticChanges: [
             OptimisticChange.insert('note', {
               'id': noteId,

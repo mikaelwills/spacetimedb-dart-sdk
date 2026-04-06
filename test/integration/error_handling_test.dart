@@ -2,91 +2,53 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
-import '../generated/note.dart';
-import '../generated/reducer_args.dart';
 import '../helpers/integration_test_helper.dart';
-
-/// Error handling and failure mode tests for SpacetimeDB Dart SDK
+import '../helpers/test_env.dart';
 
 void main() {
   setUpAll(ensureTestEnvironment);
   tearDownAll(cleanupTestEnvironment);
-  late SpacetimeDbConnection connection;
-  late SubscriptionManager subManager;
+  late TestEnv env;
 
   setUp(() async {
-    connection = SpacetimeDbConnection(
-      host: 'localhost:3000',
-      database: 'notesdb',
-    );
-    subManager = SubscriptionManager(connection);
+    env = await createTestEnv();
 
-    // PHASE 0: Register decoders
-    subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-    subManager.reducerRegistry.registerDecoder(
-      'create_note',
-      CreateNoteArgsDecoder(),
+    await env.connection.connect();
+    await env.subManager.onIdentityToken.first.timeout(
+      const Duration(seconds: 5),
     );
-    subManager.reducerRegistry.registerDecoder(
-      'update_note',
-      UpdateNoteArgsDecoder(),
-    );
-    subManager.reducerRegistry.registerDecoder(
-      'delete_note',
-      DeleteNoteArgsDecoder(),
-    );
-
-    await connection.connect();
-    await subManager.onIdentityToken.first.timeout(const Duration(seconds: 5));
   });
 
   tearDown(() async {
-    subManager.dispose();
-    await connection.disconnect();
+    env.subManager.dispose();
+    await env.disconnect();
   });
 
   group('Error Handling Tests', () {
     test('Non-existent procedure returns internalError', () async {
       const requestId = 1001;
 
-      // A. PREPARE LISTENER
-      final resultFuture = subManager.onProcedureResult.firstWhere(
+      final resultFuture = env.subManager.onProcedureResult.firstWhere(
         (msg) => msg.requestId == requestId,
       );
 
-      // B. ACTION
-      subManager.callProcedure(
+      env.subManager.callProcedure(
         'non_existent_procedure',
         Uint8List(0),
         requestId: requestId,
       );
 
-      // C. WAIT
       final result = await resultFuture.timeout(const Duration(seconds: 2));
 
-      // D. ASSERT
-      expect(
-        result.requestId,
-        equals(requestId),
-        reason: 'Request ID should match',
-      );
-      expect(
-        result.status.type,
-        equals(ProcedureStatusType.internalError),
-        reason: 'Non-existent procedure should return internalError',
-      );
-      expect(
-        result.status.errorMessage,
-        isNotNull,
-        reason: 'Error message should be present',
-      );
+      expect(result.requestId, equals(requestId));
+      expect(result.status.type, equals(ProcedureStatusType.internalError));
+      expect(result.status.errorMessage, isNotNull);
 
       final errorMsg = result.status.errorMessage!.toLowerCase();
       expect(
         errorMsg.contains('not found') ||
             errorMsg.contains('no such procedure'),
         isTrue,
-        reason: 'Error message should indicate procedure not found',
       );
     });
 
@@ -94,33 +56,21 @@ void main() {
       const requestId = 1002;
       const queryId = 9999;
 
-      // A. PREPARE LISTENER
-      final errorFuture = subManager.onSubscriptionError.firstWhere(
+      final errorFuture = env.subManager.onSubscriptionError.firstWhere(
         (err) => err.requestId == requestId,
       );
 
-      // B. ACTION
-      subManager.subscribeSingle(
+      env.subManager.subscribeSingle(
         'SELECT * FROM non_existent_table',
         requestId: requestId,
         queryId: queryId,
       );
 
-      // C. WAIT
       final error = await errorFuture.timeout(const Duration(seconds: 2));
 
-      // D. ASSERT
-      expect(
-        error.requestId,
-        equals(requestId),
-        reason: 'Request ID should match',
-      );
-      expect(error.queryId, equals(queryId), reason: 'Query ID should match');
-      expect(
-        error.error,
-        isNotEmpty,
-        reason: 'Error message should not be empty',
-      );
+      expect(error.requestId, equals(requestId));
+      expect(error.queryId, equals(queryId));
+      expect(error.error, isNotEmpty);
 
       final errorMsg = error.error.toLowerCase();
       expect(
@@ -128,7 +78,6 @@ void main() {
             errorMsg.contains('not found') ||
             errorMsg.contains('does not exist'),
         isTrue,
-        reason: 'Error should indicate table not found',
       );
     });
 
@@ -136,145 +85,86 @@ void main() {
       const requestId = 1003;
       const queryId = 88888;
 
-      // A. PREPARE LISTENER
-      final errorFuture = subManager.onSubscriptionError.firstWhere(
+      final errorFuture = env.subManager.onSubscriptionError.firstWhere(
         (err) => err.requestId == requestId,
       );
 
-      // B. ACTION
-      subManager.unsubscribe(queryId, requestId: requestId);
+      env.subManager.unsubscribe(queryId, requestId: requestId);
 
-      // C. WAIT
       final error = await errorFuture.timeout(const Duration(seconds: 2));
 
-      // D. ASSERT
-      expect(
-        error.requestId,
-        equals(requestId),
-        reason: 'Request ID should match',
-      );
-      expect(error.queryId, equals(queryId), reason: 'Query ID should match');
-      expect(
-        error.error,
-        isNotEmpty,
-        reason: 'Error message should not be empty',
-      );
+      expect(error.requestId, equals(requestId));
+      expect(error.queryId, equals(queryId));
+      expect(error.error, isNotEmpty);
 
       final errorMsg = error.error.toLowerCase();
       expect(
         errorMsg.contains('subscription not found') ||
             errorMsg.contains('not found'),
         isTrue,
-        reason: 'Error should indicate subscription not found',
       );
     });
 
     test('Invalid reducer arguments are handled', () async {
-      // Server behavior: Silent Drop (security pattern)
-      // When args fail to deserialize, server drops the message silently
-      // rather than risk responding to a potentially malicious request.
-
-      // B. ACTION - send invalid args (0 arguments instead of 2 strings)
-      final future = subManager.reducers.callWith('create_note', (encoder) {
-        // Send nothing - wrong number of arguments
-      }, timeout: const Duration(milliseconds: 200));
-
-      // C. EXPECT TIMEOUT
-      // Server will not respond, so client must time out
-      await expectLater(
-        future,
-        throwsA(isA<TimeoutException>()),
-        reason: 'Server silently drops malformed messages; client must timeout',
+      final encoder = BsatnEncoder();
+      final future = env.subManager.reducers.call(
+        'create_note',
+        encoder.toBytes(),
+        timeout: const Duration(milliseconds: 200),
       );
 
-      // D. VERIFY CONNECTION STILL ALIVE
-      // Server didn't close connection, just ignored that one message
-      expect(
-        connection.isConnected,
-        isTrue,
-        reason: 'Connection should remain open after malformed message',
-      );
+      await expectLater(future, throwsA(isA<TimeoutException>()));
+
+      expect(env.connection.isConnected, isTrue);
     });
 
     test('Procedure with wrong argument types', () async {
       const requestId = 1005;
 
-      // A. PREPARE LISTENER
-      final resultFuture = subManager.onProcedureResult.firstWhere(
+      final resultFuture = env.subManager.onProcedureResult.firstWhere(
         (msg) => msg.requestId == requestId,
       );
 
-      // B. ACTION - add_numbers expects (u32, u32), send strings instead
       final encoder = BsatnEncoder();
       encoder.writeString('not a number');
       encoder.writeString('also not a number');
 
-      subManager.callProcedure(
+      env.subManager.callProcedure(
         'add_numbers',
         encoder.toBytes(),
         requestId: requestId,
       );
 
-      // C. WAIT
       final result = await resultFuture.timeout(const Duration(seconds: 2));
 
-      // D. ASSERT
-      expect(
-        result.requestId,
-        equals(requestId),
-        reason: 'Request ID should match',
-      );
-      expect(
-        result.status.type,
-        isA<ProcedureStatusType>(),
-        reason: 'Should receive some procedure status',
-      );
+      expect(result.requestId, equals(requestId));
+      expect(result.status.type, isA<ProcedureStatusType>());
     });
 
     test('Procedure panic (divide by zero) returns internalError', () async {
       const requestId = 1006;
 
-      // A. PREPARE LISTENER
-      final resultFuture = subManager.onProcedureResult.firstWhere(
+      final resultFuture = env.subManager.onProcedureResult.firstWhere(
         (msg) => msg.requestId == requestId,
       );
 
-      // B. ACTION
       final encoder = BsatnEncoder();
       encoder.writeU32(100);
 
-      subManager.callProcedure(
+      env.subManager.callProcedure(
         'divide_by_zero',
         encoder.toBytes(),
         requestId: requestId,
       );
 
-      // C. WAIT
       final result = await resultFuture.timeout(const Duration(seconds: 2));
 
-      // D. ASSERT
-      expect(
-        result.requestId,
-        equals(requestId),
-        reason: 'Request ID should match',
-      );
-      expect(
-        result.status.type,
-        equals(ProcedureStatusType.internalError),
-        reason: 'Divide by zero should return internalError',
-      );
-      expect(
-        result.status.errorMessage,
-        isNotNull,
-        reason: 'Error message should be present',
-      );
+      expect(result.requestId, equals(requestId));
+      expect(result.status.type, equals(ProcedureStatusType.internalError));
+      expect(result.status.errorMessage, isNotNull);
 
       final errorMsg = result.status.errorMessage!.toLowerCase();
-      expect(
-        errorMsg.contains('divide') || errorMsg.contains('panic'),
-        isTrue,
-        reason: 'Error message should indicate division/panic error',
-      );
+      expect(errorMsg.contains('divide') || errorMsg.contains('panic'), isTrue);
     });
   });
 }

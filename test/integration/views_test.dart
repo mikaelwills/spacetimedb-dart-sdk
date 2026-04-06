@@ -3,46 +3,21 @@ library;
 // ignore_for_file: avoid_print
 import 'dart:async';
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/src/connection/spacetimedb_connection.dart';
-import 'package:spacetimedb_dart_sdk/src/subscription/subscription_manager.dart';
 import 'package:spacetimedb_dart_sdk/src/messages/server_messages.dart';
+import 'package:spacetimedb_dart_sdk/src/subscription/subscription_manager.dart';
 import '../generated/note.dart';
-import '../generated/reducer_args.dart';
 import '../helpers/integration_test_helper.dart';
+import '../helpers/test_env.dart';
 
 void main() {
   setUpAll(ensureTestEnvironment);
   tearDownAll(cleanupTestEnvironment);
 
-  Future<({SpacetimeDbConnection connection, SubscriptionManager subManager})>
-  connectAndRegister() async {
-    final connection = SpacetimeDbConnection(
-      host: 'localhost:3000',
-      database: 'notesdb',
-    );
-    final subManager = SubscriptionManager(connection);
-
-    subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-    subManager.cache.registerDecoder<Note>('all_notes', NoteDecoder());
-    subManager.cache.registerDecoder<Note>('first_note', NoteDecoder());
-
-    subManager.reducerRegistry.registerDecoder(
-      'create_note',
-      CreateNoteArgsDecoder(),
-    );
-    subManager.reducerRegistry.registerDecoder(
-      'delete_note',
-      DeleteNoteArgsDecoder(),
-    );
-    subManager.reducerRegistry.registerDecoder(
-      'delete_all_notes',
-      DeleteAllNotesArgsDecoder(),
-    );
-
-    await connection.connect();
-    await subManager.onIdentityToken.first;
-
-    return (connection: connection, subManager: subManager);
+  Future<TestEnv> connectAndRegister() async {
+    final env = await createTestEnv(registerViews: true);
+    await env.connection.connect();
+    await env.subManager.onIdentityToken.first;
+    return env;
   }
 
   Future<void> subscribeOrFail(
@@ -76,10 +51,10 @@ void main() {
     }
   }
 
-  Future<void> clearNotes(SubscriptionManager subManager) async {
-    final noteTable = subManager.cache.getTableByTypedName<Note>('note');
+  Future<void> clearNotes(TestEnv env) async {
+    final noteTable = env.subManager.cache.getTableByTypedName<Note>('note');
     if (noteTable.count() == 0) return;
-    await subManager.reducers.callWith('delete_all_notes', (encoder) {});
+    await env.reducers.deleteAllNotes();
     final deadline = DateTime.now().add(const Duration(seconds: 3));
     while (noteTable.count() > 0) {
       if (DateTime.now().isAfter(deadline)) {
@@ -91,19 +66,12 @@ void main() {
     }
   }
 
-  Future<Note> createNote(
-    SubscriptionManager subManager,
-    String title,
-    String content,
-  ) async {
-    final noteTable = subManager.cache.getTableByTypedName<Note>('note');
+  Future<Note> createNote(TestEnv env, String title, String content) async {
+    final noteTable = env.subManager.cache.getTableByTypedName<Note>('note');
     final insertFuture = noteTable.insertStream
         .firstWhere((n) => n.title == title)
         .timeout(const Duration(seconds: 5));
-    await subManager.reducers.callWith('create_note', (encoder) {
-      encoder.writeString(title);
-      encoder.writeString(content);
-    });
+    await env.reducers.createNote(title: title, content: content);
     return insertFuture;
   }
 
@@ -115,10 +83,10 @@ void main() {
           final env = await connectAndRegister();
           try {
             await subscribeOrFail(env.subManager, ['SELECT * FROM note']);
-            await clearNotes(env.subManager);
+            await clearNotes(env);
 
-            await createNote(env.subManager, 'AllNotes-A', 'content A');
-            await createNote(env.subManager, 'AllNotes-B', 'content B');
+            await createNote(env, 'AllNotes-A', 'content A');
+            await createNote(env, 'AllNotes-B', 'content B');
 
             await subscribeOrFail(env.subManager, [
               'SELECT * FROM note',
@@ -139,7 +107,7 @@ void main() {
             expect(titles, containsAll(['AllNotes-A', 'AllNotes-B']));
           } finally {
             env.subManager.dispose();
-            await env.connection.disconnect();
+            await env.disconnect();
           }
         },
         timeout: const Timeout(Duration(seconds: 20)),
@@ -154,7 +122,7 @@ void main() {
               'SELECT * FROM note',
               'SELECT * FROM all_notes',
             ]);
-            await clearNotes(env.subManager);
+            await clearNotes(env);
 
             final allNotes = env.subManager.cache.getTableByTypedName<Note>(
               'all_notes',
@@ -167,7 +135,7 @@ void main() {
                 .firstWhere((n) => n.title == title)
                 .timeout(const Duration(seconds: 5));
 
-            await createNote(env.subManager, title, 'body');
+            await createNote(env, title, 'body');
             final viewRow = await viewInsertFuture;
 
             expect(viewRow.title, equals(title));
@@ -175,7 +143,7 @@ void main() {
             expect(allNotes.iter().single.title, equals(title));
           } finally {
             env.subManager.dispose();
-            await env.connection.disconnect();
+            await env.disconnect();
           }
         },
         timeout: const Timeout(Duration(seconds: 20)),
@@ -190,9 +158,9 @@ void main() {
               'SELECT * FROM note',
               'SELECT * FROM all_notes',
             ]);
-            await clearNotes(env.subManager);
+            await clearNotes(env);
 
-            final note = await createNote(env.subManager, 'DeleteMe', 'x');
+            final note = await createNote(env, 'DeleteMe', 'x');
             final allNotes = env.subManager.cache.getTableByTypedName<Note>(
               'all_notes',
             );
@@ -207,16 +175,14 @@ void main() {
                 .firstWhere((n) => n.id == note.id)
                 .timeout(const Duration(seconds: 5));
 
-            await env.subManager.reducers.callWith('delete_note', (encoder) {
-              encoder.writeU32(note.id);
-            });
+            await env.reducers.deleteNote(noteId: note.id);
 
             await deleteFuture;
             expect(allNotes.find(note.id), isNull);
             expect(allNotes.count(), equals(0));
           } finally {
             env.subManager.dispose();
-            await env.connection.disconnect();
+            await env.disconnect();
           }
         },
         timeout: const Timeout(Duration(seconds: 20)),
@@ -230,8 +196,8 @@ void main() {
           final env = await connectAndRegister();
           try {
             await subscribeOrFail(env.subManager, ['SELECT * FROM note']);
-            await clearNotes(env.subManager);
-            final seeded = await createNote(env.subManager, 'SeedOne', 'seed');
+            await clearNotes(env);
+            final seeded = await createNote(env, 'SeedOne', 'seed');
             expect(seeded.id, equals(1));
 
             await subscribeOrFail(env.subManager, [
@@ -254,7 +220,7 @@ void main() {
             expect(row.title, equals('SeedOne'));
           } finally {
             env.subManager.dispose();
-            await env.connection.disconnect();
+            await env.disconnect();
           }
         },
         timeout: const Timeout(Duration(seconds: 20)),
@@ -276,17 +242,17 @@ void main() {
               final deleteFuture = firstNoteCache.deleteStream.first.timeout(
                 const Duration(seconds: 5),
               );
-              await clearNotes(env.subManager);
+              await clearNotes(env);
               await deleteFuture;
             } else {
-              await clearNotes(env.subManager);
+              await clearNotes(env);
             }
 
             expect(firstNoteCache.count(), equals(0));
             expect(firstNoteCache.iter().isEmpty, isTrue);
           } finally {
             env.subManager.dispose();
-            await env.connection.disconnect();
+            await env.disconnect();
           }
         },
         timeout: const Timeout(Duration(seconds: 20)),
@@ -300,10 +266,10 @@ void main() {
           final env = await connectAndRegister();
           try {
             await subscribeOrFail(env.subManager, ['SELECT * FROM note']);
-            await clearNotes(env.subManager);
+            await clearNotes(env);
 
-            await createNote(env.subManager, 'Joint-A', 'a');
-            await createNote(env.subManager, 'Joint-B', 'b');
+            await createNote(env, 'Joint-A', 'a');
+            await createNote(env, 'Joint-B', 'b');
 
             await subscribeOrFail(env.subManager, [
               'SELECT * FROM note',
@@ -333,7 +299,7 @@ void main() {
             expect(viewTitles, containsAll(['Joint-A', 'Joint-B']));
           } finally {
             env.subManager.dispose();
-            await env.connection.disconnect();
+            await env.disconnect();
           }
         },
         timeout: const Timeout(Duration(seconds: 20)),

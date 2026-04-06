@@ -1,28 +1,17 @@
 // ignore_for_file: avoid_print
 import 'dart:async';
 import 'dart:math';
-import 'package:spacetimedb_dart_sdk/src/connection/spacetimedb_connection.dart';
-import 'package:spacetimedb_dart_sdk/src/subscription/subscription_manager.dart';
-
 import '../generated/note.dart';
 import '../helpers/integration_test_helper.dart';
-
-/// Live integration test with local SpacetimeDB server
+import '../helpers/test_env.dart';
 
 void main() async {
   await ensureTestEnvironment();
   print('🚀 Starting live SpacetimeDB integration test...\n');
 
-  // 1. Create connection to local server
-  final connection = SpacetimeDbConnection(
-    host: 'localhost:3000', // Default SpacetimeDB port
-    database: 'notesdb',
-  );
-
-  // 2. Create subscription manager
-  final subscriptionManager = SubscriptionManager(connection);
-
-  subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
+  final env = await createTestEnv();
+  final connection = env.connection;
+  final subscriptionManager = env.subManager;
 
   // Get table by name (type-safe)
   final noteTable = subscriptionManager.cache.getTableByTypedName<Note>('note');

@@ -5,46 +5,29 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 
-// CRITICAL: Import the GENERATED code (not mocks!)
 import '../generated/note.dart';
 import '../generated/note_status.dart';
 import '../helpers/integration_test_helper.dart';
+import '../helpers/test_env.dart';
 
-/// Sum Types Integration Test
-///
-/// This test verifies the ACTUAL generated code, not mock implementations.
-/// If the code generator is broken, these tests will fail to compile or fail assertions.
-///
-/// Tests:
-/// - Generated sealed class hierarchy compiles and has correct structure
-/// - Round-trip encoding/decoding works (object -> bytes -> object)
-/// - Table integration with strongly-typed Ref fields
-/// - Pattern matching exhaustiveness (compile-time verification)
 void main() {
-  late SpacetimeDbConnection connection;
+  late TestEnv env;
   late SubscriptionManager subManager;
 
-  // Ensure test environment is set up before running any tests
   setUpAll(ensureTestEnvironment);
   tearDownAll(cleanupTestEnvironment);
 
   setUp(() async {
-    connection = SpacetimeDbConnection(
-      host: 'localhost:3000',
-      database: 'notesdb',
-    );
-    subManager = SubscriptionManager(connection);
+    env = await createTestEnv();
+    subManager = env.subManager;
 
-    // PHASE 0: Register the ACTUAL generated decoders (not mocks!)
-    subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-
-    await connection.connect();
+    await env.connection.connect();
     await subManager.onIdentityToken.first.timeout(const Duration(seconds: 5));
   });
 
   tearDown(() async {
     subManager.dispose();
-    await connection.disconnect();
+    await env.disconnect();
   });
 
   group('Sum Types - Generated Code Verification', () {
@@ -209,10 +192,10 @@ void main() {
       // Create a note if the table is empty
       if (noteTable.count() == 0) {
         final txFuture = subManager.onTransactionUpdate.first;
-        await subManager.reducers.callWith('create_note', (encoder) {
-          encoder.writeString('Sum Type Test');
-          encoder.writeString('Testing Ref field typing');
-        });
+        await env.reducers.createNote(
+          title: 'Sum Type Test',
+          content: 'Testing Ref field typing',
+        );
         await txFuture.timeout(const Duration(seconds: 2));
       }
 
