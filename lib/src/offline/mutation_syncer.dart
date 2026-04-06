@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:spacetimedb_dart_sdk/src/cache/client_cache.dart';
 import 'package:spacetimedb_dart_sdk/src/connection/spacetimedb_connection.dart';
 import 'package:spacetimedb_dart_sdk/src/connection/connection_state.dart';
 import 'package:spacetimedb_dart_sdk/src/reducers/reducer_caller.dart';
@@ -14,12 +15,13 @@ class MutationSyncer implements MutationHandler {
   final SpacetimeDbConnection _connection;
   final OfflineStorage _storage;
   final OptimisticStateManager _optimisticState;
-  final void Function() _onPersistSnapshots;
+  final ClientCache _cache;
 
   late ReducerCaller _reducers;
 
   bool _isSyncing = false;
   bool _disposed = false;
+  bool _storageInitialized = false;
   int _cachedPendingCount = 0;
   SyncState _currentSyncState = const SyncState();
 
@@ -37,11 +39,11 @@ class MutationSyncer implements MutationHandler {
     required SpacetimeDbConnection connection,
     required OfflineStorage storage,
     required OptimisticStateManager optimisticState,
-    required void Function() onPersistSnapshots,
+    required ClientCache cache,
   }) : _connection = connection,
        _storage = storage,
        _optimisticState = optimisticState,
-       _onPersistSnapshots = onPersistSnapshots;
+       _cache = cache;
 
   void setReducers(ReducerCaller reducers) {
     _reducers = reducers;
@@ -77,7 +79,7 @@ class MutationSyncer implements MutationHandler {
   @override
   void onOptimisticChanges(String requestId, List<OptimisticChange>? changes) {
     _optimisticState.applyOptimisticChanges(requestId, changes);
-    _onPersistSnapshots();
+    persistTableSnapshots();
   }
 
   @override
@@ -86,7 +88,7 @@ class MutationSyncer implements MutationHandler {
       'Rolling back optimistic changes for request $requestId due to timeout/failure',
     );
     _optimisticState.rollbackOptimisticChanges(requestId);
-    _onPersistSnapshots();
+    persistTableSnapshots();
   }
 
   void _updateSyncState(SyncState state) {
@@ -314,10 +316,66 @@ class MutationSyncer implements MutationHandler {
     await updatePendingCount();
   }
 
-  void dispose() {
+  Future<void> ensureInitialized() async {
+    if (_storageInitialized) return;
+    await _storage.initialize();
+    _storageInitialized = true;
+  }
+
+  Future<void> loadFromOfflineCache() async {
+    try {
+      await ensureInitialized();
+
+      for (final tableName in _cache.registeredTableNames) {
+        if (_cache.isEventTable(tableName)) continue;
+        final rows = await _storage.loadTableSnapshot(tableName);
+        if (rows != null && rows.isNotEmpty) {
+          final table = _cache.getTableByName(tableName);
+          if (table != null && table.decoder.supportsJsonSerialization) {
+            table.loadFromSerializable(rows);
+            SdkLogger.i(
+              'Loaded ${rows.length} rows from offline cache for "$tableName"',
+            );
+          }
+        }
+      }
+
+      final pending = await _storage.getPendingMutations();
+      for (final mutation in pending) {
+        _optimisticState.applyOptimisticChanges(
+          mutation.requestId,
+          mutation.optimisticChanges,
+        );
+      }
+
+      await updatePendingCount();
+    } catch (e) {
+      SdkLogger.e('Error loading from offline cache: $e');
+    }
+  }
+
+  Future<void> persistTableSnapshots() async {
+    if (_disposed) return;
+    try {
+      for (final tableName in _cache.activatedTableNames) {
+        if (_cache.isEventTable(tableName)) continue;
+        final table = _cache.getTableByName(tableName);
+        if (table != null && table.decoder.supportsJsonSerialization) {
+          final rows = table.toSerializable();
+          await _storage.saveTableSnapshot(tableName, rows);
+          await _storage.setLastSyncTime(tableName, DateTime.now());
+        }
+      }
+    } catch (e) {
+      SdkLogger.e('Error persisting table snapshots: $e');
+    }
+  }
+
+  Future<void> dispose() async {
     _disposed = true;
     cancelRetry();
     _syncStateController.close();
     _mutationSyncResultController.close();
+    await _storage.dispose();
   }
 }

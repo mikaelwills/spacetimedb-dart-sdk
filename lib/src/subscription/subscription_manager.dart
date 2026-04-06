@@ -22,7 +22,6 @@ import '../offline/sync_state.dart';
 import '../offline/pending_mutation.dart';
 import '../offline/optimistic_state_manager.dart';
 import '../offline/mutation_syncer.dart';
-import '../offline/offline_cache_coordinator.dart';
 import '../messages/update_status.dart';
 
 class SubscriptionManager {
@@ -40,7 +39,6 @@ class SubscriptionManager {
 
   late final OptimisticStateManager _optimisticState;
   MutationSyncer? _mutationSyncer;
-  OfflineCacheCoordinator? _offlineCacheCoordinator;
   bool _disposed = false;
 
   final _initialSubscriptionController =
@@ -77,14 +75,7 @@ class SubscriptionManager {
         connection: _connection,
         storage: offlineStorage,
         optimisticState: _optimisticState,
-        onPersistSnapshots: _persistTableSnapshots,
-      );
-
-      _offlineCacheCoordinator = OfflineCacheCoordinator(
-        storage: offlineStorage,
         cache: cache,
-        optimisticState: _optimisticState,
-        mutationSyncer: _mutationSyncer!,
       );
 
       reducers = ReducerCaller(
@@ -303,7 +294,7 @@ class SubscriptionManager {
       }
     }
 
-    await _persistTableSnapshots();
+    await _mutationSyncer?.persistTableSnapshots();
   }
 
   void _handleTransactionUpdate(TransactionUpdateMessage message) {
@@ -404,7 +395,7 @@ class SubscriptionManager {
     if (isOurTransaction && isCommitted && hasOptimistic) {
       SdkLogger.i('Our transaction confirmed - keeping optimistic state');
       _optimisticState.confirmOptimisticChange(effectiveRequestId);
-      _persistTableSnapshots();
+      _mutationSyncer?.persistTableSnapshots();
       return;
     }
 
@@ -434,7 +425,7 @@ class SubscriptionManager {
       _optimisticState.rollbackOptimisticChanges(effectiveRequestId);
     }
 
-    _persistTableSnapshots();
+    _mutationSyncer?.persistTableSnapshots();
   }
 
   void _handleTransactionUpdateLight(TransactionUpdateLightMessage message) {
@@ -489,7 +480,7 @@ class SubscriptionManager {
     if (isOurTransaction && hasOptimistic) {
       SdkLogger.i('Our light transaction confirmed - keeping optimistic state');
       _optimisticState.confirmOptimisticChange(effectiveRequestId);
-      _persistTableSnapshots();
+      _mutationSyncer?.persistTableSnapshots();
       return;
     }
 
@@ -517,13 +508,7 @@ class SubscriptionManager {
       effectiveRequestId,
       touchedKeysByTable,
     );
-    _persistTableSnapshots();
-  }
-
-  // --- Persistence (delegates to coordinator) ---
-
-  Future<void> _persistTableSnapshots() async {
-    await _offlineCacheCoordinator?.persistTableSnapshots();
+    _mutationSyncer?.persistTableSnapshots();
   }
 
   // --- Subscription API ---
@@ -596,7 +581,7 @@ class SubscriptionManager {
   // --- Offline API (delegates to syncer/coordinator) ---
 
   Future<void> loadFromOfflineCache() async {
-    await _offlineCacheCoordinator?.loadFromOfflineCache();
+    await _mutationSyncer?.loadFromOfflineCache();
   }
 
   Future<void> syncPendingMutations() async {
@@ -633,7 +618,6 @@ class SubscriptionManager {
     _unsubscribeMultiAppliedController.close();
     _procedureResultController.close();
     reducerEmitter.dispose();
-    _mutationSyncer?.dispose();
-    await _offlineCacheCoordinator?.dispose();
+    await _mutationSyncer?.dispose();
   }
 }
