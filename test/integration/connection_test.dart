@@ -186,7 +186,7 @@ void main() {
       try {
         try {
           await connection.connect();
-        } catch (e) {}
+        } catch (_) {}
 
         await waitForState<Disconnected>(
           connection,
