@@ -52,8 +52,8 @@ void main() {
     });
 
     test('registers decoder successfully', () {
-      final decoder = CreateNoteArgsDecoder();
-      registry.registerDecoder('create_note', decoder);
+      final def = ReducerDef('create_note', CreateNoteArgsDecoder());
+      registry.register(def);
 
       expect(registry.count, equals(1));
       expect(registry.hasDecoder('create_note'), isTrue);
@@ -61,18 +61,14 @@ void main() {
     });
 
     test('throws on duplicate registration', () {
-      final decoder = CreateNoteArgsDecoder();
-      registry.registerDecoder('create_note', decoder);
+      final def = ReducerDef('create_note', CreateNoteArgsDecoder());
+      registry.register(def);
 
-      expect(
-        () => registry.registerDecoder('create_note', decoder),
-        throwsArgumentError,
-      );
+      expect(() => registry.register(def), throwsArgumentError);
     });
 
     test('deserializes reducer arguments correctly', () {
-      // Register decoder
-      registry.registerDecoder('create_note', CreateNoteArgsDecoder());
+      registry.register(ReducerDef('create_note', CreateNoteArgsDecoder()));
 
       // Encode arguments
       final encoder = BsatnEncoder();
@@ -99,9 +95,8 @@ void main() {
     });
 
     test('returns null for malformed data', () {
-      registry.registerDecoder('create_note', CreateNoteArgsDecoder());
+      registry.register(ReducerDef('create_note', CreateNoteArgsDecoder()));
 
-      // Invalid BSATN data (too few bytes)
       final bytes = Uint8List.fromList([1, 2, 3]);
       final args = registry.deserializeArgs('create_note', bytes);
 
@@ -109,9 +104,9 @@ void main() {
     });
 
     test('handles multiple decoders', () {
-      registry.registerDecoder('create_note', CreateNoteArgsDecoder());
-      registry.registerDecoder('update_note', CreateNoteArgsDecoder());
-      registry.registerDecoder('delete_note', CreateNoteArgsDecoder());
+      registry.register(ReducerDef('create_note', CreateNoteArgsDecoder()));
+      registry.register(ReducerDef('update_note', CreateNoteArgsDecoder()));
+      registry.register(ReducerDef('delete_note', CreateNoteArgsDecoder()));
 
       expect(registry.count, equals(3));
       expect(registry.hasDecoder('create_note'), isTrue);

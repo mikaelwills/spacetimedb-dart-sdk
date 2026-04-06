@@ -29,6 +29,7 @@ export 'src/messages/update_status.dart';
 
 // Reducers
 export 'src/reducers/reducer_caller.dart';
+export 'src/reducers/reducer_def.dart';
 export 'src/reducers/mutation_handler.dart';
 export 'src/reducers/reducer_arg_decoder.dart';
 export 'src/reducers/reducer_registry.dart';

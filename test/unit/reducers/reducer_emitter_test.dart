@@ -3,6 +3,17 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 
+class _NoOpDecoder implements ReducerArgDecoder<void> {
+  const _NoOpDecoder();
+  @override
+  void decode(BsatnDecoder decoder) {}
+}
+
+const _testReducer = ReducerDef<void>('test_reducer', _NoOpDecoder());
+const _reducer1 = ReducerDef<void>('reducer1', _NoOpDecoder());
+const _reducer2 = ReducerDef<void>('reducer2', _NoOpDecoder());
+const _reducer3 = ReducerDef<void>('reducer3', _NoOpDecoder());
+
 void main() {
   group('ReducerEmitter', () {
     late ReducerEmitter emitter;
@@ -20,7 +31,7 @@ void main() {
     });
 
     test('on() creates a broadcast stream', () {
-      final stream = emitter.on('test_reducer');
+      final stream = emitter.on(_testReducer);
       expect(stream, isA<Stream<EventContext>>());
       expect(stream.isBroadcast, isTrue);
     });
@@ -36,8 +47,7 @@ void main() {
 
       final context = EventContext(myConnectionId: null, event: event);
 
-      // Use expectLater with emits matcher
-      final stream = emitter.on('test_reducer');
+      final stream = emitter.on(_testReducer);
       final expectation = expectLater(stream, emits(context));
 
       emitter.emit('test_reducer', context);
@@ -46,7 +56,6 @@ void main() {
     });
 
     test('emit() does nothing if no listeners registered', () {
-      // Should not throw or create controllers
       final context = EventContext(
         myConnectionId: null,
         event: UnknownTransactionEvent(),
@@ -69,9 +78,8 @@ void main() {
         ),
       );
 
-      final stream = emitter.on('test_reducer');
+      final stream = emitter.on(_testReducer);
 
-      // Use expectLater to verify stream emits twice
       final expectation = expectLater(stream, emitsInOrder([context, context]));
 
       emitter.emit('test_reducer', context);
@@ -103,8 +111,8 @@ void main() {
         ),
       );
 
-      final stream1 = emitter.on('reducer1');
-      final stream2 = emitter.on('reducer2');
+      final stream1 = emitter.on(_reducer1);
+      final stream2 = emitter.on(_reducer2);
 
       final expectation1 = expectLater(stream1, emits(context1));
       final expectation2 = expectLater(stream2, emits(context2));
@@ -118,7 +126,7 @@ void main() {
     test('hasListeners() returns correct status', () {
       expect(emitter.hasListeners('test_reducer'), isFalse);
 
-      final subscription = emitter.on('test_reducer').listen((_) {});
+      final subscription = emitter.on(_testReducer).listen((_) {});
 
       expect(emitter.hasListeners('test_reducer'), isTrue);
 
@@ -126,9 +134,9 @@ void main() {
     });
 
     test('activeReducers returns list of listened-to reducers', () {
-      final sub1 = emitter.on('reducer1').listen((_) {});
-      final sub2 = emitter.on('reducer2').listen((_) {});
-      final sub3 = emitter.on('reducer3').listen((_) {});
+      final sub1 = emitter.on(_reducer1).listen((_) {});
+      final sub2 = emitter.on(_reducer2).listen((_) {});
+      final sub3 = emitter.on(_reducer3).listen((_) {});
 
       expect(emitter.activeReducers.length, equals(3));
       expect(
@@ -142,8 +150,8 @@ void main() {
     });
 
     test('dispose() closes all streams', () async {
-      final sub1 = emitter.on('reducer1').listen((_) {});
-      final sub2 = emitter.on('reducer2').listen((_) {});
+      final sub1 = emitter.on(_reducer1).listen((_) {});
+      final sub2 = emitter.on(_reducer2).listen((_) {});
 
       expect(emitter.activeReducers.length, equals(2));
 
@@ -167,39 +175,30 @@ void main() {
         ),
       );
 
-      final stream = emitter.on('test_reducer');
+      final stream = emitter.on(_testReducer);
 
-      // Listen and immediately cancel
       final subscription = stream.listen((_) {});
 
-      // First emission - should be received
       final firstExpectation = expectLater(stream, emits(context));
       emitter.emit('test_reducer', context);
       await firstExpectation;
 
-      // Cancel subscription
       await subscription.cancel();
 
-      // Second emission - should NOT be received (stream is done)
       emitter.emit('test_reducer', context);
 
-      // If we listen again, we should not get the second emit
-      final newStream = emitter.on('test_reducer');
+      final newStream = emitter.on(_testReducer);
       final newSub = newStream.listen((_) {});
 
-      // Verify the new subscription exists
       expect(emitter.hasListeners('test_reducer'), isTrue);
 
       await newSub.cancel();
     });
 
     test('lazy controller creation (memory efficient)', () {
-      // Controllers should only be created when first listener registers
       expect(emitter.activeReducers, isEmpty);
 
-      // Just calling on() without listening shouldn't create controller
-      final stream = emitter.on('test_reducer');
-      // Controller is created when listener subscribes
+      final stream = emitter.on(_testReducer);
       final sub = stream.listen((_) {});
 
       expect(emitter.activeReducers, contains('test_reducer'));
@@ -212,16 +211,13 @@ void main() {
     test('pattern: typed callback extraction', () async {
       final emitter = ReducerEmitter();
 
-      // Simulate generated code pattern
       StreamSubscription<void> onTestReducer(
         void Function(EventContext ctx, String arg1, int arg2) callback,
       ) {
-        return emitter.on('test_reducer').listen((ctx) {
-          // Type guard instead of as cast
+        return emitter.on(_testReducer).listen((ctx) {
           if (ctx.event is! ReducerEvent) return;
           final event = ctx.event as ReducerEvent;
 
-          // Type guard for args
           final args = event.reducerArgs;
           if (args is! Map<String, dynamic>) return;
 
@@ -235,7 +231,6 @@ void main() {
         });
       }
 
-      // User code
       final completer = Completer<void>();
       final subscription = onTestReducer((ctx, arg1, arg2) {
         expect(arg1, equals('test'));
@@ -243,7 +238,6 @@ void main() {
         completer.complete();
       });
 
-      // Emit event
       final context = EventContext(
         myConnectionId: null,
         event: ReducerEvent(
@@ -269,8 +263,7 @@ void main() {
       final successCompleter = Completer<void>();
       final failureCompleter = Completer<void>();
 
-      final subscription = emitter.on('test_reducer').listen((ctx) {
-        // Type guard instead of as cast
+      final subscription = emitter.on(_testReducer).listen((ctx) {
         if (ctx.event is! ReducerEvent) return;
         final event = ctx.event as ReducerEvent;
 
@@ -290,7 +283,6 @@ void main() {
         }
       });
 
-      // Emit success
       emitter.emit(
         'test_reducer',
         EventContext(
@@ -305,7 +297,6 @@ void main() {
         ),
       );
 
-      // Emit failure
       emitter.emit(
         'test_reducer',
         EventContext(
@@ -337,8 +328,7 @@ void main() {
       final myTransactionCompleter = Completer<void>();
       final otherTransactionCompleter = Completer<void>();
 
-      final subscription = emitter.on('test_reducer').listen((ctx) {
-        // Type guard instead of as cast
+      final subscription = emitter.on(_testReducer).listen((ctx) {
         if (ctx.event is! ReducerEvent) return;
         final event = ctx.event as ReducerEvent;
 
@@ -359,7 +349,6 @@ void main() {
         }
       });
 
-      // My transaction
       emitter.emit(
         'test_reducer',
         EventContext(
@@ -375,7 +364,6 @@ void main() {
         ),
       );
 
-      // Other client's transaction
       emitter.emit(
         'test_reducer',
         EventContext(
@@ -402,7 +390,6 @@ void main() {
   });
 }
 
-// Helper function for byte comparison
 bool _bytesEqual(Uint8List? a, Uint8List? b) {
   if (a == null || b == null) return false;
   if (a.length != b.length) return false;

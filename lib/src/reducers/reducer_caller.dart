@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:spacetimedb_dart_sdk/src/codec/bsatn_encoder.dart';
 import 'package:spacetimedb_dart_sdk/src/connection/spacetimedb_connection.dart';
 import 'package:spacetimedb_dart_sdk/src/connection/connection_state.dart';
 import 'package:spacetimedb_dart_sdk/src/messages/client_messages.dart';
@@ -200,35 +199,6 @@ class ReducerCaller {
     return completer.future;
   }
 
-  /// Helper to call reducer with a callback to encode arguments
-  ///
-  /// Example:
-  /// ```dart
-  /// final result = await reducer.callWith("create_note", (encoder) {
-  ///   encoder.writeString("My Note");
-  ///   encoder.writeString("Note content here");
-  /// });
-  /// ```
-  Future<TransactionResult> callWith(
-    String reducerName,
-    void Function(BsatnEncoder encoder) encodeArgs, {
-    Duration? timeout,
-    bool queueIfOffline = true,
-    List<OptimisticChange>? optimisticChanges,
-  }) async {
-    final encoder = BsatnEncoder();
-    encodeArgs(encoder);
-    return call(
-      reducerName,
-      encoder.toBytes(),
-      timeout: timeout,
-      queueIfOffline: queueIfOffline,
-      optimisticChanges: optimisticChanges,
-    );
-  }
-
-  /// Get the UUID request ID for a numeric request ID (if one exists)
-  /// Returns the UUID if this was an offline mutation, null otherwise
   String? getUuidForRequest(int requestId) {
     return _pendingRequests[requestId]?.uuidRequestId;
   }
@@ -301,7 +271,6 @@ class ReducerCaller {
   }
 }
 
-/// Exception thrown when a reducer fails
 class ReducerException implements Exception {
   final String reducerName;
   final String message;
@@ -317,7 +286,6 @@ class ReducerException implements Exception {
   String toString() => 'ReducerException($reducerName): $message';
 }
 
-/// Exception thrown when connection is lost during reducer call
 class ConnectionException implements Exception {
   final String message;
 
