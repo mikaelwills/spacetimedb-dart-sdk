@@ -435,8 +435,8 @@ void main() {
 
         final noteTable = subManager.cache.getTableByTypedName<Note>('note');
 
-        final disconnectFuture = connection.connectionStatus
-            .firstWhere((s) => s != ConnectionStatus.connected)
+        final disconnectFuture = connection.onStateChanged
+            .firstWhere((s) => s is! Connected)
             .timeout(_timeout);
         await connection.disconnect();
         await disconnectFuture;
@@ -769,8 +769,8 @@ void main() {
           reason: 'Should start with 0 pending',
         );
 
-        final disconnectFuture = connection.connectionStatus
-            .firstWhere((s) => s != ConnectionStatus.connected)
+        final disconnectFuture = connection.onStateChanged
+            .firstWhere((s) => s is! Connected)
             .timeout(_timeout);
         await connection.disconnect();
         await disconnectFuture;
@@ -855,8 +855,8 @@ void main() {
         subManager.subscribe(['SELECT * FROM note']);
         await subManager.onInitialSubscription.first.timeout(_timeout);
 
-        final disconnectFuture = connection.connectionStatus
-            .firstWhere((s) => s != ConnectionStatus.connected)
+        final disconnectFuture = connection.onStateChanged
+            .firstWhere((s) => s is! Connected)
             .timeout(_timeout);
         await connection.disconnect();
         await disconnectFuture;
@@ -981,8 +981,8 @@ void main() {
         noteTable = subManager.cache.getTableByTypedName<Note>('note');
 
         print('\n=== Step 1: Go offline ===');
-        final disconnectFuture = connection.connectionStatus
-            .firstWhere((s) => s != ConnectionStatus.connected)
+        final disconnectFuture = connection.onStateChanged
+            .firstWhere((s) => s is! Connected)
             .timeout(_timeout);
         await connection.disconnect();
         await disconnectFuture;

@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:spacetimedb_dart_sdk/src/codec/bsatn_encoder.dart';
 import 'package:spacetimedb_dart_sdk/src/connection/spacetimedb_connection.dart';
-import 'package:spacetimedb_dart_sdk/src/connection/connection_status.dart';
+import 'package:spacetimedb_dart_sdk/src/connection/connection_state.dart';
 import 'package:spacetimedb_dart_sdk/src/messages/client_messages.dart';
 import 'package:spacetimedb_dart_sdk/src/reducers/transaction_result.dart';
 import 'package:spacetimedb_dart_sdk/src/offline/offline_storage.dart';
@@ -53,7 +53,7 @@ class ReducerCaller {
   }) : _offlineStorage = offlineStorage,
        _mutationHandler = mutationHandler;
 
-  bool get _isOnline => _connection.status == ConnectionStatus.connected;
+  bool get _isOnline => _connection.state is Connected;
 
   Future<TransactionResult> call(
     String reducerName,
@@ -71,7 +71,7 @@ class ReducerCaller {
     }
 
     SdkLogger.d(
-      '$reducerName: status=${_connection.status}, isOnline=$_isOnline, hasOfflineStorage=${_offlineStorage != null}',
+      '$reducerName: state=${_connection.state.displayName}, isOnline=$_isOnline, hasOfflineStorage=${_offlineStorage != null}',
     );
 
     if (_offlineStorage != null) {

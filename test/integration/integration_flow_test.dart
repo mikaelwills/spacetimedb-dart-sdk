@@ -278,7 +278,7 @@ void main() {
         await manager.loadFromOfflineCache();
 
         await failingConnection.connect();
-        failingConnection.setStatusSilently(ConnectionStatus.connected);
+        failingConnection.setStateSilently(const Connected());
 
         final table = manager.cache.getTableByName('note')! as TableCache<Note>;
 
@@ -319,7 +319,7 @@ void main() {
           manager.cache.registerDecoder<Note>('note', NoteDecoder());
 
           await silentConnection.connect();
-          silentConnection.setStatusSilently(ConnectionStatus.connected);
+          silentConnection.setStateSilently(const Connected());
 
           const noteId = 888;
           final note = createNote(noteId, 'Timeout Note');

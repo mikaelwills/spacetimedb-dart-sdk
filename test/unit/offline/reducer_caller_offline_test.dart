@@ -8,11 +8,9 @@ const _timeout = Duration(seconds: 5);
 
 class MockOfflineConnection implements SpacetimeDbConnection {
   final List<Uint8List> sentMessages = [];
-  ConnectionState _state = ConnectionState.disconnected;
-  ConnectionStatus _status = ConnectionStatus.disconnected;
+  ConnectionState _state = const Disconnected();
 
   final _stateController = StreamController<ConnectionState>.broadcast();
-  final _statusController = StreamController<ConnectionStatus>.broadcast();
   final _incomingController = StreamController<Uint8List>.broadcast();
   final _qualityController = StreamController<ConnectionQuality>.broadcast();
   final _errorController = StreamController<String>.broadcast();
@@ -24,11 +22,7 @@ class MockOfflineConnection implements SpacetimeDbConnection {
   @override
   ConnectionState get state => _state;
   @override
-  bool get isConnected => _state == ConnectionState.connected;
-  @override
-  ConnectionStatus get status => _status;
-  @override
-  Stream<ConnectionStatus> get connectionStatus => _statusController.stream;
+  bool get isConnected => _state is Connected;
   @override
   Stream<ConnectionQuality> get connectionQuality => _qualityController.stream;
   @override
@@ -39,25 +33,20 @@ class MockOfflineConnection implements SpacetimeDbConnection {
 
   @override
   Future<void> connect() async {
-    _state = ConnectionState.connected;
-    _status = ConnectionStatus.connected;
+    _state = const Connected();
     _stateController.add(_state);
-    _statusController.add(_status);
   }
 
   @override
   Future<void> disconnect() async {
-    _state = ConnectionState.disconnected;
-    _status = ConnectionStatus.disconnected;
+    _state = const Disconnected();
     _stateController.add(_state);
-    _statusController.add(_status);
   }
 
   @override
   Future<void> dispose() async {
     await _incomingController.close();
     await _stateController.close();
-    await _statusController.close();
     await _qualityController.close();
     await _errorController.close();
   }
@@ -92,17 +81,13 @@ class MockOfflineConnection implements SpacetimeDbConnection {
   }
 
   void setOnline() {
-    _state = ConnectionState.connected;
-    _status = ConnectionStatus.connected;
+    _state = const Connected();
     _stateController.add(_state);
-    _statusController.add(_status);
   }
 
   void setOffline() {
-    _state = ConnectionState.disconnected;
-    _status = ConnectionStatus.disconnected;
+    _state = const Disconnected();
     _stateController.add(_state);
-    _statusController.add(_status);
   }
 }
 

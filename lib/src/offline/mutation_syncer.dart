@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:spacetimedb_dart_sdk/src/connection/spacetimedb_connection.dart';
-import 'package:spacetimedb_dart_sdk/src/connection/connection_status.dart';
+import 'package:spacetimedb_dart_sdk/src/connection/connection_state.dart';
 import 'package:spacetimedb_dart_sdk/src/reducers/reducer_caller.dart';
 import 'package:spacetimedb_dart_sdk/src/reducers/mutation_handler.dart';
 import 'package:spacetimedb_dart_sdk/src/offline/offline_storage.dart';
@@ -135,7 +135,7 @@ class MutationSyncer implements MutationHandler {
       SdkLogger.d('Sync already in progress, skipping');
       return;
     }
-    if (_connection.status != ConnectionStatus.connected) {
+    if (_connection.state is! Connected) {
       SdkLogger.d('syncPendingMutations: not connected, skipping');
       return;
     }
@@ -166,7 +166,7 @@ class MutationSyncer implements MutationHandler {
 
       for (final mutation in pending) {
         if (_disposed) return;
-        if (_connection.status != ConnectionStatus.connected) {
+        if (_connection.state is! Connected) {
           SdkLogger.i('Connection lost during sync. Pausing queue.');
           break;
         }
@@ -269,8 +269,7 @@ class MutationSyncer implements MutationHandler {
       ),
     );
 
-    if (remaining.isNotEmpty &&
-        _connection.status == ConnectionStatus.connected) {
+    if (remaining.isNotEmpty && _connection.state is Connected) {
       _scheduleRetry();
     } else if (remaining.isEmpty) {
       cancelRetry();
@@ -294,7 +293,7 @@ class MutationSyncer implements MutationHandler {
 
     _retryTimer = Timer(delay, () {
       if (_disposed) return;
-      if (_connection.status == ConnectionStatus.connected) {
+      if (_connection.state is Connected) {
         SdkLogger.i('Auto-retry: syncing pending mutations');
         syncPendingMutations();
       }

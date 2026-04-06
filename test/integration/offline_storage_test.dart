@@ -76,8 +76,8 @@ void main() {
             final uniqueTitle =
                 'Offline-${DateTime.now().millisecondsSinceEpoch}';
 
-            final disconnectFuture = connection.connectionStatus
-                .firstWhere((s) => s != ConnectionStatus.connected)
+            final disconnectFuture = connection.onStateChanged
+                .firstWhere((s) => s is! Connected)
                 .timeout(_timeout);
             await connection.disconnect();
             await disconnectFuture;
@@ -268,8 +268,8 @@ void main() {
           await setupWithStorage();
 
           try {
-            final disconnectFuture = connection.connectionStatus
-                .firstWhere((s) => s != ConnectionStatus.connected)
+            final disconnectFuture = connection.onStateChanged
+                .firstWhere((s) => s is! Connected)
                 .timeout(_timeout);
             await connection.disconnect();
             await disconnectFuture;
@@ -346,8 +346,8 @@ void main() {
               syncStates.add,
             );
 
-            final disconnectFuture = connection.connectionStatus
-                .firstWhere((s) => s != ConnectionStatus.connected)
+            final disconnectFuture = connection.onStateChanged
+                .firstWhere((s) => s is! Connected)
                 .timeout(_timeout);
             await connection.disconnect();
             await disconnectFuture;
@@ -445,8 +445,8 @@ void main() {
           await setupWithStorage();
 
           try {
-            final disconnectFuture = connection.connectionStatus
-                .firstWhere((s) => s != ConnectionStatus.connected)
+            final disconnectFuture = connection.onStateChanged
+                .firstWhere((s) => s is! Connected)
                 .timeout(_timeout);
             await connection.disconnect();
             await disconnectFuture;
