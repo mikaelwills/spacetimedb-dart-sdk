@@ -25,10 +25,13 @@ class ReducerGenerator {
   }
 
   String generateArgDecoders() {
-    final classes = <Spec>[];
+    final specs = <Spec>[];
     for (final reducer in reducers) {
-      classes.add(_buildArgsClass(reducer));
-      classes.add(_buildArgsDecoder(reducer));
+      specs.add(_buildArgsClass(reducer));
+      specs.add(_buildArgsDecoder(reducer));
+    }
+    for (final reducer in reducers) {
+      specs.add(_buildReducerDef(reducer));
     }
 
     final lib = Library(
@@ -39,7 +42,7 @@ class ReducerGenerator {
                 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart',
               ),
             )
-            ..body.addAll(classes),
+            ..body.addAll(specs),
     );
 
     return emitLibrary(
@@ -111,8 +114,9 @@ class ReducerGenerator {
         'encoder.${param.type.encoderMethod}($paramName);',
       );
     }
+    final defName = '${toCamelCase(reducer.name)}Def';
     encoderStatements.writeln(
-      "return await _reducerCaller.call('${reducer.name}', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable);",
+      "return await _reducerCaller.call($defName.name, encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable);",
     );
 
     return Method((m) {
@@ -169,9 +173,10 @@ class ReducerGenerator {
       callbackParams.write(', $dartType $paramName');
     }
 
+    final defName = '${toCamelCase(reducer.name)}Def';
     final argExtractors = StringBuffer();
     argExtractors.writeln(
-      "return _reducerEmitter.on('${reducer.name}').listen((EventContext ctx) {",
+      "return _reducerEmitter.on($defName).listen((EventContext ctx) {",
     );
     argExtractors.writeln('final event = ctx.event;');
     argExtractors.writeln('if (event is! ReducerEvent) return;');
@@ -280,6 +285,7 @@ class ReducerGenerator {
           b
             ..name = decoderClassName
             ..implements.add(refer('ReducerArgDecoder<$argsClassName>'))
+            ..constructors.add(Constructor((c) => c..constant = true))
             ..methods.add(
               Method(
                 (m) =>
@@ -298,6 +304,15 @@ class ReducerGenerator {
                       ..body = Code(decodeBody.toString()),
               ),
             ),
+    );
+  }
+
+  Code _buildReducerDef(ReducerSchema reducer) {
+    final argsClassName = '${toPascalCase(reducer.name)}Args';
+    final decoderClassName = '${toPascalCase(reducer.name)}ArgsDecoder';
+    final defName = '${toCamelCase(reducer.name)}Def';
+    return Code(
+      "const $defName = ReducerDef<$argsClassName>('${reducer.name}', $decoderClassName());",
     );
   }
 

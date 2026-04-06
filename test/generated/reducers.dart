@@ -21,7 +21,7 @@ class Reducers {
     encoder.writeString(path);
     encoder.writeString(name);
     return await _reducerCaller.call(
-      'create_folder',
+      createFolderDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
       isEventTable: isEventTable,
@@ -38,7 +38,7 @@ class Reducers {
     encoder.writeString(title);
     encoder.writeString(content);
     return await _reducerCaller.call(
-      'create_note',
+      createNoteDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
       isEventTable: isEventTable,
@@ -51,7 +51,7 @@ class Reducers {
   }) async {
     final encoder = BsatnEncoder();
     return await _reducerCaller.call(
-      'delete_all_folders',
+      deleteAllFoldersDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
       isEventTable: isEventTable,
@@ -64,7 +64,7 @@ class Reducers {
   }) async {
     final encoder = BsatnEncoder();
     return await _reducerCaller.call(
-      'delete_all_notes',
+      deleteAllNotesDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
       isEventTable: isEventTable,
@@ -79,7 +79,7 @@ class Reducers {
     final encoder = BsatnEncoder();
     encoder.writeString(path);
     return await _reducerCaller.call(
-      'delete_folder',
+      deleteFolderDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
       isEventTable: isEventTable,
@@ -94,7 +94,7 @@ class Reducers {
     final encoder = BsatnEncoder();
     encoder.writeU32(noteId);
     return await _reducerCaller.call(
-      'delete_note',
+      deleteNoteDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
       isEventTable: isEventTable,
@@ -113,7 +113,7 @@ class Reducers {
     encoder.writeString(title);
     encoder.writeString(content);
     return await _reducerCaller.call(
-      'update_note',
+      updateNoteDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
       isEventTable: isEventTable,
@@ -123,7 +123,7 @@ class Reducers {
   StreamSubscription<void> onCreateFolder(
     void Function(EventContext ctx, String path, String name) callback,
   ) {
-    return _reducerEmitter.on('create_folder').listen((EventContext ctx) {
+    return _reducerEmitter.on(createFolderDef).listen((EventContext ctx) {
       final event = ctx.event;
       if (event is! ReducerEvent) return;
       final args = event.reducerArgs;
@@ -135,7 +135,7 @@ class Reducers {
   StreamSubscription<void> onCreateNote(
     void Function(EventContext ctx, String title, String content) callback,
   ) {
-    return _reducerEmitter.on('create_note').listen((EventContext ctx) {
+    return _reducerEmitter.on(createNoteDef).listen((EventContext ctx) {
       final event = ctx.event;
       if (event is! ReducerEvent) return;
       final args = event.reducerArgs;
@@ -147,7 +147,7 @@ class Reducers {
   StreamSubscription<void> onDeleteAllFolders(
     void Function(EventContext ctx) callback,
   ) {
-    return _reducerEmitter.on('delete_all_folders').listen((EventContext ctx) {
+    return _reducerEmitter.on(deleteAllFoldersDef).listen((EventContext ctx) {
       final event = ctx.event;
       if (event is! ReducerEvent) return;
       final args = event.reducerArgs;
@@ -159,7 +159,7 @@ class Reducers {
   StreamSubscription<void> onDeleteAllNotes(
     void Function(EventContext ctx) callback,
   ) {
-    return _reducerEmitter.on('delete_all_notes').listen((EventContext ctx) {
+    return _reducerEmitter.on(deleteAllNotesDef).listen((EventContext ctx) {
       final event = ctx.event;
       if (event is! ReducerEvent) return;
       final args = event.reducerArgs;
@@ -171,7 +171,7 @@ class Reducers {
   StreamSubscription<void> onDeleteFolder(
     void Function(EventContext ctx, String path) callback,
   ) {
-    return _reducerEmitter.on('delete_folder').listen((EventContext ctx) {
+    return _reducerEmitter.on(deleteFolderDef).listen((EventContext ctx) {
       final event = ctx.event;
       if (event is! ReducerEvent) return;
       final args = event.reducerArgs;
@@ -183,7 +183,7 @@ class Reducers {
   StreamSubscription<void> onDeleteNote(
     void Function(EventContext ctx, int noteId) callback,
   ) {
-    return _reducerEmitter.on('delete_note').listen((EventContext ctx) {
+    return _reducerEmitter.on(deleteNoteDef).listen((EventContext ctx) {
       final event = ctx.event;
       if (event is! ReducerEvent) return;
       final args = event.reducerArgs;
@@ -196,7 +196,7 @@ class Reducers {
     void Function(EventContext ctx, int noteId, String title, String content)
     callback,
   ) {
-    return _reducerEmitter.on('update_note').listen((EventContext ctx) {
+    return _reducerEmitter.on(updateNoteDef).listen((EventContext ctx) {
       final event = ctx.event;
       if (event is! ReducerEvent) return;
       final args = event.reducerArgs;

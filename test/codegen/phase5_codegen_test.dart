@@ -97,8 +97,8 @@ void main() {
         ),
       );
 
-      // Should use _reducerEmitter.on()
-      expect(code, contains("_reducerEmitter.on('create_note')"));
+      // Should use _reducerEmitter.on() with typed ReducerDef
+      expect(code, contains('_reducerEmitter.on(createNoteDef)'));
 
       // Should use type guards, NOT as casts
       expect(code, contains('if (event is! ReducerEvent) return;'));
@@ -181,20 +181,15 @@ void main() {
       final generator = ClientGenerator(schema);
       final code = generator.generate();
 
-      // Should register CreateNoteArgsDecoder
+      // Should register via typed ReducerDef
       expect(
         code,
-        contains(
-          "subscriptionManager.reducerRegistry.registerDecoder('create_note', CreateNoteArgsDecoder());",
-        ),
+        contains('subscriptionManager.reducerRegistry.register(createNoteDef)'),
       );
 
-      // Should register UpdateNoteArgsDecoder
       expect(
         code,
-        contains(
-          "subscriptionManager.reducerRegistry.registerDecoder('update_note', UpdateNoteArgsDecoder());",
-        ),
+        contains('subscriptionManager.reducerRegistry.register(updateNoteDef)'),
       );
 
       // Should have comment explaining what we're doing

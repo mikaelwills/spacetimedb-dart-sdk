@@ -11,6 +11,8 @@ class CreateFolderArgs {
 }
 
 class CreateFolderArgsDecoder implements ReducerArgDecoder<CreateFolderArgs> {
+  const CreateFolderArgsDecoder();
+
   @override
   CreateFolderArgs? decode(BsatnDecoder decoder) {
     try {
@@ -32,6 +34,8 @@ class CreateNoteArgs {
 }
 
 class CreateNoteArgsDecoder implements ReducerArgDecoder<CreateNoteArgs> {
+  const CreateNoteArgsDecoder();
+
   @override
   CreateNoteArgs? decode(BsatnDecoder decoder) {
     try {
@@ -50,6 +54,8 @@ class DeleteAllFoldersArgs {
 
 class DeleteAllFoldersArgsDecoder
     implements ReducerArgDecoder<DeleteAllFoldersArgs> {
+  const DeleteAllFoldersArgsDecoder();
+
   @override
   DeleteAllFoldersArgs? decode(BsatnDecoder decoder) {
     try {
@@ -66,6 +72,8 @@ class DeleteAllNotesArgs {
 
 class DeleteAllNotesArgsDecoder
     implements ReducerArgDecoder<DeleteAllNotesArgs> {
+  const DeleteAllNotesArgsDecoder();
+
   @override
   DeleteAllNotesArgs? decode(BsatnDecoder decoder) {
     try {
@@ -83,6 +91,8 @@ class DeleteFolderArgs {
 }
 
 class DeleteFolderArgsDecoder implements ReducerArgDecoder<DeleteFolderArgs> {
+  const DeleteFolderArgsDecoder();
+
   @override
   DeleteFolderArgs? decode(BsatnDecoder decoder) {
     try {
@@ -101,6 +111,8 @@ class DeleteNoteArgs {
 }
 
 class DeleteNoteArgsDecoder implements ReducerArgDecoder<DeleteNoteArgs> {
+  const DeleteNoteArgsDecoder();
+
   @override
   DeleteNoteArgs? decode(BsatnDecoder decoder) {
     try {
@@ -127,6 +139,8 @@ class UpdateNoteArgs {
 }
 
 class UpdateNoteArgsDecoder implements ReducerArgDecoder<UpdateNoteArgs> {
+  const UpdateNoteArgsDecoder();
+
   @override
   UpdateNoteArgs? decode(BsatnDecoder decoder) {
     try {
@@ -139,3 +153,32 @@ class UpdateNoteArgsDecoder implements ReducerArgDecoder<UpdateNoteArgs> {
     }
   }
 }
+
+const createFolderDef = ReducerDef<CreateFolderArgs>(
+  'create_folder',
+  CreateFolderArgsDecoder(),
+);
+const createNoteDef = ReducerDef<CreateNoteArgs>(
+  'create_note',
+  CreateNoteArgsDecoder(),
+);
+const deleteAllFoldersDef = ReducerDef<DeleteAllFoldersArgs>(
+  'delete_all_folders',
+  DeleteAllFoldersArgsDecoder(),
+);
+const deleteAllNotesDef = ReducerDef<DeleteAllNotesArgs>(
+  'delete_all_notes',
+  DeleteAllNotesArgsDecoder(),
+);
+const deleteFolderDef = ReducerDef<DeleteFolderArgs>(
+  'delete_folder',
+  DeleteFolderArgsDecoder(),
+);
+const deleteNoteDef = ReducerDef<DeleteNoteArgs>(
+  'delete_note',
+  DeleteNoteArgsDecoder(),
+);
+const updateNoteDef = ReducerDef<UpdateNoteArgs>(
+  'update_note',
+  UpdateNoteArgsDecoder(),
+);

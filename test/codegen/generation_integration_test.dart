@@ -75,13 +75,13 @@ void main() {
       expect(
         reducersContent,
         contains(
-          "return await _reducerCaller.call('create_note', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable)",
+          'return await _reducerCaller.call(createNoteDef.name, encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable)',
         ),
       );
       expect(
         reducersContent,
         contains(
-          "return await _reducerCaller.call('update_note', encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable)",
+          'return await _reducerCaller.call(updateNoteDef.name, encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable)',
         ),
       );
 

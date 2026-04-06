@@ -5,8 +5,8 @@ import 'dart:async';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 import 'reducers.dart';
 import 'reducer_args.dart';
-import 'note.dart';
 import 'folder.dart';
+import 'note.dart';
 
 class SpacetimeDbClient {
   SpacetimeDbClient._({
@@ -61,12 +61,12 @@ class SpacetimeDbClient {
     return subscriptions.onMutationSyncResult;
   }
 
-  TableCache<Note> get note {
-    return subscriptions.cache.getTableByTypedName<Note>('note');
-  }
-
   TableCache<Folder> get folder {
     return subscriptions.cache.getTableByTypedName<Folder>('folder');
+  }
+
+  TableCache<Note> get note {
+    return subscriptions.cache.getTableByTypedName<Note>('note');
   }
 
   TableCache<Note> get allNotes {
@@ -112,11 +112,11 @@ class SpacetimeDbClient {
     );
 
     // Auto-register table decoders
-    subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
     subscriptionManager.cache.registerDecoder<Folder>(
       'folder',
       FolderDecoder(),
     );
+    subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
 
     // Auto-register view decoders
     subscriptionManager.cache.registerDecoder<Note>('all_notes', NoteDecoder());
@@ -130,34 +130,13 @@ class SpacetimeDbClient {
     );
 
     // Auto-register reducer argument decoders
-    subscriptionManager.reducerRegistry.registerDecoder(
-      'create_folder',
-      CreateFolderArgsDecoder(),
-    );
-    subscriptionManager.reducerRegistry.registerDecoder(
-      'create_note',
-      CreateNoteArgsDecoder(),
-    );
-    subscriptionManager.reducerRegistry.registerDecoder(
-      'delete_all_folders',
-      DeleteAllFoldersArgsDecoder(),
-    );
-    subscriptionManager.reducerRegistry.registerDecoder(
-      'delete_all_notes',
-      DeleteAllNotesArgsDecoder(),
-    );
-    subscriptionManager.reducerRegistry.registerDecoder(
-      'delete_folder',
-      DeleteFolderArgsDecoder(),
-    );
-    subscriptionManager.reducerRegistry.registerDecoder(
-      'delete_note',
-      DeleteNoteArgsDecoder(),
-    );
-    subscriptionManager.reducerRegistry.registerDecoder(
-      'update_note',
-      UpdateNoteArgsDecoder(),
-    );
+    subscriptionManager.reducerRegistry.register(createFolderDef);
+    subscriptionManager.reducerRegistry.register(createNoteDef);
+    subscriptionManager.reducerRegistry.register(deleteAllFoldersDef);
+    subscriptionManager.reducerRegistry.register(deleteAllNotesDef);
+    subscriptionManager.reducerRegistry.register(deleteFolderDef);
+    subscriptionManager.reducerRegistry.register(deleteNoteDef);
+    subscriptionManager.reducerRegistry.register(updateNoteDef);
 
     final client = SpacetimeDbClient._(
       connection: connection,

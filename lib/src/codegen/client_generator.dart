@@ -342,9 +342,9 @@ return cache.iter().first;
     final registerReducers = StringBuffer();
     if (schema.reducers.isNotEmpty) {
       for (final reducer in schema.reducers) {
-        final reducerClassName = toPascalCase(reducer.name);
+        final defName = '${toCamelCase(reducer.name)}Def';
         registerReducers.writeln(
-          "subscriptionManager.reducerRegistry.registerDecoder('${reducer.name}', ${reducerClassName}ArgsDecoder());",
+          "subscriptionManager.reducerRegistry.register($defName);",
         );
       }
     }
