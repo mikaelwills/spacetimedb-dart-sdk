@@ -16,8 +16,14 @@ void main() {
         lifecycle: {},
         params: ProductType(
           elements: [
-            ProductElement(name: 'title', algebraicType: {'String': null}),
-            ProductElement(name: 'content', algebraicType: {'String': null}),
+            ProductElement(
+              name: 'title',
+              type: const PrimitiveType(PrimitiveKind.string),
+            ),
+            ProductElement(
+              name: 'content',
+              type: const PrimitiveType(PrimitiveKind.string),
+            ),
           ],
         ),
       );
@@ -27,8 +33,14 @@ void main() {
         lifecycle: {},
         params: ProductType(
           elements: [
-            ProductElement(name: 'id', algebraicType: {'U32': null}),
-            ProductElement(name: 'title', algebraicType: {'String': null}),
+            ProductElement(
+              name: 'id',
+              type: const PrimitiveType(PrimitiveKind.u32),
+            ),
+            ProductElement(
+              name: 'title',
+              type: const PrimitiveType(PrimitiveKind.string),
+            ),
           ],
         ),
       );
@@ -303,8 +315,14 @@ void main() {
           lifecycle: {},
           params: ProductType(
             elements: [
-              ProductElement(name: 'count', algebraicType: {'U32': null}),
-              ProductElement(name: 'message', algebraicType: {'String': null}),
+              ProductElement(
+                name: 'count',
+                type: const PrimitiveType(PrimitiveKind.u32),
+              ),
+              ProductElement(
+                name: 'message',
+                type: const PrimitiveType(PrimitiveKind.string),
+              ),
             ],
           ),
         ),
