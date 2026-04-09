@@ -264,7 +264,7 @@ class SubscriptionManager {
   Future<void> _handleInitialSubscription(
     InitialSubscriptionMessage message,
   ) async {
-    SdkLogger.i(
+    SdkLogger.d(
       'Handling InitialSubscription with ${message.tableUpdates.length} table updates',
     );
 
@@ -283,7 +283,7 @@ class SubscriptionManager {
       final table = cache.getTableByName(tableUpdate.tableName);
       if (table == null) continue;
 
-      SdkLogger.i(
+      SdkLogger.d(
         '  Table "${tableUpdate.tableName}": ${tableUpdate.updates.length} updates',
       );
 
@@ -291,7 +291,7 @@ class SubscriptionManager {
 
       for (final update in tableUpdate.updates) {
         final rows = update.update.inserts.getRows();
-        SdkLogger.i('    Inserting ${rows.length} rows');
+        SdkLogger.d('    Inserting ${rows.length} rows');
         table.applyInitialData(update.update.inserts, context);
       }
     }
@@ -312,7 +312,7 @@ class SubscriptionManager {
       return;
     }
 
-    SdkLogger.i(
+    SdkLogger.d(
       'TXN_UPDATE: reducer=${message.reducerCall.reducerName}, tables=${message.tableUpdates.length}, status=${message.status}, requestId=$numericRequestId',
     );
     if (message.status is Failed) {
@@ -370,7 +370,7 @@ class SubscriptionManager {
       return;
     }
 
-    SdkLogger.i(
+    SdkLogger.d(
       'TXN_LIGHT: requestId=$numericRequestId, tables=${message.tableUpdates.length}',
     );
 

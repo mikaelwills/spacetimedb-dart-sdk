@@ -61,7 +61,7 @@ class MutationSyncer implements MutationHandler {
       SdkLogger.d('Sync already in progress, skipping duplicate trigger');
       return;
     }
-    SdkLogger.i('Immediate sync triggered by reducer call');
+    SdkLogger.d('Immediate sync triggered by reducer call');
     syncPendingMutations();
   }
 
@@ -164,12 +164,12 @@ class MutationSyncer implements MutationHandler {
         ),
       );
 
-      SdkLogger.i('Syncing ${pending.length} pending mutations');
+      SdkLogger.d('Syncing ${pending.length} pending mutations');
 
       for (final mutation in pending) {
         if (_disposed) return;
         if (_connection.state is! Connected) {
-          SdkLogger.i('Connection lost during sync. Pausing queue.');
+          SdkLogger.d('Connection lost during sync. Pausing queue.');
           break;
         }
 
@@ -188,7 +188,7 @@ class MutationSyncer implements MutationHandler {
           if (result.isSuccess) {
             await _storage.dequeueMutation(mutation.requestId);
             _decrementPendingCount();
-            SdkLogger.i('Synced mutation: ${mutation.reducerName}');
+            SdkLogger.d('Synced mutation: ${mutation.reducerName}');
             if (!_disposed) {
               _mutationSyncResultController.add(
                 MutationSyncResult(
@@ -289,14 +289,14 @@ class MutationSyncer implements MutationHandler {
     );
     _retryAttempt++;
 
-    SdkLogger.i(
+    SdkLogger.d(
       'Scheduling sync retry in ${delay.inSeconds}s (attempt $_retryAttempt)',
     );
 
     _retryTimer = Timer(delay, () {
       if (_disposed) return;
       if (_connection.state is Connected) {
-        SdkLogger.i('Auto-retry: syncing pending mutations');
+        SdkLogger.d('Auto-retry: syncing pending mutations');
         syncPendingMutations();
       }
     });
@@ -333,7 +333,7 @@ class MutationSyncer implements MutationHandler {
           final table = _cache.getTableByName(tableName);
           if (table != null && table.decoder.supportsJsonSerialization) {
             table.loadFromSerializable(rows);
-            SdkLogger.i(
+            SdkLogger.d(
               'Loaded ${rows.length} rows from offline cache for "$tableName"',
             );
           }

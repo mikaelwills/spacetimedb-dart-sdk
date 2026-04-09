@@ -34,7 +34,7 @@ class TableCache<T> {
 
   void _emitChanges(_RowChanges<T> changes, EventContext context) {
     if (!isEvent) {
-      SdkLogger.i(
+      SdkLogger.d(
         'EMIT_CHANGES[$tableName]: inserts=${changes.inserted.length}, updates=${changes.updated.length}, deletes=${changes.deleted.length}',
       );
     }
