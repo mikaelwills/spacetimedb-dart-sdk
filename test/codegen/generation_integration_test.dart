@@ -92,12 +92,13 @@ void main() {
       expect(clientContent, contains('late final Reducers reducers;'));
       expect(
         clientContent,
-        contains('static Future<SpacetimeDbClient> connect({'),
+        contains('static Future<SpacetimeDbClient> create({'),
       );
       expect(clientContent, contains('required String host,'));
       expect(clientContent, contains('required String database,'));
       expect(clientContent, contains('AuthTokenStore? authStorage,'));
       expect(clientContent, contains('bool ssl = false,'));
+      expect(clientContent, contains('Future<void> connect({'));
       expect(clientContent, contains('List<String>? initialSubscriptions,'));
       expect(clientContent, contains('Future<void> disconnect()'));
 
@@ -190,7 +191,7 @@ void main() {
         reducersContent,
         matches(r'Future<TransactionResult> createNote\({'),
       );
-      expect(clientContent, matches(r'static Future<\w+Client> connect\({'));
+      expect(clientContent, matches(r'static Future<\w+Client> create\({'));
 
       // Verify no obvious syntax errors
       expect(

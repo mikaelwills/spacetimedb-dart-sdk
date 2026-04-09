@@ -65,13 +65,6 @@ void main() {
         final clientFile = files.firstWhere((f) => f.filename == 'client.dart');
         final clientCode = clientFile.content;
 
-        // Check for auto-registration comment
-        expect(
-          clientCode.contains('// Auto-register table decoders'),
-          true,
-          reason: 'Generated client should have decoder registration comment',
-        );
-
         // Check for registerDecoder calls
         for (final table in schema.tables) {
           final tableName = _toPascalCase(table.name);
@@ -85,43 +78,39 @@ void main() {
         }
         print('   ✅ All tables have decoder registration code');
 
-        // Step 4: Verify wait for initial subscription
-        print('\n⏳ Verifying initial subscription wait...');
+        // Step 4: Verify two-phase API shape (create + connect)
+        print('\n⏳ Verifying create() + connect() split...');
         expect(
-          clientCode.contains(
-            'await subscriptionManager.subscribe(initialSubscriptions).timeout(subscriptionTimeout);',
-          ),
+          clientCode.contains('static Future<SpacetimeDbClient> create('),
           true,
-          reason:
-              'Client should wait for initial subscription data with timeout',
+          reason: 'Client should have static create() factory',
         );
         expect(
-          clientCode.contains(
-            'subscriptionManager.subscribe(initialSubscriptions).timeout(subscriptionTimeout)',
-          ),
+          clientCode.contains('Future<void> connect('),
           true,
-          reason: 'Should have timeout in subscription call',
+          reason: 'Client should have instance connect() method',
         );
-        print('   ✅ Client waits for initial subscription with timeout');
+        expect(
+          clientCode.contains('subscriptions.subscribe(initialSubscriptions).timeout(subscriptionTimeout)'),
+          true,
+          reason: 'connect() should subscribe with timeout',
+        );
+        print('   ✅ Two-phase API: create() factory + connect() instance method');
 
-        // Step 5: Verify flow order in connect() method
-        print('\n🔄 Verifying connect() method flow...');
-        final connectMethodStart = clientCode.indexOf('static Future<');
-        final connectMethodEnd = clientCode.indexOf(
+        // Step 5: Verify flow order in create() method
+        print('\n🔄 Verifying create() method flow...');
+        final createMethodStart = clientCode.indexOf('static Future<');
+        final createMethodEnd = clientCode.indexOf(
           'return client;',
-          connectMethodStart,
+          createMethodStart,
         );
-        final connectMethod = clientCode.substring(
-          connectMethodStart,
-          connectMethodEnd + 'return client;'.length,
+        final createMethod = clientCode.substring(
+          createMethodStart,
+          createMethodEnd + 'return client;'.length,
         );
 
-        // Check order of operations
-        final registerIndex = connectMethod.indexOf('registerDecoder');
-        final connectIndex = connectMethod.indexOf('connection.connect()');
-        final subscribeIndex = connectMethod.indexOf(
-          'subscriptionManager.subscribe',
-        );
+        final registerIndex = createMethod.indexOf('registerDecoder');
+        final clientConstructIndex = createMethod.indexOf('SpacetimeDbClient._(');
 
         expect(
           registerIndex > 0,
@@ -129,21 +118,14 @@ void main() {
           reason: 'Should have registerDecoder call',
         );
         expect(
-          connectIndex > registerIndex,
+          clientConstructIndex > registerIndex,
           true,
-          reason: 'connect() should come after registration',
-        );
-        expect(
-          subscribeIndex > connectIndex,
-          true,
-          reason: 'subscribe() should come after connect()',
+          reason: 'Client construction should come after registration',
         );
 
         print('   ✅ Operation order is correct:');
-        print('      1. Register decoders');
-        print('      2. Connect to server');
-        print('      3. Subscribe to tables (activates them)');
-        print('      4. Return client');
+        print('      create(): Register decoders → construct client → load cache');
+        print('      connect(): Connect to server → subscribe to tables');
 
         // Note: Skipping static analysis because generated code in temp dir
         // can't resolve package imports without pubspec.yaml.

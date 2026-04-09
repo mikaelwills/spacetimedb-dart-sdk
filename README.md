@@ -49,14 +49,16 @@ dart run spacetimedb_dart_sdk:generate -p path/to/module -o lib/generated
 ```dart
 import 'package:your_app/generated/client.dart';
 
-final client = await SpacetimeDbClient.connect(
+// Create client (loads offline cache if provided, no network)
+final client = await SpacetimeDbClient.create(
   host: 'localhost:3000',
   database: 'your_database',
   ssl: false,
   authStorage: InMemoryTokenStore(),
-  initialSubscriptions: ['SELECT * FROM users'],
-  subscriptionTimeout: Duration(seconds: 10),
 );
+
+// Connect to server and subscribe
+await client.connect(initialSubscriptions: ['SELECT * FROM users']);
 ```
 
 ## Tables
@@ -161,13 +163,14 @@ final status = StatusActive(DateTime.now().millisecondsSinceEpoch);
 ## Authentication
 
 ```dart
-// Connect with persistent storage
-final client = await SpacetimeDbClient.connect(
+// Create with persistent storage
+final client = await SpacetimeDbClient.create(
   host: 'spacetimedb.com',
   database: 'myapp',
   ssl: true,
   authStorage: YourTokenStore(), // implements AuthTokenStore
 );
+await client.connect();
 
 // Access identity after connect
 print(client.identity?.toHexString);  // Full 32-byte hex
@@ -187,20 +190,15 @@ await client.logout();
 ## Connection Status
 
 ```dart
-client.connection.connectionStatus.listen((status) {
-  switch (status) {
-    case ConnectionStatus.connecting: showSpinner();
-    case ConnectionStatus.connected: hideSpinner();
-    case ConnectionStatus.reconnecting: showBanner();
-    case ConnectionStatus.disconnected: showError();
-    case ConnectionStatus.fatalError: showRetry();
+client.connection.onStateChanged.listen((state) {
+  switch (state) {
+    case Connecting(): showSpinner();
+    case Connected(): hideSpinner();
+    case Reconnecting(): showBanner();
+    case Disconnected(): showError();
+    case AuthError(): showLogin();
+    case FatalError(:final message): showRetry(message);
   }
-});
-
-client.connection.connectionQuality.listen((quality) {
-  print('Health: ${quality.healthScore}');
-  print('Latency: ${quality.latency}');
-  print('Reconnects: ${quality.reconnectAttempts}');
 });
 ```
 
@@ -214,12 +212,20 @@ ssl: true   // Production: wss://, https://
 ## Offline Support
 
 ```dart
-final client = await SpacetimeDbClient.connect(
+final client = await SpacetimeDbClient.create(
   host: 'localhost:3000',
   database: 'myapp',
   offlineStorage: JsonFileStorage(basePath: '/path/to/cache'),
-  onCacheLoaded: (client) => print('Loaded ${client.notes.count} cached notes'),
 );
+// Offline cache is already loaded — read data immediately
+print('Loaded ${client.notes.count} cached notes');
+
+// Connect when ready — errors propagate, you decide how to handle them
+try {
+  await client.connect(initialSubscriptions: ['SELECT * FROM note']);
+} catch (e) {
+  print('Offline mode: $e');
+}
 ```
 
 Storage options: `JsonFileStorage` (file-based), `InMemoryOfflineStorage` (testing), or implement `OfflineStorage` interface for custom backends.

@@ -192,8 +192,6 @@ void main() {
         contains('subscriptionManager.reducerRegistry.register(updateNoteDef)'),
       );
 
-      // Should have comment explaining what we're doing
-      expect(code, contains('// Auto-register reducer argument decoders'));
     });
 
     test('Multiple reducers generate multiple completion callbacks', () {

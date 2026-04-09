@@ -181,7 +181,8 @@ class ClientGenerator {
       _addViewGetters(b);
 
       b.constructors.add(_buildPrivateConstructor(clientName));
-      b.methods.add(_buildConnectMethod(clientName));
+      b.methods.add(_buildCreateMethod(clientName));
+      b.methods.add(_buildConnectMethod());
       b.methods.add(_buildDisconnectMethod());
       b.methods.add(_buildLogoutMethod());
       b.methods.add(_buildGetAuthUrlMethod());
@@ -319,7 +320,7 @@ return cache.iter().first;
     );
   }
 
-  Method _buildConnectMethod(String clientName) {
+  Method _buildCreateMethod(String clientName) {
     final registerTables = StringBuffer();
     for (final table in schema.tables) {
       final className = toPascalCase(table.name);
@@ -361,11 +362,8 @@ final connection = SpacetimeDbConnection(
 );
 final subscriptionManager = SubscriptionManager(connection, offlineStorage: offlineStorage);
 
-// Auto-register table decoders
 $registerTables
-// Auto-register view decoders
 $registerViews
-// Auto-register reducer argument decoders
 $registerReducers
 final client = $clientName._(
   connection: connection,
@@ -381,20 +379,6 @@ subscriptionManager.onIdentityToken.listen((msg) async {
 
 if (offlineStorage != null) {
   await subscriptionManager.loadFromOfflineCache();
-  onCacheLoaded?.call(client);
-}
-
-try {
-  await connection.connect().timeout(config.connectTimeout);
-  if (initialSubscriptions != null && initialSubscriptions.isNotEmpty) {
-    await subscriptionManager.subscribe(initialSubscriptions).timeout(subscriptionTimeout);
-  }
-} catch (e) {
-  if (offlineStorage != null) {
-    print('📴 Connection failed, operating in offline mode: \$e');
-  } else {
-    rethrow;
-  }
 }
 
 return client;
@@ -403,7 +387,7 @@ return client;
     return Method(
       (m) =>
           m
-            ..name = 'connect'
+            ..name = 'create'
             ..static = true
             ..modifier = MethodModifier.async
             ..returns = refer('Future<$clientName>')
@@ -454,6 +438,26 @@ return client;
                       ..defaultTo = const Code('const ConnectionConfig()')
                       ..type = refer('ConnectionConfig'),
               ),
+            ])
+            ..body = Code(body),
+    );
+  }
+
+  Method _buildConnectMethod() {
+    const body = '''
+await connection.connect().timeout(connection.config.connectTimeout);
+if (initialSubscriptions != null && initialSubscriptions.isNotEmpty) {
+  await subscriptions.subscribe(initialSubscriptions).timeout(subscriptionTimeout);
+}
+''';
+
+    return Method(
+      (m) =>
+          m
+            ..name = 'connect'
+            ..modifier = MethodModifier.async
+            ..returns = refer('Future<void>')
+            ..optionalParameters.addAll([
               Parameter(
                 (p) =>
                     p
@@ -469,15 +473,8 @@ return client;
                       ..defaultTo = const Code('const Duration(seconds: 10)')
                       ..type = refer('Duration'),
               ),
-              Parameter(
-                (p) =>
-                    p
-                      ..name = 'onCacheLoaded'
-                      ..named = true
-                      ..type = refer('void Function($clientName client)?'),
-              ),
             ])
-            ..body = Code(body),
+            ..body = const Code(body),
     );
   }
 
