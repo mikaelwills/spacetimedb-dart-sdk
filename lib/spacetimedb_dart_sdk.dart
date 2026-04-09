@@ -57,3 +57,4 @@ export 'src/offline/optimistic_state_manager.dart';
 
 // Utils
 export 'src/utils/sdk_logger.dart';
+export 'src/utils/value_notifier.dart';

@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:spacetimedb_dart_sdk/src/utils/value_notifier.dart';
 import 'package:spacetimedb_dart_sdk/src/cache/row_decoder.dart';
 import 'package:spacetimedb_dart_sdk/src/codec/bsatn_decoder.dart';
 import 'package:spacetimedb_dart_sdk/src/messages/shared_types.dart';

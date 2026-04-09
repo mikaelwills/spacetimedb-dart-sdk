@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 
 Future<T> waitForInsert<T>(
@@ -125,7 +124,7 @@ Future<TableEvent<T>> waitForEvent<T>(
 class EventCollector<T> {
   final TableCache<T> table;
   final List<TableEvent<T>> events = [];
-  late final VoidCallback _listener;
+  late final void Function() _listener;
 
   EventCollector(this.table, {bool Function(TableEvent<T>)? filter}) {
     _listener = () {
