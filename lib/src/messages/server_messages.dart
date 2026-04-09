@@ -33,7 +33,7 @@ enum ServerMessageType {
   }
 }
 
-abstract class ServerMessage {
+sealed class ServerMessage {
   ServerMessageType get messageType;
 }
 

@@ -16,7 +16,7 @@ enum ClientMessageType {
   const ClientMessageType(this.tag);
 }
 
-abstract class ClientMessage {
+sealed class ClientMessage {
   ClientMessageType get messageType;
 
   /// Encode this message to BSATN bytes (including tag)
