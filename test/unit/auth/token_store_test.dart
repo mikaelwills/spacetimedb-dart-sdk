@@ -1,5 +1,5 @@
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
+import 'package:spacetimedb_dart_sdk/codegen.dart';
 
 void main() {
   group('InMemoryTokenStore', () {
