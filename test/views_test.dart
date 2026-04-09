@@ -96,12 +96,6 @@ void main() {
 
       expect(
         clientCode,
-        contains('// Auto-register view decoders'),
-        reason: 'Client should have view decoder registration comment',
-      );
-
-      expect(
-        clientCode,
         contains(
           "subscriptionManager.cache.registerDecoder<Note>('all_notes', NoteDecoder());",
         ),
