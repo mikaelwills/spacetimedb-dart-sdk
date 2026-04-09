@@ -53,12 +53,13 @@ import 'note_status.dart';
 
 void main() {
   test('e2e', () async {
-    print('   🚀 Connecting generated client...');
-    final client = await SpacetimeDbClient.connect(
+    print('   🚀 Creating generated client...');
+    final client = await SpacetimeDbClient.create(
       host: 'localhost:3000',
       database: 'notesdb',
-      initialSubscriptions: ['SELECT * FROM note'],
     );
+    print('   🔌 Connecting...');
+    await client.connect(initialSubscriptions: ['SELECT * FROM note']);
     print('   ✅ Connected.');
 
     final uniqueTitle = 'E2E-\${DateTime.now().millisecondsSinceEpoch}';

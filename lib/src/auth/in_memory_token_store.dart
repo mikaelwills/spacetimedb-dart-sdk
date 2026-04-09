@@ -13,7 +13,7 @@ import 'auth_token_store.dart';
 ///
 /// Example:
 /// ```dart
-/// final client = await SpacetimeDbClient.connect(
+/// final client = await SpacetimeDbClient.create(
 ///   host: 'localhost:3000',
 ///   database: 'mygame',
 ///   authStorage: InMemoryTokenStore(), // Not persistent!

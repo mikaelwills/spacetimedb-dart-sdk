@@ -86,16 +86,13 @@ class SpacetimeDbClient {
     return subscriptions.cache.getTableByTypedName<Note>('notes_query_all');
   }
 
-  static Future<SpacetimeDbClient> connect({
+  static Future<SpacetimeDbClient> create({
     required String host,
     required String database,
     AuthTokenStore? authStorage,
     OfflineStorage? offlineStorage,
     bool ssl = false,
     ConnectionConfig config = const ConnectionConfig(),
-    List<String>? initialSubscriptions,
-    Duration subscriptionTimeout = const Duration(seconds: 10),
-    void Function(SpacetimeDbClient client)? onCacheLoaded,
   }) async {
     final storage = authStorage ?? InMemoryTokenStore();
     final savedToken = await storage.loadToken();
@@ -111,14 +108,12 @@ class SpacetimeDbClient {
       offlineStorage: offlineStorage,
     );
 
-    // Auto-register table decoders
     subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
     subscriptionManager.cache.registerDecoder<Folder>(
       'folder',
       FolderDecoder(),
     );
 
-    // Auto-register view decoders
     subscriptionManager.cache.registerDecoder<Note>('all_notes', NoteDecoder());
     subscriptionManager.cache.registerDecoder<Note>(
       'first_note',
@@ -129,7 +124,6 @@ class SpacetimeDbClient {
       NoteDecoder(),
     );
 
-    // Auto-register reducer argument decoders
     subscriptionManager.reducerRegistry.register(createFolderDef);
     subscriptionManager.reducerRegistry.register(createNoteDef);
     subscriptionManager.reducerRegistry.register(deleteAllFoldersDef);
@@ -152,25 +146,21 @@ class SpacetimeDbClient {
 
     if (offlineStorage != null) {
       await subscriptionManager.loadFromOfflineCache();
-      onCacheLoaded?.call(client);
-    }
-
-    try {
-      await connection.connect().timeout(config.connectTimeout);
-      if (initialSubscriptions != null && initialSubscriptions.isNotEmpty) {
-        await subscriptionManager
-            .subscribe(initialSubscriptions)
-            .timeout(subscriptionTimeout);
-      }
-    } catch (e) {
-      if (offlineStorage != null) {
-        print('📴 Connection failed, operating in offline mode: $e');
-      } else {
-        rethrow;
-      }
     }
 
     return client;
+  }
+
+  Future<void> connect({
+    List<String>? initialSubscriptions,
+    Duration subscriptionTimeout = const Duration(seconds: 10),
+  }) async {
+    await connection.connect().timeout(connection.config.connectTimeout);
+    if (initialSubscriptions != null && initialSubscriptions.isNotEmpty) {
+      await subscriptions
+          .subscribe(initialSubscriptions)
+          .timeout(subscriptionTimeout);
+    }
   }
 
   Future<void> disconnect() async {
