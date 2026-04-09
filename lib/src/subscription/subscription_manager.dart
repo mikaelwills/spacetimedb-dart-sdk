@@ -9,6 +9,7 @@ import '../connection/spacetimedb_connection.dart';
 import '../connection/connection_state.dart';
 import '../messages/message_decoder.dart';
 import '../messages/server_messages.dart';
+import '../messages/shared_types.dart' show TableUpdate;
 import '../messages/client_messages.dart';
 import '../reducers/reducer_caller.dart';
 import '../reducers/reducer_registry.dart';
@@ -299,52 +300,26 @@ class SubscriptionManager {
   }
 
   void _handleTransactionUpdate(TransactionUpdateMessage message) {
+    final numericRequestId = message.reducerCall.requestId;
+
     final isEventOnly = message.tableUpdates.every(
       (tu) => cache.isEventTable(tu.tableName),
     );
-
     if (isEventOnly) {
-      final numericRequestId = message.reducerCall.requestId;
       final result = TransactionResult.fromTransactionUpdate(message);
       reducers.completeRequest(numericRequestId, result);
-
-      final context = EventContext(
-        myConnectionId: _connectionId,
-        event: UnknownTransactionEvent(),
-      );
-      for (final tableUpdate in message.tableUpdates) {
-        final table = cache.getTableByName(tableUpdate.tableName);
-        if (table == null) continue;
-        for (final update in tableUpdate.updates) {
-          table.applyTransactionUpdate(
-            update.update.deletes,
-            update.update.inserts,
-            context,
-          );
-        }
-      }
+      _applyEventOnlyUpdates(message.tableUpdates);
       return;
     }
 
     SdkLogger.i(
-      'TXN_UPDATE: reducer=${message.reducerCall.reducerName}, tables=${message.tableUpdates.length}, status=${message.status}, requestId=${message.reducerCall.requestId}',
+      'TXN_UPDATE: reducer=${message.reducerCall.reducerName}, tables=${message.tableUpdates.length}, status=${message.status}, requestId=$numericRequestId',
     );
-    for (final tu in message.tableUpdates) {
-      SdkLogger.i('  TABLE: ${tu.tableName}, updates=${tu.updates.length}');
-    }
     if (message.status is Failed) {
       SdkLogger.w('TXN_FAILED: ${(message.status as Failed).message}');
     }
 
-    final numericRequestId = message.reducerCall.requestId;
-    final uuidRequestId = reducers.getUuidForRequest(numericRequestId);
-    final effectiveRequestId = uuidRequestId ?? numericRequestId.toString();
-
-    final result = TransactionResult.fromTransactionUpdate(message);
-    reducers.completeRequest(numericRequestId, result);
-
     Event event;
-
     final reducerArgs = reducerRegistry.deserializeArgs(
       message.reducerCall.reducerName,
       message.reducerCall.args,
@@ -360,48 +335,106 @@ class SubscriptionManager {
         reducerName: message.reducerCall.reducerName,
         reducerArgs: reducerArgs,
       );
-
-      SdkLogger.i(
-        'Transaction caused by reducer: ${message.reducerCall.reducerName}',
-      );
-      SdkLogger.i('Arguments: $reducerArgs');
-      SdkLogger.i('Status: ${message.status}');
     } else {
       event = UnknownTransactionEvent();
-      SdkLogger.i(
-        'Failed to deserialize reducer args for: ${message.reducerCall.reducerName}',
-      );
     }
 
     final context = EventContext(myConnectionId: _connectionId, event: event);
 
     if (event is ReducerEvent) {
       reducerEmitter.emit(event.reducerName, context);
-      SdkLogger.i('Emitted reducer completion event for: ${event.reducerName}');
     }
 
+    _processTransaction(
+      numericRequestId: numericRequestId,
+      tableUpdates: message.tableUpdates,
+      context: context,
+      isCommitted: message.status is Committed,
+      canRollbackOnFailure: true,
+    );
+
+    final result = TransactionResult.fromTransactionUpdate(message);
+    reducers.completeRequest(numericRequestId, result);
+  }
+
+  void _handleTransactionUpdateLight(TransactionUpdateLightMessage message) {
+    final numericRequestId = message.requestId;
+
+    final isEventOnly = message.tableUpdates.every(
+      (tu) => cache.isEventTable(tu.tableName),
+    );
+    if (isEventOnly) {
+      final result = TransactionResult.fromTransactionUpdateLight(message);
+      reducers.completeRequest(numericRequestId, result);
+      _applyEventOnlyUpdates(message.tableUpdates);
+      return;
+    }
+
+    SdkLogger.i(
+      'TXN_LIGHT: requestId=$numericRequestId, tables=${message.tableUpdates.length}',
+    );
+
+    final context = EventContext(
+      myConnectionId: _connectionId,
+      event: UnknownTransactionEvent(),
+    );
+
+    _processTransaction(
+      numericRequestId: numericRequestId,
+      tableUpdates: message.tableUpdates,
+      context: context,
+      isCommitted: true,
+      canRollbackOnFailure: false,
+    );
+
+    final result = TransactionResult.fromTransactionUpdateLight(message);
+    reducers.completeRequest(numericRequestId, result);
+  }
+
+  void _applyEventOnlyUpdates(List<TableUpdate> tableUpdates) {
+    final context = EventContext(
+      myConnectionId: _connectionId,
+      event: UnknownTransactionEvent(),
+    );
+    for (final tableUpdate in tableUpdates) {
+      final table = cache.getTableByName(tableUpdate.tableName);
+      if (table == null) continue;
+      for (final update in tableUpdate.updates) {
+        table.applyTransactionUpdate(
+          update.update.deletes,
+          update.update.inserts,
+          context,
+        );
+      }
+    }
+  }
+
+  void _processTransaction({
+    required int numericRequestId,
+    required List<TableUpdate> tableUpdates,
+    required EventContext context,
+    required bool isCommitted,
+    required bool canRollbackOnFailure,
+  }) {
+    final uuidRequestId = reducers.getUuidForRequest(numericRequestId);
+    final effectiveRequestId = uuidRequestId ?? numericRequestId.toString();
     final isOurTransaction = uuidRequestId != null;
-    final isCommitted = message.status is Committed;
     final hasOptimistic = _optimisticState.hasOptimisticChange(
       effectiveRequestId,
     );
 
     SdkLogger.d(
-      'TXN: numericRequestId=$numericRequestId, uuidRequestId=$uuidRequestId',
-    );
-    SdkLogger.d(
-      'TXN: isOurTransaction=$isOurTransaction, isCommitted=$isCommitted, hasOptimistic=$hasOptimistic',
+      'TXN: requestId=$numericRequestId, uuid=$uuidRequestId, ours=$isOurTransaction, committed=$isCommitted, optimistic=$hasOptimistic',
     );
 
     if (isOurTransaction && isCommitted && hasOptimistic) {
-      SdkLogger.i('Our transaction confirmed - keeping optimistic state');
       _optimisticState.confirmOptimisticChange(effectiveRequestId);
       _mutationSyncer?.persistTableSnapshots();
       return;
     }
 
     final touchedKeysByTable = <String, Set<dynamic>>{};
-    for (final tableUpdate in message.tableUpdates) {
+    for (final tableUpdate in tableUpdates) {
       final table = cache.getTableByName(tableUpdate.tableName);
       if (table == null) continue;
 
@@ -422,93 +455,10 @@ class SubscriptionManager {
         effectiveRequestId,
         touchedKeysByTable,
       );
-    } else {
+    } else if (canRollbackOnFailure) {
       _optimisticState.rollbackOptimisticChanges(effectiveRequestId);
     }
 
-    _mutationSyncer?.persistTableSnapshots();
-  }
-
-  void _handleTransactionUpdateLight(TransactionUpdateLightMessage message) {
-    final isEventOnly = message.tableUpdates.every(
-      (tu) => cache.isEventTable(tu.tableName),
-    );
-
-    if (isEventOnly) {
-      reducers.completeRequest(
-        message.requestId,
-        TransactionResult.fromTransactionUpdateLight(message),
-      );
-
-      final context = EventContext(
-        myConnectionId: _connectionId,
-        event: UnknownTransactionEvent(),
-      );
-      for (final tableUpdate in message.tableUpdates) {
-        final table = cache.getTableByName(tableUpdate.tableName);
-        if (table == null) continue;
-        for (final update in tableUpdate.updates) {
-          table.applyTransactionUpdate(
-            update.update.deletes,
-            update.update.inserts,
-            context,
-          );
-        }
-      }
-      return;
-    }
-
-    SdkLogger.i(
-      'TXN_LIGHT: requestId=${message.requestId}, tables=${message.tableUpdates.length}',
-    );
-
-    final numericRequestId = message.requestId;
-    final uuidRequestId = reducers.getUuidForRequest(numericRequestId);
-    final effectiveRequestId = uuidRequestId ?? numericRequestId.toString();
-
-    final isOurTransaction = uuidRequestId != null;
-    final hasOptimistic = _optimisticState.hasOptimisticChange(
-      effectiveRequestId,
-    );
-
-    SdkLogger.d(
-      'TXN-LIGHT: isOurTransaction=$isOurTransaction, hasOptimistic=$hasOptimistic',
-    );
-
-    final result = TransactionResult.fromTransactionUpdateLight(message);
-    reducers.completeRequest(numericRequestId, result);
-
-    if (isOurTransaction && hasOptimistic) {
-      SdkLogger.i('Our light transaction confirmed - keeping optimistic state');
-      _optimisticState.confirmOptimisticChange(effectiveRequestId);
-      _mutationSyncer?.persistTableSnapshots();
-      return;
-    }
-
-    final event = UnknownTransactionEvent();
-    final context = EventContext(myConnectionId: _connectionId, event: event);
-
-    final touchedKeysByTable = <String, Set<dynamic>>{};
-    for (final tableUpdate in message.tableUpdates) {
-      final table = cache.getTableByName(tableUpdate.tableName);
-      if (table == null) continue;
-
-      final touchedKeys = <dynamic>{};
-      for (final update in tableUpdate.updates) {
-        final keys = table.applyTransactionUpdateAndCollectKeys(
-          update.update.deletes,
-          update.update.inserts,
-          context,
-        );
-        touchedKeys.addAll(keys);
-      }
-      touchedKeysByTable[tableUpdate.tableName] = touchedKeys;
-    }
-
-    _optimisticState.confirmOrRollbackWithTouchedKeys(
-      effectiveRequestId,
-      touchedKeysByTable,
-    );
     _mutationSyncer?.persistTableSnapshots();
   }
 
