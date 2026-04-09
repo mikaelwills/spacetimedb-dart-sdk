@@ -44,15 +44,15 @@ void main() {
         // 3. Create a "User App" script inside the temp dir
         // This script imports the GENERATED files, not your mocks.
         const userAppScript = """
-import 'dart:io';
 import 'dart:async';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
-import 'client.dart';      // Generated
-import 'note.dart';        // Generated
-import 'note_status.dart'; // Generated (Sum Type)
+import 'client.dart';
+import 'note.dart';
+import 'note_status.dart';
 
-void main() async {
-  try {
+void main() {
+  test('e2e', () async {
     print('   🚀 Connecting generated client...');
     final client = await SpacetimeDbClient.connect(
       host: 'localhost:3000',
@@ -63,12 +63,7 @@ void main() async {
 
     final uniqueTitle = 'E2E-\${DateTime.now().millisecondsSinceEpoch}';
 
-    // =================================================================
-    // 1. CREATE (Tests Serialization & Decoding)
-    // =================================================================
     print('   📝 Testing CREATE...');
-
-    // A. TRAP
     final createCompleter = Completer<Note>();
     void createListener() {
       final event = client.note.lastEvent.value;
@@ -77,55 +72,28 @@ void main() async {
       }
     }
     client.note.lastEvent.addListener(createListener);
-
-    // B. TRIGGER
-    client.reducers.createNote(
-      title: uniqueTitle,
-      content: 'Original Content'
-    );
-
-    // C. WAIT
+    client.reducers.createNote(title: uniqueTitle, content: 'Original Content');
     final createdNote = await createCompleter.future.timeout(Duration(seconds: 5));
     client.note.lastEvent.removeListener(createListener);
-    final noteId = createdNote.id; // Capture ID for next steps
+    final noteId = createdNote.id;
     print('   ✅ CREATE Success. Got ID: \$noteId');
+    expect(createdNote.content, equals('Original Content'));
 
-    if (createdNote.content != 'Original Content') throw 'Content mismatch';
-
-    // =================================================================
-    // 1.5. SUM TYPES (Tests Enum Generation & Pattern Matching)
-    // =================================================================
-    print('   🔍 Testing SUM TYPES (Generated Enums)...');
-
-    // Verify the status field is strongly typed (not dynamic)
+    print('   🔍 Testing SUM TYPES...');
     final status = createdNote.status;
-    if (status is! NoteStatus) {
-      throw 'Status should be NoteStatus type, got \${status.runtimeType}';
-    }
-
-    // Test pattern matching exhaustiveness (compile-time safety)
+    expect(status, isA<NoteStatus>());
     final statusDescription = switch (status) {
       NoteStatusDraft() => 'draft',
       NoteStatusPublished(:final value) => 'published_\$value',
       NoteStatusArchived() => 'archived',
     };
-
-    // Verify we can construct and compare enum variants
     const testDraft = NoteStatusDraft();
-    if (testDraft is! NoteStatusDraft) throw 'Enum construction failed';
-
+    expect(testDraft, isA<NoteStatusDraft>());
     final testPublished = NoteStatusPublished(Int64(1234567890));
-    if (testPublished is! NoteStatusPublished) throw 'Enum with payload failed';
-    if (testPublished.value != Int64(1234567890)) throw 'Enum payload mismatch';
-
+    expect(testPublished.value, equals(Int64(1234567890)));
     print('   ✅ SUM TYPES Success. Status: \$statusDescription');
 
-    // =================================================================
-    // 2. UPDATE (Tests Primary Key Generation & Coalescing)
-    // =================================================================
     print('   🔄 Testing UPDATE...');
-
-    // A. TRAP
     final updateCompleter = Completer<TableUpdateEvent<Note>>();
     void updateListener() {
       final event = client.note.lastEvent.value;
@@ -134,28 +102,13 @@ void main() async {
       }
     }
     client.note.lastEvent.addListener(updateListener);
-
-    // B. TRIGGER
-    client.reducers.updateNote(
-      noteId: noteId,
-      title: uniqueTitle,
-      content: 'Updated Content'
-    );
-
-    // C. WAIT
+    client.reducers.updateNote(noteId: noteId, title: uniqueTitle, content: 'Updated Content');
     final updateEvent = await updateCompleter.future.timeout(Duration(seconds: 5));
     client.note.lastEvent.removeListener(updateListener);
     print('   ✅ UPDATE Success.');
+    expect(updateEvent.newRow.content, equals('Updated Content'));
 
-    if (updateEvent.newRow.content != 'Updated Content') throw 'Update failed';
-
-
-    // =================================================================
-    // 3. DELETE (Tests ID matching)
-    // =================================================================
     print('   🗑️ Testing DELETE...');
-
-    // A. TRAP
     final deleteCompleter = Completer<void>();
     void deleteListener() {
       final event = client.note.lastEvent.value;
@@ -164,28 +117,14 @@ void main() async {
       }
     }
     client.note.lastEvent.addListener(deleteListener);
-
-    // B. TRIGGER
     client.reducers.deleteNote(noteId: noteId);
-
-    // C. WAIT
     await deleteCompleter.future.timeout(Duration(seconds: 5));
     client.note.lastEvent.removeListener(deleteListener);
     print('   ✅ DELETE Success.');
 
-    // Final Verification: Ensure it's gone from cache
-    if (client.note.find(noteId) != null) {
-        throw 'Cache mismatch: Note should be deleted but was found in find()';
-    }
-
+    expect(client.note.find(noteId), isNull);
     print('   🎉 E2E COMPLETE: Full CRUD Cycle + Sum Types Verified.');
-    exit(0);
-
-  } catch (e, stack) {
-    print('   ❌ E2E Failed: \$e');
-    print(stack);
-    exit(1);
-  }
+  }, timeout: Timeout(Duration(seconds: 30)));
 }
 """;
 
@@ -193,18 +132,24 @@ void main() async {
           path.join(tempDir.path, 'main.dart'),
         ).writeAsString(userAppScript);
 
-        // 4. Create pubspec.yaml for the temp app
+        // 4. Create pubspec.yaml for the temp app (Flutter project since SDK depends on Flutter)
         await File(path.join(tempDir.path, 'pubspec.yaml')).writeAsString("""
 name: e2e_temp_app
 environment:
-  sdk: ^3.0.0
+  sdk: ^3.7.0
 dependencies:
+  flutter:
+    sdk: flutter
   spacetimedb_dart_sdk:
     path: $sdkPath
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+flutter:
 """);
 
-        print('Phase 2: Running "dart pub get" in temp environment...');
-        final pubResult = await Process.run('dart', [
+        print('Phase 2: Running "flutter pub get" in temp environment...');
+        final pubResult = await Process.run('flutter', [
           'pub',
           'get',
         ], workingDirectory: tempDir.path);
@@ -213,8 +158,9 @@ dependencies:
         }
 
         print('Phase 3: Executing Generated Client Logic...');
-        final runResult = await Process.run('dart', [
-          'run',
+        final runResult = await Process.run('flutter', [
+          'test',
+          '--no-pub',
           'main.dart',
         ], workingDirectory: tempDir.path);
 
