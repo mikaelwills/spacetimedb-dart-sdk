@@ -17,11 +17,7 @@ class TableGenerator {
     final className = toPascalCase(table.name);
     final imports = <Directive>[];
 
-    imports.add(
-      Directive.import(
-        'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart',
-      ),
-    );
+    imports.add(Directive.import('package:spacetimedb_dart_sdk/codegen.dart'));
 
     for (final element in productType.elements) {
       if (element.type.isRef) {

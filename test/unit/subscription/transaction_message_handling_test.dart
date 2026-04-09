@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
+import 'package:spacetimedb_dart_sdk/protocol.dart';
 
 void main() {
   group('TransactionUpdate Message Handling', () {

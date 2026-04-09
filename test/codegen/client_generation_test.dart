@@ -91,11 +91,15 @@ void main() {
           reason: 'Client should have instance connect() method',
         );
         expect(
-          clientCode.contains('subscriptions.subscribe(initialSubscriptions).timeout(subscriptionTimeout)'),
+          clientCode.contains(
+            'subscriptions.subscribe(initialSubscriptions).timeout(subscriptionTimeout)',
+          ),
           true,
           reason: 'connect() should subscribe with timeout',
         );
-        print('   ✅ Two-phase API: create() factory + connect() instance method');
+        print(
+          '   ✅ Two-phase API: create() factory + connect() instance method',
+        );
 
         // Step 5: Verify flow order in create() method
         print('\n🔄 Verifying create() method flow...');
@@ -110,7 +114,9 @@ void main() {
         );
 
         final registerIndex = createMethod.indexOf('registerDecoder');
-        final clientConstructIndex = createMethod.indexOf('SpacetimeDbClient._(');
+        final clientConstructIndex = createMethod.indexOf(
+          'SpacetimeDbClient._(',
+        );
 
         expect(
           registerIndex > 0,
@@ -124,7 +130,9 @@ void main() {
         );
 
         print('   ✅ Operation order is correct:');
-        print('      create(): Register decoders → construct client → load cache');
+        print(
+          '      create(): Register decoders → construct client → load cache',
+        );
         print('      connect(): Connect to server → subscribe to tables');
 
         // Note: Skipping static analysis because generated code in temp dir

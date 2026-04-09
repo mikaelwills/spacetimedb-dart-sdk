@@ -191,7 +191,6 @@ void main() {
         code,
         contains('subscriptionManager.reducerRegistry.register(updateNoteDef)'),
       );
-
     });
 
     test('Multiple reducers generate multiple completion callbacks', () {

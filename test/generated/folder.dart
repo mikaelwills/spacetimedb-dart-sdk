@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
-import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
+import 'package:spacetimedb_dart_sdk/codegen.dart';
 
 class Folder {
   Folder({required this.path, required this.name, required this.createdAt});

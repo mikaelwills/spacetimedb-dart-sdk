@@ -13,9 +13,7 @@ class ReducerGenerator {
           b
             ..directives.addAll([
               Directive.import('dart:async'),
-              Directive.import(
-                'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart',
-              ),
+              Directive.import('package:spacetimedb_dart_sdk/codegen.dart'),
               Directive.import('reducer_args.dart'),
             ])
             ..body.add(_buildReducersClass()),
@@ -38,9 +36,7 @@ class ReducerGenerator {
       (b) =>
           b
             ..directives.add(
-              Directive.import(
-                'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart',
-              ),
+              Directive.import('package:spacetimedb_dart_sdk/codegen.dart'),
             )
             ..body.addAll(specs),
     );

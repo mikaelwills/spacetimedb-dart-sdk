@@ -46,7 +46,7 @@ void main() {
         const userAppScript = """
 import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
+import 'package:spacetimedb_dart_sdk/codegen.dart';
 import 'client.dart';
 import 'note.dart';
 import 'note_status.dart';

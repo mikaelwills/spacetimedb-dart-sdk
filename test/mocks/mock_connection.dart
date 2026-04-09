@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
+import 'package:spacetimedb_dart_sdk/codegen.dart';
 
 class MockConnection implements SpacetimeDbConnection {
   final List<Uint8List> sentMessages = [];

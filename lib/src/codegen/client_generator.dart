@@ -14,9 +14,7 @@ class ClientGenerator {
   String generate() {
     final imports = <Directive>[
       Directive.import('dart:async'),
-      Directive.import(
-        'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart',
-      ),
+      Directive.import('package:spacetimedb_dart_sdk/codegen.dart'),
       Directive.import('reducers.dart'),
     ];
 

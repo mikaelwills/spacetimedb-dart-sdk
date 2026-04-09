@@ -27,9 +27,7 @@ class SumTypeGenerator {
       (b) =>
           b
             ..directives.add(
-              Directive.import(
-                'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart',
-              ),
+              Directive.import('package:spacetimedb_dart_sdk/codegen.dart'),
             )
             ..body.addAll([_buildSealedClass(), ...variantClasses]),
     );
