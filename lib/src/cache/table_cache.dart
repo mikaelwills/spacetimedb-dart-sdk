@@ -1,48 +1,11 @@
-import 'dart:async';
-
+import 'package:flutter/foundation.dart';
 import 'package:spacetimedb_dart_sdk/src/cache/row_decoder.dart';
 import 'package:spacetimedb_dart_sdk/src/codec/bsatn_decoder.dart';
 import 'package:spacetimedb_dart_sdk/src/messages/shared_types.dart';
 import 'package:spacetimedb_dart_sdk/src/events/event_context.dart';
 import 'package:spacetimedb_dart_sdk/src/events/table_event.dart';
-import 'package:spacetimedb_dart_sdk/src/events/event.dart';
 import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
 
-/// Client-side cache for a single SpacetimeDB table
-///
-/// Stores decoded rows in memory and provides:
-/// - Fast lookups by primary key
-/// - Real-time change streams (insertStream, updateStream, deleteStream, changeStream)
-/// - Automatic update detection
-///
-/// The cache automatically processes transaction updates from the server
-/// and emits changes to streams with zero overhead when no listeners are present.
-///
-/// Example:
-/// ```dart
-/// final noteTable = subscriptionManager.cache.getTableByTypedName<Note>('note');
-///
-/// // Listen to changes
-/// noteTable.insertStream.listen((note) {
-///   print('New note: ${note.title}');
-/// });
-///
-/// noteTable.updateStream.listen((update) {
-///   print('Updated: ${update.oldRow.title} → ${update.newRow.title}');
-/// });
-///
-/// noteTable.deleteStream.listen((note) {
-///   print('Deleted: ${note.title}');
-/// });
-///
-/// // Query cached data
-/// final note = noteTable.find(42);
-/// print('Note count: ${noteTable.count()}');
-///
-/// for (final note in noteTable.iter()) {
-///   print(note.title);
-/// }
-/// ```
 class TableCache<T> {
   final String tableName;
   final RowDecoder<T> decoder;
@@ -51,23 +14,10 @@ class TableCache<T> {
   final Map<dynamic, T> _rowsByPrimaryKey = {};
   final List<T> _rows = [];
 
-  // === Simple streams (existing - backward compatible) ===
-  final StreamController<T> _insertController = StreamController<T>.broadcast();
-  final StreamController<T> _deleteController = StreamController<T>.broadcast();
-  final StreamController<TableUpdate<T>> _updateController =
-      StreamController<TableUpdate<T>>.broadcast();
-  final StreamController<TableChange<T>> _changeController =
-      StreamController<TableChange<T>>.broadcast();
-
-  // === Event streams with context (new - Phase 3) ===
-  final StreamController<TableInsertEvent<T>> _insertEventController =
-      StreamController<TableInsertEvent<T>>.broadcast();
-  final StreamController<TableUpdateEvent<T>> _updateEventController =
-      StreamController<TableUpdateEvent<T>>.broadcast();
-  final StreamController<TableDeleteEvent<T>> _deleteEventController =
-      StreamController<TableDeleteEvent<T>>.broadcast();
-  final StreamController<TableEvent<T>> _eventController =
-      StreamController<TableEvent<T>>.broadcast();
+  final ValueNotifier<List<T>> rows = ValueNotifier<List<T>>([]);
+  final ValueNotifier<TableEvent<T>?> lastEvent = ValueNotifier<TableEvent<T>?>(
+    null,
+  );
 
   TableCache({
     required this.tableName,
@@ -75,208 +25,12 @@ class TableCache<T> {
     this.isEvent = false,
   });
 
-  /// Stream of inserted rows
-  ///
-  /// Zero-overhead broadcast stream that emits rows as they're inserted.
-  /// Multiple listeners supported with no performance penalty.
-  ///
-  /// Example:
-  /// ```dart
-  /// noteTable.insertStream.listen((note) {
-  ///   print('New note: ${note.title}');
-  /// });
-  /// ```
-  Stream<T> get insertStream => _insertController.stream;
-
-  /// Stream of deleted rows
-  ///
-  /// Example:
-  /// ```dart
-  /// noteTable.deleteStream.listen((note) {
-  ///   print('Deleted: ${note.title}');
-  /// });
-  /// ```
-  Stream<T> get deleteStream => _deleteController.stream;
-
-  /// Stream of updated rows
-  ///
-  /// Emits TableUpdate objects containing both old and new row values.
-  ///
-  /// Example:
-  /// ```dart
-  /// noteTable.updateStream.listen((update) {
-  ///   print('Updated: ${update.oldRow.title} → ${update.newRow.title}');
-  /// });
-  /// ```
-  Stream<TableUpdate<T>> get updateStream => _updateController.stream;
-
-  /// Combined stream of all changes
-  ///
-  /// Emits TableChange objects for inserts, updates, and deletes.
-  /// Useful when you need to react to any change regardless of type.
-  ///
-  /// Example:
-  /// ```dart
-  /// noteTable.changeStream.listen((change) {
-  ///   switch (change.type) {
-  ///     case ChangeType.insert:
-  ///       print('Inserted: ${change.row!.title}');
-  ///     case ChangeType.update:
-  ///       print('Updated: ${change.oldRow!.title} → ${change.newRow!.title}');
-  ///     case ChangeType.delete:
-  ///       print('Deleted: ${change.row!.title}');
-  ///   }
-  /// });
-  /// ```
-  Stream<TableChange<T>> get changeStream => _changeController.stream;
-
-  // === Enhanced event streams with context (Phase 3) ===
-
-  /// Stream of insert events with transaction context
-  ///
-  /// Each event includes the inserted row and EventContext with metadata about
-  /// what caused the transaction (reducer name, caller, status, etc.).
-  ///
-  /// Example:
-  /// ```dart
-  /// noteTable.insertEventStream.listen((event) {
-  ///   print('New note: ${event.row.title}');
-  ///
-  ///   if (event.context.isMyTransaction) {
-  ///     print('I created this note!');
-  ///   }
-  ///
-  ///   if (event.context.event is ReducerEvent) {
-  ///     final reducerEvent = event.context.event as ReducerEvent;
-  ///     print('Created by reducer: ${reducerEvent.reducerName}');
-  ///   }
-  /// });
-  /// ```
-  Stream<TableInsertEvent<T>> get insertEventStream =>
-      _insertEventController.stream;
-
-  /// Stream of update events with transaction context
-  ///
-  /// Each event includes both old and new row versions plus EventContext.
-  ///
-  /// Example:
-  /// ```dart
-  /// noteTable.updateEventStream.listen((event) {
-  ///   print('Updated: ${event.oldRow.title} → ${event.newRow.title}');
-  ///
-  ///   if (event.context.isMyTransaction) {
-  ///     print('I updated this note!');
-  ///   }
-  /// });
-  /// ```
-  Stream<TableUpdateEvent<T>> get updateEventStream =>
-      _updateEventController.stream;
-
-  /// Stream of delete events with transaction context
-  ///
-  /// Each event includes the deleted row and EventContext.
-  ///
-  /// Example:
-  /// ```dart
-  /// noteTable.deleteEventStream.listen((event) {
-  ///   print('Deleted note: ${event.row.title}');
-  ///
-  ///   if (event.context.isMyTransaction) {
-  ///     print('I deleted this note!');
-  ///   }
-  /// });
-  /// ```
-  Stream<TableDeleteEvent<T>> get deleteEventStream =>
-      _deleteEventController.stream;
-
-  /// Unified stream of all table events with context
-  ///
-  /// Emits all insert, update, and delete events as TableEvent sealed class.
-  /// Use pattern matching to handle different event types.
-  ///
-  /// Example:
-  /// ```dart
-  /// noteTable.eventStream.listen((event) {
-  ///   switch (event) {
-  ///     case TableInsertEvent(:final row, :final context):
-  ///       print('Inserted: ${row.title}');
-  ///       if (context.isMyTransaction) print('By me!');
-  ///     case TableUpdateEvent(:final oldRow, :final newRow):
-  ///       print('Updated: ${oldRow.title} → ${newRow.title}');
-  ///     case TableDeleteEvent(:final row):
-  ///       print('Deleted: ${row.title}');
-  ///   }
-  /// });
-  /// ```
-  Stream<TableEvent<T>> get eventStream => _eventController.stream;
-
-  // === Convenience filter streams (Phase 3) ===
-
-  /// Stream of inserts caused by reducers only (not subscriptions)
-  ///
-  /// Filters out inserts from initial subscription loads, showing only
-  /// inserts triggered by reducer calls.
-  ///
-  /// Example:
-  /// ```dart
-  /// noteTable.insertsFromReducers.listen((event) {
-  ///   print('Note created by reducer: ${event.row.title}');
-  ///   final reducerEvent = event.context.event as ReducerEvent;
-  ///   print('Reducer: ${reducerEvent.reducerName}');
-  /// });
-  /// ```
-  Stream<TableInsertEvent<T>> get insertsFromReducers =>
-      insertEventStream.where((e) => e.context.event is ReducerEvent);
-
-  /// Stream of inserts from the current client only
-  ///
-  /// Filters to show only rows inserted by transactions initiated by this
-  /// client connection. Useful for showing feedback for user actions.
-  ///
-  /// Example:
-  /// ```dart
-  /// noteTable.myInserts.listen((event) {
-  ///   print('I created: ${event.row.title}');
-  ///   // Show success toast to user
-  /// });
-  /// ```
-  Stream<TableInsertEvent<T>> get myInserts =>
-      insertEventStream.where((e) => e.context.isMyTransaction);
-
-  /// Stream of all events caused by reducers (not subscriptions)
-  ///
-  /// Filters to show only changes triggered by reducer calls, excluding
-  /// initial subscription loads.
-  ///
-  /// Example:
-  /// ```dart
-  /// noteTable.eventsFromReducers.listen((event) {
-  ///   switch (event) {
-  ///     case TableInsertEvent(:final row):
-  ///       print('Reducer added: ${row.title}');
-  ///     case TableUpdateEvent(:final oldRow, :final newRow):
-  ///       print('Reducer updated: ${oldRow.title} → ${newRow.title}');
-  ///     case TableDeleteEvent(:final row):
-  ///       print('Reducer deleted: ${row.title}');
-  ///   }
-  /// });
-  /// ```
-  Stream<TableEvent<T>> get eventsFromReducers =>
-      eventStream.where((e) => e.context.event is ReducerEvent);
-
-  /// Stream of all events from the current client only
-  ///
-  /// Filters to show only changes from transactions initiated by this client.
-  ///
-  /// Example:
-  /// ```dart
-  /// noteTable.myEvents.listen((event) {
-  ///   print('I made a change!');
-  ///   // Update UI to reflect user's action
-  /// });
-  /// ```
-  Stream<TableEvent<T>> get myEvents =>
-      eventStream.where((e) => e.context.isMyTransaction);
+  void _refreshRowsNotifier() {
+    rows.value =
+        _rowsByPrimaryKey.isNotEmpty
+            ? List<T>.of(_rowsByPrimaryKey.values)
+            : List<T>.of(_rows);
+  }
 
   void _emitChanges(_RowChanges<T> changes, EventContext context) {
     if (!isEvent) {
@@ -285,31 +39,18 @@ class TableCache<T> {
       );
     }
     for (final row in changes.inserted) {
-      _insertController.add(row);
-      _changeController.add(TableChange.insert(row));
-
-      final insertEvent = TableInsertEvent(context, row);
-      _insertEventController.add(insertEvent);
-      _eventController.add(insertEvent);
+      lastEvent.value = TableInsertEvent(context, row);
     }
 
     for (final row in changes.deleted) {
-      _deleteController.add(row);
-      _changeController.add(TableChange.delete(row));
-
-      final deleteEvent = TableDeleteEvent(context, row);
-      _deleteEventController.add(deleteEvent);
-      _eventController.add(deleteEvent);
+      lastEvent.value = TableDeleteEvent(context, row);
     }
 
     for (final (oldRow, newRow) in changes.updated) {
-      _updateController.add(TableUpdate(oldRow, newRow));
-      _changeController.add(TableChange.update(oldRow, newRow));
-
-      final updateEvent = TableUpdateEvent(context, oldRow, newRow);
-      _updateEventController.add(updateEvent);
-      _eventController.add(updateEvent);
+      lastEvent.value = TableUpdateEvent(context, oldRow, newRow);
     }
+
+    _refreshRowsNotifier();
   }
 
   /// Apply transaction update with event context
@@ -488,6 +229,7 @@ class TableCache<T> {
   void clear() {
     _rowsByPrimaryKey.clear();
     _rows.clear();
+    _refreshRowsNotifier();
   }
 
   /// Apply initial subscription data with event context
@@ -502,17 +244,12 @@ class TableCache<T> {
 
   void applyInserts(BsatnRowList inserts) {
     _decodeAndStoreRows(inserts);
+    _refreshRowsNotifier();
   }
 
   void dispose() {
-    _insertController.close();
-    _deleteController.close();
-    _updateController.close();
-    _changeController.close();
-    _insertEventController.close();
-    _updateEventController.close();
-    _deleteEventController.close();
-    _eventController.close();
+    rows.dispose();
+    lastEvent.dispose();
   }
 
   List<Map<String, dynamic>> toSerializable() {
@@ -525,15 +262,16 @@ class TableCache<T> {
     return iter().map((row) => decoder.toJson(row)!).toList();
   }
 
-  void loadFromSerializable(List<Map<String, dynamic>> rows) {
+  void loadFromSerializable(List<Map<String, dynamic>> jsonRows) {
     if (!decoder.supportsJsonSerialization) {
       throw UnsupportedError(
         'Table "$tableName" decoder does not support JSON serialization. '
         'Implement toJson() and fromJson() in your RowDecoder.',
       );
     }
-    clear();
-    for (final json in rows) {
+    _rowsByPrimaryKey.clear();
+    _rows.clear();
+    for (final json in jsonRows) {
       final row = decoder.fromJson(json);
       if (row == null) {
         SdkLogger.w('Failed to deserialize row in table "$tableName": $json');
@@ -546,6 +284,7 @@ class TableCache<T> {
         _rows.add(row);
       }
     }
+    _refreshRowsNotifier();
   }
 
   void insertRow(T row) {
@@ -555,6 +294,7 @@ class TableCache<T> {
     } else {
       _rows.add(row);
     }
+    _refreshRowsNotifier();
   }
 
   void updateRow(T row) {
@@ -562,39 +302,29 @@ class TableCache<T> {
     if (primaryKey != null) {
       _rowsByPrimaryKey[primaryKey] = row;
     }
+    _refreshRowsNotifier();
   }
 
   void deleteRow(dynamic primaryKey) {
     _rowsByPrimaryKey.remove(primaryKey);
+    _refreshRowsNotifier();
   }
 
   T? getRow(dynamic primaryKey) => _rowsByPrimaryKey[primaryKey];
 
   void emitInsert(T row, EventContext context) {
-    _insertController.add(row);
-    _changeController.add(TableChange.insert(row));
-
-    final insertEvent = TableInsertEvent(context, row);
-    _insertEventController.add(insertEvent);
-    _eventController.add(insertEvent);
+    lastEvent.value = TableInsertEvent(context, row);
+    _refreshRowsNotifier();
   }
 
   void emitUpdate(T oldRow, T newRow, EventContext context) {
-    _updateController.add(TableUpdate(oldRow, newRow));
-    _changeController.add(TableChange.update(oldRow, newRow));
-
-    final updateEvent = TableUpdateEvent(context, oldRow, newRow);
-    _updateEventController.add(updateEvent);
-    _eventController.add(updateEvent);
+    lastEvent.value = TableUpdateEvent(context, oldRow, newRow);
+    _refreshRowsNotifier();
   }
 
   void emitDelete(T row, EventContext context) {
-    _deleteController.add(row);
-    _changeController.add(TableChange.delete(row));
-
-    final deleteEvent = TableDeleteEvent(context, row);
-    _deleteEventController.add(deleteEvent);
-    _eventController.add(deleteEvent);
+    lastEvent.value = TableDeleteEvent(context, row);
+    _refreshRowsNotifier();
   }
 
   void removeRowsWhere(bool Function(dynamic pk) test) {
@@ -603,6 +333,7 @@ class TableCache<T> {
       final pk = decoder.getPrimaryKey(row);
       return test(pk);
     });
+    _refreshRowsNotifier();
   }
 }
 
@@ -610,37 +341,4 @@ class _RowChanges<T> {
   final List<T> inserted = [];
   final List<T> deleted = [];
   final List<(T, T)> updated = [];
-}
-
-/// Represents an update to a row (old value → new value)
-class TableUpdate<T> {
-  final T oldRow;
-  final T newRow;
-
-  TableUpdate(this.oldRow, this.newRow);
-}
-
-/// Types of changes that can occur to a table
-enum ChangeType { insert, update, delete }
-
-/// Represents any change to a table row
-class TableChange<T> {
-  final ChangeType type;
-  final T? row;
-  final T? oldRow;
-  final T? newRow;
-
-  TableChange.insert(this.row)
-    : type = ChangeType.insert,
-      oldRow = null,
-      newRow = null;
-
-  TableChange.update(this.oldRow, this.newRow)
-    : type = ChangeType.update,
-      row = null;
-
-  TableChange.delete(this.row)
-    : type = ChangeType.delete,
-      oldRow = null,
-      newRow = null;
 }

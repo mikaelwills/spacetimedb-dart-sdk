@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_print
 import 'dart:async';
 import 'dart:math';
+import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 import '../generated/note.dart';
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';
@@ -13,30 +14,27 @@ void main() async {
   final connection = env.connection;
   final subscriptionManager = env.subManager;
 
-  // Get table by name (type-safe)
   final noteTable = subscriptionManager.cache.getTableByTypedName<Note>('note');
 
-  noteTable.insertStream.listen((note) {
-    print("📝 New Note: $note");
+  noteTable.lastEvent.addListener(() {
+    final event = noteTable.lastEvent.value;
+    if (event is TableInsertEvent<Note>) {
+      print("📝 New Note: ${event.row}");
+    } else if (event is TableUpdateEvent<Note>) {
+      print(
+        '✏️  Note Updated "${event.oldRow.title}" -> "${event.newRow.title}"',
+      );
+    }
   });
 
-  noteTable.updateStream.listen((update) {
-    print(
-      '✏️  Note Updated "${update.oldRow.title}" -> "${update.newRow.title}"',
-    );
-  });
-
-  // Listen for connection errors
   connection.onError.listen((error) {
     print('❌ Connection error: $error');
   });
 
-  // Listen for connection state changes
   connection.onStateChanged.listen((state) {
     print('🔄 Connection state: ${state.displayName}');
   });
 
-  // 3. Set up listeners
   var identityReceived = Completer<void>();
   var initialDataReceived = Completer<void>();
 
@@ -99,12 +97,10 @@ void main() async {
     print('');
   });
 
-  // 4. Connect
   print('📡 Connecting to SpacetimeDB...');
   await connection.connect();
   print('✅ Connected!\n');
 
-  // 5. Wait for identity token
   print('⏳ Waiting for identity token...');
   await identityReceived.future.timeout(
     const Duration(seconds: 5),
@@ -114,15 +110,12 @@ void main() async {
     },
   );
 
-  // 6. Subscribe to Note table
   print('📝 Subscribing to Note table...');
   subscriptionManager.subscribe(['SELECT * FROM note']);
   print('✅ Subscription sent!\n');
 
-  // Small delay to ensure message is fully sent
   await Future.delayed(const Duration(milliseconds: 100));
 
-  // 7. Wait for initial data
   print('⏳ Waiting for initial data...');
   await initialDataReceived.future.timeout(
     const Duration(seconds: 3),
@@ -144,7 +137,6 @@ void main() async {
   print('✅ All tests passed!');
   print('\n🎉 Integration test complete!');
 
-  // Cleanup
   await Future.delayed(const Duration(seconds: 1));
   subscriptionManager.dispose();
   await connection.disconnect();

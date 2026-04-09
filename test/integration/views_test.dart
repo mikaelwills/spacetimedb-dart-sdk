@@ -8,6 +8,7 @@ import 'package:spacetimedb_dart_sdk/src/subscription/subscription_manager.dart'
 import '../generated/note.dart';
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';
+import '../helpers/value_notifier_helpers.dart';
 
 void main() {
   setUpAll(ensureTestEnvironment);
@@ -68,9 +69,11 @@ void main() {
 
   Future<Note> createNote(TestEnv env, String title, String content) async {
     final noteTable = env.subManager.cache.getTableByTypedName<Note>('note');
-    final insertFuture = noteTable.insertStream
-        .firstWhere((n) => n.title == title)
-        .timeout(const Duration(seconds: 5));
+    final insertFuture = waitForInsert(
+      noteTable,
+      (n) => n.title == title,
+      timeout: const Duration(seconds: 5),
+    );
     await env.reducers.createNote(title: title, content: content);
     return insertFuture;
   }
@@ -131,9 +134,11 @@ void main() {
 
             final title =
                 'InsertPropagate-${DateTime.now().millisecondsSinceEpoch}';
-            final viewInsertFuture = allNotes.insertStream
-                .firstWhere((n) => n.title == title)
-                .timeout(const Duration(seconds: 5));
+            final viewInsertFuture = waitForInsert(
+              allNotes,
+              (n) => n.title == title,
+              timeout: const Duration(seconds: 5),
+            );
 
             await createNote(env, title, 'body');
             final viewRow = await viewInsertFuture;
@@ -171,9 +176,11 @@ void main() {
             }
             expect(allNotes.count(), equals(1));
 
-            final deleteFuture = allNotes.deleteStream
-                .firstWhere((n) => n.id == note.id)
-                .timeout(const Duration(seconds: 5));
+            final deleteFuture = waitForDelete(
+              allNotes,
+              (n) => n.id == note.id,
+              timeout: const Duration(seconds: 5),
+            );
 
             await env.reducers.deleteNote(noteId: note.id);
 
@@ -239,9 +246,9 @@ void main() {
                 .getTableByTypedName<Note>('first_note');
 
             if (firstNoteCache.count() > 0) {
-              final deleteFuture = firstNoteCache.deleteStream.first.timeout(
-                const Duration(seconds: 5),
-              );
+              final deleteFuture = waitForNextDelete(
+                firstNoteCache,
+              ).timeout(const Duration(seconds: 5));
               await clearNotes(env);
               await deleteFuture;
             } else {

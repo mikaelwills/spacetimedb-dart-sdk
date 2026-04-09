@@ -1,11 +1,10 @@
 library;
 
 // ignore_for_file: avoid_print
-import 'dart:async';
 import 'package:test/test.dart';
-import '../generated/note.dart';
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';
+import '../helpers/value_notifier_helpers.dart';
 
 void main() {
   setUpAll(ensureTestEnvironment);
@@ -24,14 +23,10 @@ void main() {
       final noteTable = env.noteTable;
       print('✅ Connected & Subscribed. Current count: ${noteTable.count()}');
 
-      Future<T> waitFor<T>(Stream<T> stream, bool Function(T) condition) {
-        return stream.firstWhere(condition).timeout(const Duration(seconds: 5));
-      }
-
       final uniqueTitle = 'Note-${DateTime.now().millisecondsSinceEpoch}';
 
-      final insertFuture = waitFor<Note>(
-        noteTable.insertStream,
+      final insertFuture = waitForInsert(
+        noteTable,
         (note) => note.title == uniqueTitle,
       );
 
@@ -42,11 +37,11 @@ void main() {
 
       expect(createdNote.title, equals(uniqueTitle));
       expect(createdNote.id, isNotNull);
-      print('   ✅ Verified Insert via Stream: ID ${createdNote.id}');
+      print('   ✅ Verified Insert: ID ${createdNote.id}');
 
-      final updateFuture = waitFor(
-        noteTable.updateStream,
-        (change) => change.newRow.id == createdNote.id,
+      final updateFuture = waitForUpdate(
+        noteTable,
+        (_, newRow) => newRow.id == createdNote.id,
       );
 
       print('🔄 Action: Update Note');
@@ -63,10 +58,10 @@ void main() {
 
       final cachedNote = noteTable.find(createdNote.id);
       expect(cachedNote?.title, contains('UPDATED'));
-      print('   ✅ Verified Update via Stream');
+      print('   ✅ Verified Update');
 
-      final deleteFuture = waitFor(
-        noteTable.deleteStream,
+      final deleteFuture = waitForDelete(
+        noteTable,
         (note) => note.id == createdNote.id,
       );
 
@@ -77,7 +72,7 @@ void main() {
       expect(deletedNote.id, equals(createdNote.id));
 
       expect(noteTable.find(createdNote.id), isNull);
-      print('   ✅ Verified Delete via Stream');
+      print('   ✅ Verified Delete');
 
       env.subManager.dispose();
       await env.disconnect();

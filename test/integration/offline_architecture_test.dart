@@ -9,6 +9,7 @@ import '../generated/note.dart';
 import '../generated/folder.dart';
 import '../generated/reducer_args.dart';
 import '../helpers/integration_test_helper.dart';
+import '../helpers/value_notifier_helpers.dart';
 
 const _timeout = Duration(seconds: 10);
 
@@ -232,9 +233,11 @@ void main() {
         noteTable = subManager.cache.getTableByTypedName<Note>('note');
 
         final testTitle = 'DeleteTest-${DateTime.now().microsecondsSinceEpoch}';
-        final insertFuture = noteTable.insertStream
-            .firstWhere((n) => n.title == testTitle)
-            .timeout(_timeout);
+        final insertFuture = waitForInsert(
+          noteTable,
+          (n) => n.title == testTitle,
+          timeout: _timeout,
+        );
 
         final encCreate = BsatnEncoder();
         encCreate.writeString(testTitle);
@@ -244,9 +247,11 @@ void main() {
         final noteToDelete = await insertFuture;
         final noteId = noteToDelete.id;
 
-        final deleteFuture = noteTable.deleteStream
-            .firstWhere((n) => n.id == noteId)
-            .timeout(_timeout);
+        final deleteFuture = waitForDelete(
+          noteTable,
+          (n) => n.id == noteId,
+          timeout: _timeout,
+        );
 
         final encDel = BsatnEncoder();
         encDel.writeU32(noteId);
@@ -342,10 +347,7 @@ void main() {
         );
         final instanceBefore = identityHashCode(noteTableBefore);
 
-        final receivedEvents = <TableEvent<Note>>[];
-        final subscription = noteTableBefore.eventStream.listen(
-          receivedEvents.add,
-        );
+        final collector = EventCollector(noteTableBefore);
 
         await connection.connect();
         await subManager.onIdentityToken.first.timeout(_timeout);
@@ -382,10 +384,10 @@ void main() {
 
         await createCompleter.future.timeout(_timeout);
         await createSub.cancel();
-        await subscription.cancel();
+        collector.dispose();
 
         expect(
-          receivedEvents,
+          collector.events,
           isNotEmpty,
           reason:
               'Listener on pre-connect instance should still receive events after first server snapshot',
@@ -423,12 +425,7 @@ void main() {
         await connection.disconnect();
         await disconnectFuture;
 
-        final eventCompleter = Completer<TableEvent<Note>>();
-        final subscription = noteTable.eventStream.listen((event) {
-          if (!eventCompleter.isCompleted) {
-            eventCompleter.complete(event);
-          }
-        });
+        final eventFuture = waitForEvent(noteTable, timeout: _timeout);
 
         final optimisticId = DateTime.now().microsecondsSinceEpoch;
         final encEvt = BsatnEncoder();
@@ -448,14 +445,12 @@ void main() {
           ],
         );
 
-        final event = await eventCompleter.future.timeout(_timeout);
-        await subscription.cancel();
+        final event = await eventFuture;
 
         expect(
           event,
           isA<TableInsertEvent<Note>>(),
-          reason:
-              'Optimistic insert should emit TableInsertEvent to EventStream',
+          reason: 'Optimistic insert should emit TableInsertEvent to lastEvent',
         );
       },
       timeout: const Timeout(Duration(seconds: 30)),

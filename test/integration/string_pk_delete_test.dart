@@ -3,9 +3,11 @@ library;
 // ignore_for_file: avoid_print
 import 'dart:async';
 import 'package:test/test.dart';
+import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 import '../generated/folder.dart';
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';
+import '../helpers/value_notifier_helpers.dart';
 
 void main() {
   setUpAll(ensureTestEnvironment);
@@ -40,7 +42,7 @@ void main() {
       final testPath = '/test/folder-${DateTime.now().millisecondsSinceEpoch}';
       const testName = 'Test Folder';
 
-      final insertFuture = folderTable.insertStream.first;
+      final insertFuture = waitForNextInsert(folderTable);
 
       await env.reducers.createFolder(path: testPath, name: testName);
 
@@ -54,25 +56,14 @@ void main() {
       expect(createdFolder.path, equals(testPath));
       expect(folderTable.count(), equals(1));
 
-      final deleteCompleter = Completer<Folder>();
-      final deleteSubscription = folderTable.deleteStream.listen((folder) {
-        print('   📡 Delete event received for: ${folder.path}');
-        deleteCompleter.complete(folder);
-      });
+      final deleteFuture = waitForNextDelete(folderTable);
 
       print('   🗑️  Deleting folder: $testPath');
       await env.reducers.deleteFolder(path: testPath);
 
-      final deletedFolder = await deleteCompleter.future.timeout(
+      final deletedFolder = await deleteFuture.timeout(
         const Duration(seconds: 5),
-        onTimeout: () {
-          throw TimeoutException(
-            'deleteStream did not fire for String PK delete',
-          );
-        },
       );
-
-      await deleteSubscription.cancel();
 
       expect(deletedFolder.path, equals(testPath));
       expect(folderTable.count(), equals(0));
@@ -90,7 +81,7 @@ void main() {
             '/multi/folder-${DateTime.now().millisecondsSinceEpoch}-$i';
         final name = 'Folder $i';
 
-        final insertFuture2 = folderTable.insertStream.first;
+        final insertFuture2 = waitForNextInsert(folderTable);
 
         await env.reducers.createFolder(path: path, name: name);
 
@@ -104,13 +95,21 @@ void main() {
       final deletedFolders = <Folder>[];
       final multiDeleteCompleter = Completer<void>();
 
-      final multiDeleteSubscription = folderTable.deleteStream.listen((folder) {
-        deletedFolders.add(folder);
-        print('   📡 Delete event for: ${folder.path}');
-        if (deletedFolders.length >= foldersToCreate) {
-          multiDeleteCompleter.complete();
-        }
-      });
+      final collector = EventCollector(
+        folderTable,
+        filter: (e) {
+          if (e is TableDeleteEvent<Folder>) {
+            deletedFolders.add(e.row);
+            print('   📡 Delete event for: ${e.row.path}');
+            if (deletedFolders.length >= foldersToCreate &&
+                !multiDeleteCompleter.isCompleted) {
+              multiDeleteCompleter.complete();
+            }
+            return true;
+          }
+          return false;
+        },
+      );
 
       print('   🗑️  Deleting all folders...');
       await env.reducers.deleteAllFolders();
@@ -124,7 +123,7 @@ void main() {
         },
       );
 
-      await multiDeleteSubscription.cancel();
+      collector.dispose();
 
       expect(deletedFolders.length, equals(foldersToCreate));
       expect(folderTable.count(), equals(0));

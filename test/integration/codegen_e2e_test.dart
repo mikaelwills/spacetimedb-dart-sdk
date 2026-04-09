@@ -69,9 +69,14 @@ void main() async {
     print('   📝 Testing CREATE...');
 
     // A. TRAP
-    final createTrap = client.note.insertStream
-        .firstWhere((n) => n.title == uniqueTitle)
-        .timeout(Duration(seconds: 5));
+    final createCompleter = Completer<Note>();
+    void createListener() {
+      final event = client.note.lastEvent.value;
+      if (event is TableInsertEvent<Note> && event.row.title == uniqueTitle) {
+        if (!createCompleter.isCompleted) createCompleter.complete(event.row);
+      }
+    }
+    client.note.lastEvent.addListener(createListener);
 
     // B. TRIGGER
     client.reducers.createNote(
@@ -80,7 +85,8 @@ void main() async {
     );
 
     // C. WAIT
-    final createdNote = await createTrap;
+    final createdNote = await createCompleter.future.timeout(Duration(seconds: 5));
+    client.note.lastEvent.removeListener(createListener);
     final noteId = createdNote.id; // Capture ID for next steps
     print('   ✅ CREATE Success. Got ID: \$noteId');
 
@@ -120,19 +126,25 @@ void main() async {
     print('   🔄 Testing UPDATE...');
 
     // A. TRAP
-    final updateTrap = client.note.updateStream
-        .firstWhere((e) => e.newRow.id == noteId)
-        .timeout(Duration(seconds: 5));
+    final updateCompleter = Completer<TableUpdateEvent<Note>>();
+    void updateListener() {
+      final event = client.note.lastEvent.value;
+      if (event is TableUpdateEvent<Note> && event.newRow.id == noteId) {
+        if (!updateCompleter.isCompleted) updateCompleter.complete(event);
+      }
+    }
+    client.note.lastEvent.addListener(updateListener);
 
     // B. TRIGGER
     client.reducers.updateNote(
       noteId: noteId,
-      title: uniqueTitle, // Keep same title to find it easily
+      title: uniqueTitle,
       content: 'Updated Content'
     );
 
     // C. WAIT
-    final updateEvent = await updateTrap;
+    final updateEvent = await updateCompleter.future.timeout(Duration(seconds: 5));
+    client.note.lastEvent.removeListener(updateListener);
     print('   ✅ UPDATE Success.');
 
     if (updateEvent.newRow.content != 'Updated Content') throw 'Update failed';
@@ -144,15 +156,21 @@ void main() async {
     print('   🗑️ Testing DELETE...');
 
     // A. TRAP
-    final deleteTrap = client.note.deleteStream
-        .firstWhere((n) => n.id == noteId)
-        .timeout(Duration(seconds: 5));
+    final deleteCompleter = Completer<void>();
+    void deleteListener() {
+      final event = client.note.lastEvent.value;
+      if (event is TableDeleteEvent<Note> && event.row.id == noteId) {
+        if (!deleteCompleter.isCompleted) deleteCompleter.complete();
+      }
+    }
+    client.note.lastEvent.addListener(deleteListener);
 
     // B. TRIGGER
     client.reducers.deleteNote(noteId: noteId);
 
     // C. WAIT
-    await deleteTrap;
+    await deleteCompleter.future.timeout(Duration(seconds: 5));
+    client.note.lastEvent.removeListener(deleteListener);
     print('   ✅ DELETE Success.');
 
     // Final Verification: Ensure it's gone from cache

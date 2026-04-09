@@ -1,9 +1,9 @@
-import 'dart:async';
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 import '../generated/note.dart';
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';
+import '../helpers/value_notifier_helpers.dart';
 
 void main() {
   setUpAll(ensureTestEnvironment);
@@ -158,45 +158,44 @@ void main() {
       expect(foundDeleted, isFalse);
     });
 
-    test('Table insert stream emits new notes', () async {
-      final insertCompleter = Completer<Note>();
-      final subscription = noteTable.insertStream.listen((note) {
-        if (note.title == 'Stream Test' && !insertCompleter.isCompleted) {
-          insertCompleter.complete(note);
-        }
-      });
+    test('Table insert notifies on new notes', () async {
+      final insertFuture = waitForInsert(
+        noteTable,
+        (note) => note.title == 'Stream Test',
+        timeout: const Duration(seconds: 2),
+      );
 
       await env.reducers.createNote(
         title: 'Stream Test',
-        content: 'Testing insert stream',
+        content: 'Testing insert notification',
       );
 
-      final insertedNote = await insertCompleter.future.timeout(
-        const Duration(seconds: 2),
-      );
+      final insertedNote = await insertFuture;
 
       expect(insertedNote.title, equals('Stream Test'));
-      expect(insertedNote.content, equals('Testing insert stream'));
-
-      await subscription.cancel();
+      expect(insertedNote.content, equals('Testing insert notification'));
     });
 
-    test('Table update stream emits updated notes', () async {
+    test('Table update notifies on updated notes', () async {
       final uniqueTitle =
           'Update Stream Test ${DateTime.now().microsecondsSinceEpoch}';
 
-      final insertFuture = noteTable.insertStream
-          .firstWhere((note) => note.title == uniqueTitle)
-          .timeout(const Duration(seconds: 2));
+      final insertFuture = waitForInsert(
+        noteTable,
+        (note) => note.title == uniqueTitle,
+        timeout: const Duration(seconds: 2),
+      );
 
       env.reducers.createNote(title: uniqueTitle, content: 'Original Content');
 
       final createdNote = await insertFuture;
       final correctId = createdNote.id;
 
-      final updateFuture = noteTable.updateStream
-          .firstWhere((e) => e.newRow.id == correctId)
-          .timeout(const Duration(seconds: 2));
+      final updateFuture = waitForUpdate(
+        noteTable,
+        (_, newRow) => newRow.id == correctId,
+        timeout: const Duration(seconds: 2),
+      );
 
       env.reducers.updateNote(
         noteId: correctId,
@@ -212,7 +211,7 @@ void main() {
       expect(updateEvent.newRow.content, equals('Updated Content'));
     });
 
-    test('Table delete stream emits deleted notes', () async {
+    test('Table delete notifies on deleted notes', () async {
       final createTxFuture =
           env.subManager.onTransactionUpdate
               .where((tx) => tx.reducerCall.reducerName == 'create_note')
@@ -232,23 +231,18 @@ void main() {
       }
       expect(noteId, isNotNull);
 
-      final deleteCompleter = Completer<Note>();
-      final subscription = noteTable.deleteStream.listen((note) {
-        if (note.id == noteId && !deleteCompleter.isCompleted) {
-          deleteCompleter.complete(note);
-        }
-      });
+      final deleteFuture = waitForDelete(
+        noteTable,
+        (note) => note.id == noteId,
+        timeout: const Duration(seconds: 2),
+      );
 
       await env.reducers.deleteNote(noteId: noteId!);
 
-      final deletedNote = await deleteCompleter.future.timeout(
-        const Duration(seconds: 2),
-      );
+      final deletedNote = await deleteFuture;
 
       expect(deletedNote.id, equals(noteId));
       expect(deletedNote.title, equals('Delete Stream Test'));
-
-      await subscription.cancel();
     });
   });
 }

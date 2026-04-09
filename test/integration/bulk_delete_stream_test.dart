@@ -3,9 +3,11 @@ library;
 // ignore_for_file: avoid_print
 import 'dart:async';
 import 'package:test/test.dart';
+import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 import '../generated/note.dart';
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';
+import '../helpers/value_notifier_helpers.dart';
 
 void main() {
   setUpAll(ensureTestEnvironment);
@@ -42,7 +44,7 @@ void main() {
         final uniqueTitle =
             'MultiDeleteTest-${DateTime.now().millisecondsSinceEpoch}-$i';
 
-        final insertFuture = noteTable.insertStream.first;
+        final insertFuture = waitForNextInsert(noteTable);
 
         await env.reducers.createNote(
           title: uniqueTitle,
@@ -61,14 +63,23 @@ void main() {
       final deletedNotes = <Note>[];
       final deleteCompleter = Completer<void>();
 
-      final deleteSubscription = noteTable.deleteStream.listen((note) {
-        deletedNotes.add(note);
-        print('   📡 Delete event received for note ${note.id}: ${note.title}');
-
-        if (deletedNotes.length >= notesToCreate) {
-          deleteCompleter.complete();
-        }
-      });
+      final collector = EventCollector(
+        noteTable,
+        filter: (e) {
+          if (e is TableDeleteEvent<Note>) {
+            deletedNotes.add(e.row);
+            print(
+              '   📡 Delete event received for note ${e.row.id}: ${e.row.title}',
+            );
+            if (deletedNotes.length >= notesToCreate &&
+                !deleteCompleter.isCompleted) {
+              deleteCompleter.complete();
+            }
+            return true;
+          }
+          return false;
+        },
+      );
 
       print('🗑️  Action: Delete All Notes');
       await env.reducers.deleteAllNotes();
@@ -82,7 +93,7 @@ void main() {
         },
       );
 
-      await deleteSubscription.cancel();
+      collector.dispose();
 
       print('');
       print('📊 Results:');

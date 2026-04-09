@@ -1,6 +1,6 @@
 name: spacetimedb_dart_sdk
 description: "A Dart SDK for SpacetimeDB - real-time database with WebSocket sync, BSATN encoding, and code generation."
-version: 0.1.0
+version: 1.0.0
 homepage: https://github.com/mikaelwills/spacetimedb_dart_sdk
 repository: https://github.com/mikaelwills/spacetimedb_dart_sdk
 issue_tracker: https://github.com/mikaelwills/spacetimedb_dart_sdk/issues

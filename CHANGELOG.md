@@ -52,6 +52,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unit and integration test separation
 - Automated test environment setup
 
-## [Unreleased]
+## [1.0.0] - 2026-04-09
 
+### Breaking Changes
+
+#### Replaced Stream API with ValueNotifier reactive primitives
+- Removed all 8 `StreamController`s and their public stream getters from `TableCache`: `insertStream`, `deleteStream`, `updateStream`, `changeStream`, `insertEventStream`, `updateEventStream`, `deleteEventStream`, `eventStream`
+- Removed convenience filter streams: `insertsFromReducers`, `myInserts`, `eventsFromReducers`, `myEvents`
+- Removed `TableUpdate<T>`, `TableChange<T>`, and `ChangeType` types
+- Added `ValueNotifier<List<T>> rows` — synchronous reactive row list, notifies on any insert/update/delete
+- Added `ValueNotifier<TableEvent<T>?> lastEvent` — synchronous event detail with full `EventContext`
+- All notifications are synchronous (same microtask), replacing the async Stream dispatch
+
+#### Migration guide
+- `table.insertStream.listen(cb)` → `table.lastEvent.addListener(() { if (table.lastEvent.value is TableInsertEvent<T>) cb(...) })`
+- `table.rows.addListener(cb)` for "anything changed" (replaces subscribing to all 3 streams)
+- `stream.firstWhere(condition)` → `Completer` + `lastEvent.addListener` pattern
+- `TableUpdate` → use `TableUpdateEvent` from `lastEvent.value`
+- Framework adapters (Riverpod, Bloc) can consume `ValueNotifier` natively
+
+## [Unreleased]
 

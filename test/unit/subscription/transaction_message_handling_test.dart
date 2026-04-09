@@ -173,14 +173,7 @@ void main() {
   });
 
   group('Backward Compatibility', () {
-    test('simple streams still work after Phase 2 changes', () {
-      // This test verifies that existing stream functionality is preserved
-      // Even though we now pass EventContext to applyTransactionUpdate,
-      // the simple streams (insertStream, updateStream, deleteStream)
-      // should continue to emit row data as before
-
-      // This will be tested more thoroughly in integration tests
-      // For now, we just verify the types exist and compile
+    test('ValueNotifier API types exist after v1.0.0 migration', () {
       expect(TableCache<String>, isNotNull);
     });
   });

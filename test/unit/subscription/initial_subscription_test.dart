@@ -1,9 +1,7 @@
-import 'dart:async';
 import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 
-// Simple mock decoder for testing
 class MockDecoder extends RowDecoder<String> {
   @override
   String decode(BsatnDecoder decoder) => 'mock_row';
@@ -21,11 +19,9 @@ void main() {
     });
 
     test('applyInitialData accepts EventContext parameter', () {
-      // Create SubscribeAppliedEvent context
       final event = SubscribeAppliedEvent();
       final context = EventContext(myConnectionId: null, event: event);
 
-      // Create mock insert data
       final encoder = BsatnEncoder();
       encoder.writeString('test');
       final inserts = BsatnRowList(
@@ -33,30 +29,18 @@ void main() {
         rowsData: encoder.toBytes(),
       );
 
-      // Should not throw
       expect(() => table.applyInitialData(inserts, context), returnsNormally);
     });
 
     test(
       'applyInitialData emits events with SubscribeAppliedEvent context',
-      () async {
-        final completer = Completer<EventContext>();
-
-        // Listen to insert event stream
-        final subscription = table.insertEventStream.listen((event) {
-          if (!completer.isCompleted) {
-            completer.complete(event.context);
-          }
-        });
-
-        // Create SubscribeAppliedEvent context
+      () {
         final subscribeEvent = SubscribeAppliedEvent();
         final context = EventContext(
           myConnectionId: null,
           event: subscribeEvent,
         );
 
-        // Apply initial data
         final encoder = BsatnEncoder();
         encoder.writeString('test');
         final inserts = BsatnRowList(
@@ -65,37 +49,28 @@ void main() {
         );
         table.applyInitialData(inserts, context);
 
-        // Wait for event
-        final capturedContext = await completer.future.timeout(
-          const Duration(seconds: 2),
-        );
-
-        // Verify event was emitted
-        expect(capturedContext, isNotNull);
-        expect(capturedContext.event, isA<SubscribeAppliedEvent>());
-
-        await subscription.cancel();
+        final lastEvent = table.lastEvent.value;
+        expect(lastEvent, isNotNull);
+        expect(lastEvent, isA<TableInsertEvent<String>>());
+        expect(lastEvent!.context.event, isA<SubscribeAppliedEvent>());
       },
     );
 
-    test('users can distinguish initial data from reducer updates', () async {
-      final initialCompleter = Completer<void>();
-      final reducerCompleter = Completer<void>();
+    test('users can distinguish initial data from reducer updates', () {
+      bool sawInitial = false;
+      bool sawReducer = false;
 
-      // Listen and filter by event type
-      final subscription = table.insertEventStream.listen((event) {
-        if (event.context.event is SubscribeAppliedEvent) {
-          if (!initialCompleter.isCompleted) {
-            initialCompleter.complete();
-          }
-        } else if (event.context.event is ReducerEvent) {
-          if (!reducerCompleter.isCompleted) {
-            reducerCompleter.complete();
+      table.lastEvent.addListener(() {
+        final event = table.lastEvent.value;
+        if (event is TableInsertEvent<String>) {
+          if (event.context.event is SubscribeAppliedEvent) {
+            sawInitial = true;
+          } else if (event.context.event is ReducerEvent) {
+            sawReducer = true;
           }
         }
       });
 
-      // Simulate initial subscription data
       final subscribeContext = EventContext(
         myConnectionId: null,
         event: SubscribeAppliedEvent(),
@@ -109,7 +84,6 @@ void main() {
       );
       table.applyInitialData(inserts1, subscribeContext);
 
-      // Simulate reducer update
       final reducerContext = EventContext(
         myConnectionId: null,
         event: ReducerEvent(
@@ -133,35 +107,27 @@ void main() {
         reducerContext,
       );
 
-      // Wait for both events
-      await Future.wait([
-        initialCompleter.future.timeout(const Duration(seconds: 2)),
-        reducerCompleter.future.timeout(const Duration(seconds: 2)),
-      ]);
-
-      await subscription.cancel();
+      expect(sawInitial, isTrue);
+      expect(sawReducer, isTrue);
     });
 
     test(
       'multiple rows in initial subscription all have SubscribeAppliedEvent',
-      () async {
-        final completer = Completer<List<Event>>();
+      () {
         final capturedEvents = <Event>[];
 
-        final subscription = table.insertEventStream.listen((event) {
-          capturedEvents.add(event.context.event);
-          if (capturedEvents.length == 3 && !completer.isCompleted) {
-            completer.complete(capturedEvents);
+        table.lastEvent.addListener(() {
+          final event = table.lastEvent.value;
+          if (event is TableInsertEvent<String>) {
+            capturedEvents.add(event.context.event);
           }
         });
 
-        // Create initial data with multiple rows
         final subscribeContext = EventContext(
           myConnectionId: null,
           event: SubscribeAppliedEvent(),
         );
 
-        // Encode each row individually and track offsets
         final encodedRows = <Uint8List>[];
         for (var i = 0; i < 3; i++) {
           final encoder = BsatnEncoder();
@@ -169,7 +135,6 @@ void main() {
           encodedRows.add(encoder.toBytes());
         }
 
-        // Concatenate all rows and build offset list
         final allData = <int>[];
         final offsets = <int>[];
         for (final row in encodedRows) {
@@ -183,78 +148,51 @@ void main() {
         );
         table.applyInitialData(inserts, subscribeContext);
 
-        // Wait for all 3 events
-        final events = await completer.future.timeout(
-          const Duration(seconds: 2),
-        );
-
-        // All events should be SubscribeAppliedEvent
-        expect(events.length, equals(3));
-        for (final event in events) {
+        expect(capturedEvents.length, equals(3));
+        for (final event in capturedEvents) {
           expect(event, isA<SubscribeAppliedEvent>());
         }
-
-        await subscription.cancel();
       },
     );
 
-    test(
-      'unified eventStream receives SubscribeAppliedEvent inserts',
-      () async {
-        final completer = Completer<TableEvent<String>>();
+    test('unified lastEvent receives SubscribeAppliedEvent inserts', () {
+      final subscribeContext = EventContext(
+        myConnectionId: null,
+        event: SubscribeAppliedEvent(),
+      );
 
-        final subscription = table.eventStream.listen((event) {
-          if (!completer.isCompleted) {
-            completer.complete(event);
+      final encoder = BsatnEncoder();
+      encoder.writeString('test_row');
+      final inserts = BsatnRowList(
+        sizeHint: RowSizeHint.fixedSize(encoder.toBytes().length),
+        rowsData: encoder.toBytes(),
+      );
+      table.applyInitialData(inserts, subscribeContext);
+
+      final capturedEvent = table.lastEvent.value;
+      expect(capturedEvent, isA<TableInsertEvent<String>>());
+      expect(capturedEvent!.context.event, isA<SubscribeAppliedEvent>());
+    });
+
+    test('pattern matching distinguishes event types', () {
+      bool sawInitial = false;
+      bool sawRealtime = false;
+
+      table.lastEvent.addListener(() {
+        final event = table.lastEvent.value;
+        if (event is TableInsertEvent<String>) {
+          switch (event.context.event) {
+            case SubscribeAppliedEvent():
+              sawInitial = true;
+            case ReducerEvent():
+              sawRealtime = true;
+            case UnknownTransactionEvent():
+            case OptimisticEvent():
+              break;
           }
-        });
-
-        final subscribeContext = EventContext(
-          myConnectionId: null,
-          event: SubscribeAppliedEvent(),
-        );
-
-        final encoder = BsatnEncoder();
-        encoder.writeString('test_row');
-        final inserts = BsatnRowList(
-          sizeHint: RowSizeHint.fixedSize(encoder.toBytes().length),
-          rowsData: encoder.toBytes(),
-        );
-        table.applyInitialData(inserts, subscribeContext);
-
-        // Wait for event
-        final capturedEvent = await completer.future.timeout(
-          const Duration(seconds: 2),
-        );
-
-        expect(capturedEvent, isA<TableInsertEvent<String>>());
-        expect(capturedEvent.context.event, isA<SubscribeAppliedEvent>());
-
-        await subscription.cancel();
-      },
-    );
-
-    test('pattern matching distinguishes event types', () async {
-      final initialCompleter = Completer<void>();
-      final realtimeCompleter = Completer<void>();
-
-      final subscription = table.insertEventStream.listen((event) {
-        switch (event.context.event) {
-          case SubscribeAppliedEvent():
-            if (!initialCompleter.isCompleted) {
-              initialCompleter.complete();
-            }
-          case ReducerEvent():
-            if (!realtimeCompleter.isCompleted) {
-              realtimeCompleter.complete();
-            }
-          case UnknownTransactionEvent():
-          case OptimisticEvent():
-            break;
         }
       });
 
-      // Initial data
       final subscribeContext = EventContext(
         myConnectionId: null,
         event: SubscribeAppliedEvent(),
@@ -267,7 +205,6 @@ void main() {
       );
       table.applyInitialData(inserts1, subscribeContext);
 
-      // Reducer update
       final reducerContext = EventContext(
         myConnectionId: null,
         event: ReducerEvent(
@@ -290,37 +227,28 @@ void main() {
         reducerContext,
       );
 
-      // Wait for both events
-      await Future.wait([
-        initialCompleter.future.timeout(const Duration(seconds: 2)),
-        realtimeCompleter.future.timeout(const Duration(seconds: 2)),
-      ]);
-
-      await subscription.cancel();
+      expect(sawInitial, isTrue);
+      expect(sawRealtime, isTrue);
     });
   });
 
   group('Phase 6: Integration Patterns', () {
-    test('convenience filter: only initial data', () async {
+    test('convenience filter: only initial data', () {
       final table = TableCache<String>(
         tableName: 'test',
         decoder: MockDecoder(),
       );
 
-      final completer = Completer<void>();
       var initialDataCount = 0;
 
-      // Filter to only SubscribeAppliedEvent
-      final subscription = table.insertEventStream
-          .where((e) => e.context.event is SubscribeAppliedEvent)
-          .listen((_) {
-            initialDataCount++;
-            if (!completer.isCompleted) {
-              completer.complete();
-            }
-          });
+      table.lastEvent.addListener(() {
+        final event = table.lastEvent.value;
+        if (event is TableInsertEvent<String> &&
+            event.context.event is SubscribeAppliedEvent) {
+          initialDataCount++;
+        }
+      });
 
-      // Send both types
       final subscribeContext = EventContext(
         myConnectionId: null,
         event: SubscribeAppliedEvent(),
@@ -356,35 +284,25 @@ void main() {
         reducerContext,
       );
 
-      // Wait for filtered event
-      await completer.future.timeout(const Duration(seconds: 2));
-
-      // Only initial data should be counted
       expect(initialDataCount, equals(1));
-
-      await subscription.cancel();
     });
 
-    test('convenience filter: skip initial data load', () async {
+    test('convenience filter: skip initial data load', () {
       final table = TableCache<String>(
         tableName: 'test',
         decoder: MockDecoder(),
       );
 
-      final completer = Completer<void>();
       var realtimeCount = 0;
 
-      // Skip SubscribeAppliedEvent
-      final subscription = table.insertEventStream
-          .where((e) => e.context.event is! SubscribeAppliedEvent)
-          .listen((_) {
-            realtimeCount++;
-            if (!completer.isCompleted) {
-              completer.complete();
-            }
-          });
+      table.lastEvent.addListener(() {
+        final event = table.lastEvent.value;
+        if (event is TableInsertEvent<String> &&
+            event.context.event is! SubscribeAppliedEvent) {
+          realtimeCount++;
+        }
+      });
 
-      // Send both types
       final subscribeContext = EventContext(
         myConnectionId: null,
         event: SubscribeAppliedEvent(),
@@ -420,13 +338,7 @@ void main() {
         reducerContext,
       );
 
-      // Wait for filtered event
-      await completer.future.timeout(const Duration(seconds: 2));
-
-      // Only realtime updates should be counted
       expect(realtimeCount, equals(1));
-
-      await subscription.cancel();
     });
   });
 }

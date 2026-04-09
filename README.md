@@ -71,22 +71,26 @@ for (final user in client.users.iter()) {
 print(client.users.count);
 print(client.users.isEmpty);
 
-// All change streams
-client.users.insertStream.listen((user) => print('Added: ${user.name}'));
-client.users.updateStream.listen((update) => print('${update.oldRow.name} → ${update.newRow.name}'));
-client.users.deleteStream.listen((user) => print('Removed: ${user.name}'));
-
-// With transaction context
-client.users.insertEventStream.listen((event) {
-  print('Row: ${event.row.name}');
-  print('Timestamp: ${event.context.timestamp}');
-  print('Energy: ${event.context.energyConsumed}');
+// Reactive row list — synchronous ValueNotifier, rebuilds on any change
+client.users.rows.addListener(() {
+  print('Users changed: ${client.users.rows.value.length} rows');
 });
 
-// Filter to only my transactions
-client.users.myInserts.listen((event) => showToast('Created ${event.row.name}'));
-client.users.myUpdates.listen((event) => showToast('Updated'));
-client.users.myDeletes.listen((event) => showToast('Deleted'));
+// Event details — what changed and why
+client.users.lastEvent.addListener(() {
+  final event = client.users.lastEvent.value;
+  switch (event) {
+    case TableInsertEvent(:final row, :final context):
+      print('Added: ${row.name}');
+      if (context.isMyTransaction) showToast('Created ${row.name}');
+    case TableUpdateEvent(:final oldRow, :final newRow):
+      print('${oldRow.name} → ${newRow.name}');
+    case TableDeleteEvent(:final row):
+      print('Removed: ${row.name}');
+    case null:
+      break;
+  }
+});
 ```
 
 ## Reducers

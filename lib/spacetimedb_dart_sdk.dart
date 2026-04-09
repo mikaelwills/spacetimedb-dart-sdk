@@ -16,7 +16,7 @@ export 'src/codec/bsatn_decoder.dart';
 
 // Client cache
 export 'src/cache/client_cache.dart';
-export 'src/cache/table_cache.dart' hide TableUpdate;
+export 'src/cache/table_cache.dart';
 export 'src/cache/row_decoder.dart';
 
 // Messages
