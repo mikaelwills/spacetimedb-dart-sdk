@@ -61,6 +61,43 @@ class Note {
       'status': status.toJson(),
     };
   }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is Note &&
+            id == other.id &&
+            title == other.title &&
+            content == other.content &&
+            timestamp == other.timestamp &&
+            status == other.status;
+  }
+
+  @override
+  int get hashCode {
+    return Object.hash(id, title, content, timestamp, status);
+  }
+
+  @override
+  String toString() {
+    return 'Note(id: $id, title: $title, content: $content, timestamp: $timestamp, status: $status)';
+  }
+
+  Note copyWith({
+    int? id,
+    String? title,
+    String? content,
+    Int64? timestamp,
+    NoteStatus? status,
+  }) {
+    return Note(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      content: content ?? this.content,
+      timestamp: timestamp ?? this.timestamp,
+      status: status ?? this.status,
+    );
+  }
 }
 
 class NoteDecoder extends RowDecoder<Note> {

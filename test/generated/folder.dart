@@ -36,6 +36,33 @@ class Folder {
   Map<String, dynamic> toJson() {
     return {'path': path, 'name': name, 'createdAt': createdAt.toInt()};
   }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is Folder &&
+            path == other.path &&
+            name == other.name &&
+            createdAt == other.createdAt;
+  }
+
+  @override
+  int get hashCode {
+    return Object.hash(path, name, createdAt);
+  }
+
+  @override
+  String toString() {
+    return 'Folder(path: $path, name: $name, createdAt: $createdAt)';
+  }
+
+  Folder copyWith({String? path, String? name, Int64? createdAt}) {
+    return Folder(
+      path: path ?? this.path,
+      name: name ?? this.name,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
 }
 
 class FolderDecoder extends RowDecoder<Folder> {

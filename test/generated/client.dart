@@ -5,8 +5,8 @@ import 'dart:async';
 import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
 import 'reducers.dart';
 import 'reducer_args.dart';
-import 'folder.dart';
 import 'note.dart';
+import 'folder.dart';
 
 class SpacetimeDbClient {
   SpacetimeDbClient._({
@@ -61,12 +61,12 @@ class SpacetimeDbClient {
     return subscriptions.onMutationSyncResult;
   }
 
-  TableCache<Folder> get folder {
-    return subscriptions.cache.getTableByTypedName<Folder>('folder');
-  }
-
   TableCache<Note> get note {
     return subscriptions.cache.getTableByTypedName<Note>('note');
+  }
+
+  TableCache<Folder> get folder {
+    return subscriptions.cache.getTableByTypedName<Folder>('folder');
   }
 
   TableCache<Note> get allNotes {
@@ -112,11 +112,11 @@ class SpacetimeDbClient {
     );
 
     // Auto-register table decoders
+    subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
     subscriptionManager.cache.registerDecoder<Folder>(
       'folder',
       FolderDecoder(),
     );
-    subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
 
     // Auto-register view decoders
     subscriptionManager.cache.registerDecoder<Note>('all_notes', NoteDecoder());

@@ -89,7 +89,105 @@ class TableGenerator {
       b.methods.add(_buildDecodeBsatn(className, productType));
       b.methods.add(_buildToJson(productType));
       b.constructors.add(_buildFromJson(className, productType));
+      b.methods.add(_buildEquals(className, productType));
+      b.methods.add(_buildHashCode(productType));
+      b.methods.add(_buildToString(className, productType));
+      b.methods.add(_buildCopyWith(className, productType));
     });
+  }
+
+  Method _buildEquals(String className, ProductType productType) {
+    final fields =
+        productType.elements
+            .map((e) => toCamelCase(e.name ?? 'unknown'))
+            .toList();
+    final comparisons = fields.map((f) => '$f == other.$f').join(' && ');
+
+    return Method(
+      (m) =>
+          m
+            ..name = 'operator =='
+            ..annotations.add(refer('override'))
+            ..returns = refer('bool')
+            ..requiredParameters.add(
+              Parameter(
+                (p) =>
+                    p
+                      ..name = 'other'
+                      ..type = refer('Object'),
+              ),
+            )
+            ..body = Code(
+              'return identical(this, other) || other is $className && $comparisons;',
+            ),
+    );
+  }
+
+  Method _buildHashCode(ProductType productType) {
+    final fields =
+        productType.elements
+            .map((e) => toCamelCase(e.name ?? 'unknown'))
+            .toList();
+    final hashArgs = fields.join(', ');
+
+    return Method(
+      (m) =>
+          m
+            ..name = 'hashCode'
+            ..annotations.add(refer('override'))
+            ..type = MethodType.getter
+            ..returns = refer('int')
+            ..body = Code('return Object.hash($hashArgs);'),
+    );
+  }
+
+  Method _buildToString(String className, ProductType productType) {
+    final fields =
+        productType.elements
+            .map((e) => toCamelCase(e.name ?? 'unknown'))
+            .toList();
+    final parts = fields.map((f) => '$f: \$$f').join(', ');
+
+    return Method(
+      (m) =>
+          m
+            ..name = 'toString'
+            ..annotations.add(refer('override'))
+            ..returns = refer('String')
+            ..body = Code("return '$className($parts)';"),
+    );
+  }
+
+  Method _buildCopyWith(String className, ProductType productType) {
+    final params = <Parameter>[];
+    final args = StringBuffer();
+
+    for (final element in productType.elements) {
+      final fieldName = toCamelCase(element.name ?? 'unknown');
+      final dartType = element.type.toDartTypeName(
+        typeSpace: schema.typeSpace,
+        typeDefs: schema.types,
+      );
+      params.add(
+        Parameter(
+          (p) =>
+              p
+                ..name = fieldName
+                ..named = true
+                ..type = refer('$dartType?'),
+        ),
+      );
+      args.writeln('$fieldName: $fieldName ?? this.$fieldName,');
+    }
+
+    return Method(
+      (m) =>
+          m
+            ..name = 'copyWith'
+            ..returns = refer(className)
+            ..optionalParameters.addAll(params)
+            ..body = Code('return $className($args);'),
+    );
   }
 
   Method _buildEncodeBsatn(ProductType productType) {

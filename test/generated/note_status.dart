@@ -57,6 +57,21 @@ class NoteStatusDraft extends NoteStatus {
   Map<String, dynamic> toJson() {
     return {'type': 'draft'};
   }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) || other is NoteStatusDraft;
+  }
+
+  @override
+  int get hashCode {
+    return runtimeType.hashCode;
+  }
+
+  @override
+  String toString() {
+    return 'NoteStatusDraft()';
+  }
 }
 
 class NoteStatusPublished extends NoteStatus {
@@ -82,6 +97,22 @@ class NoteStatusPublished extends NoteStatus {
   Map<String, dynamic> toJson() {
     return {'type': 'published', 'value': value.toInt()};
   }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) ||
+        other is NoteStatusPublished && value == other.value;
+  }
+
+  @override
+  int get hashCode {
+    return value.hashCode;
+  }
+
+  @override
+  String toString() {
+    return 'NoteStatusPublished(value: $value)';
+  }
 }
 
 class NoteStatusArchived extends NoteStatus {
@@ -103,5 +134,20 @@ class NoteStatusArchived extends NoteStatus {
   @override
   Map<String, dynamic> toJson() {
     return {'type': 'archived'};
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return identical(this, other) || other is NoteStatusArchived;
+  }
+
+  @override
+  int get hashCode {
+    return runtimeType.hashCode;
+  }
+
+  @override
+  String toString() {
+    return 'NoteStatusArchived()';
   }
 }
