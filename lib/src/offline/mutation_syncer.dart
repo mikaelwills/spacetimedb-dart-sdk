@@ -79,7 +79,8 @@ class MutationSyncer implements MutationHandler {
   @override
   void onOptimisticChanges(String requestId, List<OptimisticChange>? changes) {
     _optimisticState.applyOptimisticChanges(requestId, changes);
-    persistTableSnapshots();
+    final touchedTables = changes?.map((c) => c.tableName).toSet();
+    persistTableSnapshots(onlyTables: touchedTables);
   }
 
   @override
@@ -87,8 +88,8 @@ class MutationSyncer implements MutationHandler {
     SdkLogger.w(
       'Rolling back optimistic changes for request $requestId due to timeout/failure',
     );
-    _optimisticState.rollbackOptimisticChanges(requestId);
-    persistTableSnapshots();
+    final touchedTables = _optimisticState.rollbackOptimisticChanges(requestId);
+    persistTableSnapshots(onlyTables: touchedTables);
   }
 
   void _updateSyncState(SyncState state) {
@@ -354,10 +355,11 @@ class MutationSyncer implements MutationHandler {
     }
   }
 
-  Future<void> persistTableSnapshots() async {
+  Future<void> persistTableSnapshots({Set<String>? onlyTables}) async {
     if (_disposed) return;
     try {
-      for (final tableName in _cache.activatedTableNames) {
+      final tableNames = onlyTables ?? _cache.activatedTableNames;
+      for (final tableName in tableNames) {
         if (_cache.isEventTable(tableName)) continue;
         final table = _cache.getTableByName(tableName);
         if (table != null && table.decoder.supportsJsonSerialization) {

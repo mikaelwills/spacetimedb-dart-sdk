@@ -153,13 +153,16 @@ class OptimisticStateManager {
     }
   }
 
-  void rollbackOptimisticChanges(String requestId) {
+  Set<String> rollbackOptimisticChanges(String requestId) {
     final entries = _entries.remove(requestId);
-    if (entries == null) return;
+    if (entries == null) return const {};
 
+    final touchedTables = <String>{};
     for (final entry in entries.reversed) {
       _rollbackEntry(entry);
+      touchedTables.add(entry.tableName);
     }
+    return touchedTables;
   }
 
   void _rollbackEntry(OptimisticEntry entry) {
