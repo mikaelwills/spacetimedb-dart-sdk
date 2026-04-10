@@ -28,14 +28,10 @@ class CreateNoteArgs {
 // Mock decoder implementation
 class CreateNoteArgsDecoder implements ReducerArgDecoder<CreateNoteArgs> {
   @override
-  CreateNoteArgs? decode(BsatnDecoder decoder) {
-    try {
-      final title = decoder.readString();
-      final content = decoder.readString();
-      return CreateNoteArgs(title: title, content: content);
-    } catch (e) {
-      return null;
-    }
+  CreateNoteArgs decode(BsatnDecoder decoder) {
+    final title = decoder.readString();
+    final content = decoder.readString();
+    return CreateNoteArgs(title: title, content: content);
   }
 }
 
@@ -95,13 +91,40 @@ void main() {
       expect(args, isNull);
     });
 
-    test('returns null for malformed data', () {
+    test('logs error and returns null for malformed data', () {
       registry.register(ReducerDef('create_note', CreateNoteArgsDecoder()));
+
+      final logs = <(String, String)>[];
+      final prevCallback = SdkLogger.onLog;
+      SdkLogger.onLog = (level, msg) => logs.add((level, msg));
+      addTearDown(() => SdkLogger.onLog = prevCallback);
 
       final bytes = Uint8List.fromList([1, 2, 3]);
       final args = registry.deserializeArgs('create_note', bytes);
 
       expect(args, isNull);
+      expect(
+        logs.where((l) => l.$1 == 'E').map((l) => l.$2),
+        contains(predicate<String>((msg) => msg.contains('create_note'))),
+        reason: 'decode failure should log an error with the reducer name',
+      );
+    });
+
+    test('does not log for unregistered reducer (unknown, not failure)', () {
+      final logs = <(String, String)>[];
+      final prevCallback = SdkLogger.onLog;
+      SdkLogger.onLog = (level, msg) => logs.add((level, msg));
+      addTearDown(() => SdkLogger.onLog = prevCallback);
+
+      final bytes = Uint8List.fromList([1, 2, 3]);
+      final args = registry.deserializeArgs('unknown_reducer', bytes);
+
+      expect(args, isNull);
+      expect(
+        logs.where((l) => l.$1 == 'E'),
+        isEmpty,
+        reason: 'unknown reducer should be silent, not logged as error',
+      );
     });
 
     test('handles multiple decoders', () {
