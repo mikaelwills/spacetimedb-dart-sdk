@@ -9,22 +9,22 @@ class SdkLogger {
   static SdkLogLevel level = SdkLogLevel.warning;
 
   static void d(String msg) {
-    if (level.index > SdkLogLevel.debug.index && onLog == null) return;
+    if (level.index > SdkLogLevel.debug.index) return;
     onLog != null ? onLog!('D', msg) : print('[SDK:D] $msg');
   }
 
   static void i(String msg) {
-    if (level.index > SdkLogLevel.info.index && onLog == null) return;
+    if (level.index > SdkLogLevel.info.index) return;
     onLog != null ? onLog!('I', msg) : print('[SDK] $msg');
   }
 
   static void w(String msg) {
-    if (level.index > SdkLogLevel.warning.index && onLog == null) return;
+    if (level.index > SdkLogLevel.warning.index) return;
     onLog != null ? onLog!('W', msg) : print('[SDK:W] $msg');
   }
 
   static void e(String msg) {
-    if (level.index > SdkLogLevel.error.index && onLog == null) return;
+    if (level.index > SdkLogLevel.error.index) return;
     onLog != null ? onLog!('E', msg) : print('[SDK:E] $msg');
   }
 }
