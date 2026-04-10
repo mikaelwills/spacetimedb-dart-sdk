@@ -429,7 +429,9 @@ class SubscriptionManager {
 
     if (isOurTransaction && isCommitted && hasOptimistic) {
       _optimisticState.confirmOptimisticChange(effectiveRequestId);
-      _mutationSyncer?.persistTableSnapshots();
+      _mutationSyncer?.persistTableSnapshots(
+        onlyTables: tableUpdates.map((tu) => tu.tableName).toSet(),
+      );
       return;
     }
 
@@ -459,7 +461,9 @@ class SubscriptionManager {
       _optimisticState.rollbackOptimisticChanges(effectiveRequestId);
     }
 
-    _mutationSyncer?.persistTableSnapshots();
+    _mutationSyncer?.persistTableSnapshots(
+      onlyTables: tableUpdates.map((tu) => tu.tableName).toSet(),
+    );
   }
 
   // --- Subscription API ---
