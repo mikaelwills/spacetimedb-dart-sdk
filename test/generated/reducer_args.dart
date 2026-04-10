@@ -14,14 +14,10 @@ class CreateFolderArgsDecoder implements ReducerArgDecoder<CreateFolderArgs> {
   const CreateFolderArgsDecoder();
 
   @override
-  CreateFolderArgs? decode(BsatnDecoder decoder) {
-    try {
-      final path = decoder.readString();
-      final name = decoder.readString();
-      return CreateFolderArgs(path: path, name: name);
-    } catch (e) {
-      return null;
-    }
+  CreateFolderArgs decode(BsatnDecoder decoder) {
+    final path = decoder.readString();
+    final name = decoder.readString();
+    return CreateFolderArgs(path: path, name: name);
   }
 }
 
@@ -37,14 +33,10 @@ class CreateNoteArgsDecoder implements ReducerArgDecoder<CreateNoteArgs> {
   const CreateNoteArgsDecoder();
 
   @override
-  CreateNoteArgs? decode(BsatnDecoder decoder) {
-    try {
-      final title = decoder.readString();
-      final content = decoder.readString();
-      return CreateNoteArgs(title: title, content: content);
-    } catch (e) {
-      return null;
-    }
+  CreateNoteArgs decode(BsatnDecoder decoder) {
+    final title = decoder.readString();
+    final content = decoder.readString();
+    return CreateNoteArgs(title: title, content: content);
   }
 }
 
@@ -57,12 +49,8 @@ class DeleteAllFoldersArgsDecoder
   const DeleteAllFoldersArgsDecoder();
 
   @override
-  DeleteAllFoldersArgs? decode(BsatnDecoder decoder) {
-    try {
-      return DeleteAllFoldersArgs();
-    } catch (e) {
-      return null;
-    }
+  DeleteAllFoldersArgs decode(BsatnDecoder decoder) {
+    return DeleteAllFoldersArgs();
   }
 }
 
@@ -75,12 +63,8 @@ class DeleteAllNotesArgsDecoder
   const DeleteAllNotesArgsDecoder();
 
   @override
-  DeleteAllNotesArgs? decode(BsatnDecoder decoder) {
-    try {
-      return DeleteAllNotesArgs();
-    } catch (e) {
-      return null;
-    }
+  DeleteAllNotesArgs decode(BsatnDecoder decoder) {
+    return DeleteAllNotesArgs();
   }
 }
 
@@ -94,13 +78,9 @@ class DeleteFolderArgsDecoder implements ReducerArgDecoder<DeleteFolderArgs> {
   const DeleteFolderArgsDecoder();
 
   @override
-  DeleteFolderArgs? decode(BsatnDecoder decoder) {
-    try {
-      final path = decoder.readString();
-      return DeleteFolderArgs(path: path);
-    } catch (e) {
-      return null;
-    }
+  DeleteFolderArgs decode(BsatnDecoder decoder) {
+    final path = decoder.readString();
+    return DeleteFolderArgs(path: path);
   }
 }
 
@@ -114,13 +94,9 @@ class DeleteNoteArgsDecoder implements ReducerArgDecoder<DeleteNoteArgs> {
   const DeleteNoteArgsDecoder();
 
   @override
-  DeleteNoteArgs? decode(BsatnDecoder decoder) {
-    try {
-      final noteId = decoder.readU32();
-      return DeleteNoteArgs(noteId: noteId);
-    } catch (e) {
-      return null;
-    }
+  DeleteNoteArgs decode(BsatnDecoder decoder) {
+    final noteId = decoder.readU32();
+    return DeleteNoteArgs(noteId: noteId);
   }
 }
 
@@ -142,15 +118,11 @@ class UpdateNoteArgsDecoder implements ReducerArgDecoder<UpdateNoteArgs> {
   const UpdateNoteArgsDecoder();
 
   @override
-  UpdateNoteArgs? decode(BsatnDecoder decoder) {
-    try {
-      final noteId = decoder.readU32();
-      final title = decoder.readString();
-      final content = decoder.readString();
-      return UpdateNoteArgs(noteId: noteId, title: title, content: content);
-    } catch (e) {
-      return null;
-    }
+  UpdateNoteArgs decode(BsatnDecoder decoder) {
+    final noteId = decoder.readU32();
+    final title = decoder.readString();
+    final content = decoder.readString();
+    return UpdateNoteArgs(noteId: noteId, title: title, content: content);
   }
 }
 

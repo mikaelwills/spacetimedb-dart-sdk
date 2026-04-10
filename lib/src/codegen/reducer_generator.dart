@@ -254,7 +254,6 @@ class ReducerGenerator {
     final decoderClassName = '${toPascalCase(reducer.name)}ArgsDecoder';
 
     final decodeBody = StringBuffer();
-    decodeBody.writeln('try {');
     for (final param in reducer.params.elements) {
       final paramName = toCamelCase(param.name ?? 'unknown');
       if (param.type.isPrimitive) {
@@ -272,9 +271,6 @@ class ReducerGenerator {
       decodeBody.writeln('$paramName: $paramName,');
     }
     decodeBody.writeln(');');
-    decodeBody.writeln('} catch (e) {');
-    decodeBody.writeln('return null;');
-    decodeBody.writeln('}');
 
     return Class(
       (b) =>
@@ -288,7 +284,7 @@ class ReducerGenerator {
                     m
                       ..name = 'decode'
                       ..annotations.add(refer('override'))
-                      ..returns = refer('$argsClassName?')
+                      ..returns = refer(argsClassName)
                       ..requiredParameters.add(
                         Parameter(
                           (p) =>

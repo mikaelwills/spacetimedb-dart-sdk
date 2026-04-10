@@ -72,19 +72,22 @@ class SubscriptionManager {
     _optimisticState = OptimisticStateManager(cache);
 
     if (offlineStorage != null) {
+      late ReducerCaller caller;
       _mutationSyncer = MutationSyncer(
         connection: _connection,
         storage: offlineStorage,
         optimisticState: _optimisticState,
         cache: cache,
+        send:
+            (name, args, {requestId}) =>
+                caller.callWithBytes(name, args, requestId: requestId),
       );
-
-      reducers = ReducerCaller(
+      caller = ReducerCaller(
         _connection,
         offlineStorage: offlineStorage,
         mutationHandler: _mutationSyncer,
       );
-      _mutationSyncer!.setReducers(reducers);
+      reducers = caller;
     } else {
       reducers = ReducerCaller(_connection);
     }

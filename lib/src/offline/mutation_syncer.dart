@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:spacetimedb_dart_sdk/src/cache/client_cache.dart';
 import 'package:spacetimedb_dart_sdk/src/connection/spacetimedb_connection.dart';
 import 'package:spacetimedb_dart_sdk/src/connection/connection_state.dart';
-import 'package:spacetimedb_dart_sdk/src/reducers/reducer_caller.dart';
+import 'package:spacetimedb_dart_sdk/src/reducers/reducer_caller.dart'
+    show ReducerException;
+import 'package:spacetimedb_dart_sdk/src/reducers/transaction_result.dart';
 import 'package:spacetimedb_dart_sdk/src/reducers/mutation_handler.dart';
 import 'package:spacetimedb_dart_sdk/src/offline/offline_storage.dart';
 import 'package:spacetimedb_dart_sdk/src/offline/optimistic_state_manager.dart';
@@ -11,13 +14,19 @@ import 'package:spacetimedb_dart_sdk/src/offline/pending_mutation.dart';
 import 'package:spacetimedb_dart_sdk/src/offline/sync_state.dart';
 import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
 
+typedef SendReducer =
+    Future<TransactionResult> Function(
+      String reducerName,
+      Uint8List args, {
+      String? requestId,
+    });
+
 class MutationSyncer implements MutationHandler {
   final SpacetimeDbConnection _connection;
   final OfflineStorage _storage;
   final OptimisticStateManager _optimisticState;
   final ClientCache _cache;
-
-  late ReducerCaller _reducers;
+  final SendReducer _send;
 
   bool _isSyncing = false;
   bool _disposed = false;
@@ -40,14 +49,12 @@ class MutationSyncer implements MutationHandler {
     required OfflineStorage storage,
     required OptimisticStateManager optimisticState,
     required ClientCache cache,
+    required SendReducer send,
   }) : _connection = connection,
        _storage = storage,
        _optimisticState = optimisticState,
-       _cache = cache;
-
-  void setReducers(ReducerCaller reducers) {
-    _reducers = reducers;
-  }
+       _cache = cache,
+       _send = send;
 
   Stream<SyncState> get onSyncStateChanged => _syncStateController.stream;
   Stream<MutationSyncResult> get onMutationSyncResult =>
@@ -178,7 +185,7 @@ class MutationSyncer implements MutationHandler {
           SdkLogger.d(
             'SYNC_SEND: ${mutation.reducerName}, uuidRequestId=${mutation.requestId}, argsLen=${mutation.encodedArgs.length}',
           );
-          final result = await _reducers.callWithBytes(
+          final result = await _send(
             mutation.reducerName,
             mutation.encodedArgs,
             requestId: mutation.requestId,
