@@ -16,14 +16,17 @@ void main() async {
 
   final noteTable = subscriptionManager.cache.getTableByTypedName<Note>('note');
 
-  noteTable.lastEvent.addListener(() {
-    final event = noteTable.lastEvent.value;
-    if (event is TableInsertEvent<Note>) {
-      print("📝 New Note: ${event.row}");
-    } else if (event is TableUpdateEvent<Note>) {
-      print(
-        '✏️  Note Updated "${event.oldRow.title}" -> "${event.newRow.title}"',
-      );
+  noteTable.lastBatch.addListener(() {
+    final batch = noteTable.lastBatch.value;
+    if (batch == null) return;
+    for (final event in batch.events) {
+      if (event is TableInsertEvent<Note>) {
+        print("📝 New Note: ${event.row}");
+      } else if (event is TableUpdateEvent<Note>) {
+        print(
+          '✏️  Note Updated "${event.oldRow.title}" -> "${event.newRow.title}"',
+        );
+      }
     }
   });
 

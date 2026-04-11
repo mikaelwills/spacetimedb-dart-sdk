@@ -9,17 +9,21 @@ Future<T> waitForInsert<T>(
 }) {
   final completer = Completer<T>();
   void listener() {
-    final event = table.lastEvent.value;
-    if (event is TableInsertEvent<T> && condition(event.row)) {
-      if (!completer.isCompleted) {
-        completer.complete(event.row);
+    final batch = table.lastBatch.value;
+    if (batch == null) return;
+    for (final event in batch.events) {
+      if (event is TableInsertEvent<T> && condition(event.row)) {
+        if (!completer.isCompleted) {
+          completer.complete(event.row);
+        }
+        return;
       }
     }
   }
 
-  table.lastEvent.addListener(listener);
+  table.lastBatch.addListener(listener);
   return completer.future.timeout(timeout).whenComplete(() {
-    table.lastEvent.removeListener(listener);
+    table.lastBatch.removeListener(listener);
   });
 }
 
@@ -29,15 +33,19 @@ Future<T> waitForNextInsert<T>(
 }) {
   final completer = Completer<T>();
   void listener() {
-    final event = table.lastEvent.value;
-    if (event is TableInsertEvent<T> && !completer.isCompleted) {
-      completer.complete(event.row);
+    final batch = table.lastBatch.value;
+    if (batch == null) return;
+    for (final event in batch.events) {
+      if (event is TableInsertEvent<T> && !completer.isCompleted) {
+        completer.complete(event.row);
+        return;
+      }
     }
   }
 
-  table.lastEvent.addListener(listener);
+  table.lastBatch.addListener(listener);
   return completer.future.timeout(timeout).whenComplete(() {
-    table.lastEvent.removeListener(listener);
+    table.lastBatch.removeListener(listener);
   });
 }
 
@@ -48,17 +56,21 @@ Future<T> waitForDelete<T>(
 }) {
   final completer = Completer<T>();
   void listener() {
-    final event = table.lastEvent.value;
-    if (event is TableDeleteEvent<T> && condition(event.row)) {
-      if (!completer.isCompleted) {
-        completer.complete(event.row);
+    final batch = table.lastBatch.value;
+    if (batch == null) return;
+    for (final event in batch.events) {
+      if (event is TableDeleteEvent<T> && condition(event.row)) {
+        if (!completer.isCompleted) {
+          completer.complete(event.row);
+        }
+        return;
       }
     }
   }
 
-  table.lastEvent.addListener(listener);
+  table.lastBatch.addListener(listener);
   return completer.future.timeout(timeout).whenComplete(() {
-    table.lastEvent.removeListener(listener);
+    table.lastBatch.removeListener(listener);
   });
 }
 
@@ -68,15 +80,19 @@ Future<T> waitForNextDelete<T>(
 }) {
   final completer = Completer<T>();
   void listener() {
-    final event = table.lastEvent.value;
-    if (event is TableDeleteEvent<T> && !completer.isCompleted) {
-      completer.complete(event.row);
+    final batch = table.lastBatch.value;
+    if (batch == null) return;
+    for (final event in batch.events) {
+      if (event is TableDeleteEvent<T> && !completer.isCompleted) {
+        completer.complete(event.row);
+        return;
+      }
     }
   }
 
-  table.lastEvent.addListener(listener);
+  table.lastBatch.addListener(listener);
   return completer.future.timeout(timeout).whenComplete(() {
-    table.lastEvent.removeListener(listener);
+    table.lastBatch.removeListener(listener);
   });
 }
 
@@ -87,17 +103,22 @@ Future<({T oldRow, T newRow})> waitForUpdate<T>(
 }) {
   final completer = Completer<({T oldRow, T newRow})>();
   void listener() {
-    final event = table.lastEvent.value;
-    if (event is TableUpdateEvent<T> && condition(event.oldRow, event.newRow)) {
-      if (!completer.isCompleted) {
-        completer.complete((oldRow: event.oldRow, newRow: event.newRow));
+    final batch = table.lastBatch.value;
+    if (batch == null) return;
+    for (final event in batch.events) {
+      if (event is TableUpdateEvent<T> &&
+          condition(event.oldRow, event.newRow)) {
+        if (!completer.isCompleted) {
+          completer.complete((oldRow: event.oldRow, newRow: event.newRow));
+        }
+        return;
       }
     }
   }
 
-  table.lastEvent.addListener(listener);
+  table.lastBatch.addListener(listener);
   return completer.future.timeout(timeout).whenComplete(() {
-    table.lastEvent.removeListener(listener);
+    table.lastBatch.removeListener(listener);
   });
 }
 
@@ -108,17 +129,21 @@ Future<TableEvent<T>> waitForEvent<T>(
 }) {
   final completer = Completer<TableEvent<T>>();
   void listener() {
-    final event = table.lastEvent.value;
-    if (event != null && (condition == null || condition(event))) {
-      if (!completer.isCompleted) {
-        completer.complete(event);
+    final batch = table.lastBatch.value;
+    if (batch == null) return;
+    for (final event in batch.events) {
+      if (condition == null || condition(event)) {
+        if (!completer.isCompleted) {
+          completer.complete(event);
+        }
+        return;
       }
     }
   }
 
-  table.lastEvent.addListener(listener);
+  table.lastBatch.addListener(listener);
   return completer.future.timeout(timeout).whenComplete(() {
-    table.lastEvent.removeListener(listener);
+    table.lastBatch.removeListener(listener);
   });
 }
 
@@ -129,15 +154,18 @@ class EventCollector<T> {
 
   EventCollector(this.table, {bool Function(TableEvent<T>)? filter}) {
     _listener = () {
-      final event = table.lastEvent.value;
-      if (event != null && (filter == null || filter(event))) {
-        events.add(event);
+      final batch = table.lastBatch.value;
+      if (batch == null) return;
+      for (final event in batch.events) {
+        if (filter == null || filter(event)) {
+          events.add(event);
+        }
       }
     };
-    table.lastEvent.addListener(_listener);
+    table.lastBatch.addListener(_listener);
   }
 
   void dispose() {
-    table.lastEvent.removeListener(_listener);
+    table.lastBatch.removeListener(_listener);
   }
 }
