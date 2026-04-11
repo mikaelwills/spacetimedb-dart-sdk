@@ -293,9 +293,15 @@ class SpacetimeDbConnection {
         _lastMessageReceived = DateTime.now();
 
         if (data is Uint8List) {
+          SdkLogger.d(
+            'WS_RX: ${data.length} bytes, head=${data.take(64).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
+          );
           _messageController.add(data);
         } else if (data is List<int>) {
           final bytes = Uint8List.fromList(data);
+          SdkLogger.d(
+            'WS_RX: ${bytes.length} bytes, head=${bytes.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}',
+          );
           _messageController.add(bytes);
         }
       },
