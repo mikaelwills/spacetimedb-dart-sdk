@@ -45,6 +45,23 @@ class Reducers {
     );
   }
 
+  Future<TransactionResult> createNotesBulk({
+    required int count,
+    required String titlePrefix,
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    encoder.writeU32(count);
+    encoder.writeString(titlePrefix);
+    return await _reducerCaller.call(
+      createNotesBulkDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
   Future<TransactionResult> deleteAllFolders({
     List<OptimisticChange>? optimisticChanges,
     bool dropIfOffline = false,
@@ -101,6 +118,68 @@ class Reducers {
     );
   }
 
+  Future<TransactionResult> diagInsertFive({
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    return await _reducerCaller.call(
+      diagInsertFiveDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
+  Future<TransactionResult> mixedNoteBatch({
+    required int inserts,
+    required int updates,
+    required int deletes,
+    required String marker,
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    encoder.writeU32(inserts);
+    encoder.writeU32(updates);
+    encoder.writeU32(deletes);
+    encoder.writeString(marker);
+    return await _reducerCaller.call(
+      mixedNoteBatchDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
+  Future<TransactionResult> noOp({
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    return await _reducerCaller.call(
+      noOpDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
+  Future<TransactionResult> updateAllNotes({
+    required String newContent,
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    encoder.writeString(newContent);
+    return await _reducerCaller.call(
+      updateAllNotesDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
   Future<TransactionResult> updateNote({
     required int noteId,
     required String title,
@@ -141,6 +220,18 @@ class Reducers {
       final args = event.reducerArgs;
       if (args is! CreateNoteArgs) return;
       callback(ctx, args.title, args.content);
+    });
+  }
+
+  StreamSubscription<void> onCreateNotesBulk(
+    void Function(EventContext ctx, int count, String titlePrefix) callback,
+  ) {
+    return _reducerEmitter.on(createNotesBulkDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! CreateNotesBulkArgs) return;
+      callback(ctx, args.count, args.titlePrefix);
     });
   }
 
@@ -189,6 +280,59 @@ class Reducers {
       final args = event.reducerArgs;
       if (args is! DeleteNoteArgs) return;
       callback(ctx, args.noteId);
+    });
+  }
+
+  StreamSubscription<void> onDiagInsertFive(
+    void Function(EventContext ctx) callback,
+  ) {
+    return _reducerEmitter.on(diagInsertFiveDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! DiagInsertFiveArgs) return;
+      callback(ctx);
+    });
+  }
+
+  StreamSubscription<void> onMixedNoteBatch(
+    void Function(
+      EventContext ctx,
+      int inserts,
+      int updates,
+      int deletes,
+      String marker,
+    )
+    callback,
+  ) {
+    return _reducerEmitter.on(mixedNoteBatchDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! MixedNoteBatchArgs) return;
+      callback(ctx, args.inserts, args.updates, args.deletes, args.marker);
+    });
+  }
+
+  StreamSubscription<void> onNoOp(void Function(EventContext ctx) callback) {
+    return _reducerEmitter.on(noOpDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! NoOpArgs) return;
+      callback(ctx);
+    });
+  }
+
+  StreamSubscription<void> onUpdateAllNotes(
+    void Function(EventContext ctx, String newContent) callback,
+  ) {
+    return _reducerEmitter.on(updateAllNotesDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! UpdateAllNotesArgs) return;
+      callback(ctx, args.newContent);
     });
   }
 

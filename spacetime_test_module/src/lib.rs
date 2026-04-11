@@ -105,6 +105,96 @@ pub fn delete_all_folders(ctx: &ReducerContext) {
     }
 }
 
+/// Insert `count` notes in one transaction. Used by reactive-invariant tests
+/// to verify that N-row transactions fire `rows` and `lastBatch` exactly once.
+#[reducer]
+pub fn create_notes_bulk(ctx: &ReducerContext, count: u32, title_prefix: String) {
+    let max_id = ctx.db.note().iter().map(|note| note.id).max().unwrap_or(0);
+    for i in 0..count {
+        ctx.db.note().insert(Note {
+            id: max_id + 1 + i,
+            title: format!("{}-{}", title_prefix, i),
+            content: format!("bulk content {}", i),
+            timestamp: 0,
+            status: NoteStatus::Draft,
+        });
+    }
+}
+
+/// Update every existing note's content in one transaction.
+#[reducer]
+pub fn update_all_notes(ctx: &ReducerContext, new_content: String) {
+    let ids: Vec<u32> = ctx.db.note().iter().map(|n| n.id).collect();
+    for id in ids {
+        if let Some(mut note) = ctx.db.note().id().find(id) {
+            note.content = new_content.clone();
+            ctx.db.note().id().update(note);
+        }
+    }
+}
+
+/// Insert `inserts` new notes, update `updates` existing ones, and delete
+/// `deletes` existing ones — all in a single transaction. Used to verify
+/// that mixed-kind transactions still fire exactly once and carry the
+/// correct event breakdown.
+///
+/// Assumes at least `updates + deletes` notes already exist.
+#[reducer]
+pub fn mixed_note_batch(
+    ctx: &ReducerContext,
+    inserts: u32,
+    updates: u32,
+    deletes: u32,
+    marker: String,
+) {
+    let existing: Vec<u32> = ctx.db.note().iter().map(|n| n.id).collect();
+
+    for (i, id) in existing.iter().take(updates as usize).enumerate() {
+        if let Some(mut note) = ctx.db.note().id().find(*id) {
+            note.content = format!("{}-updated-{}", marker, i);
+            ctx.db.note().id().update(note);
+        }
+    }
+
+    for id in existing.iter().skip(updates as usize).take(deletes as usize) {
+        ctx.db.note().id().delete(*id);
+    }
+
+    let max_id = ctx.db.note().iter().map(|n| n.id).max().unwrap_or(0);
+    for i in 0..inserts {
+        ctx.db.note().insert(Note {
+            id: max_id + 1 + i,
+            title: format!("{}-inserted-{}", marker, i),
+            content: format!("{}-inserted-content-{}", marker, i),
+            timestamp: 0,
+            status: NoteStatus::Draft,
+        });
+    }
+}
+
+/// A no-op reducer that commits without touching any rows. Used to verify
+/// that empty transactions do not fire `lastBatch`.
+#[reducer]
+pub fn no_op(_ctx: &ReducerContext) {}
+
+/// Diagnostic: inserts 5 hardcoded notes, no args. Used during the
+/// reactive-invariants-tests bring-up to isolate whether the timeout we saw
+/// on `create_notes_bulk` was an arg-encoding issue vs a reducer-registration
+/// issue. If this succeeds and `create_notes_bulk` fails, it's args.
+#[reducer]
+pub fn diag_insert_five(ctx: &ReducerContext) {
+    let max_id = ctx.db.note().iter().map(|n| n.id).max().unwrap_or(0);
+    for i in 0..5u32 {
+        ctx.db.note().insert(Note {
+            id: max_id + 1 + i,
+            title: format!("diag-{}", i),
+            content: String::from("diag"),
+            timestamp: 0,
+            status: NoteStatus::Draft,
+        });
+    }
+}
+
 /// View to get all notes
 /// Uses the btree-indexed timestamp column to iterate all rows
 #[view(accessor = all_notes, public)]
