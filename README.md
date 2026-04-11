@@ -5,6 +5,8 @@
 
 Dart SDK for SpacetimeDB with WebSocket sync, BSATN encoding, and code generation.
 
+> ⚠️ **Pre-1.0: breaking changes expected.** This SDK is actively working toward a single, stable 1.0 release. Until then, the public API may change between commits — reducer call shapes, cache events, and the reactive primitives (`rows` / `lastBatch`) in particular are still being refined. Pin a specific commit SHA in your `pubspec.yaml` (`git: { url: ..., ref: <sha> }`) and check the CHANGELOG before upgrading.
+
 ## Features
 
 - WebSocket connection with auto-reconnect and SSL/TLS
