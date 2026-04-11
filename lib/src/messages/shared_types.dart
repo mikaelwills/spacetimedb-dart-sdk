@@ -1,9 +1,10 @@
+import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:brotli/brotli.dart';
 import 'package:fixnum/fixnum.dart';
 
 import '../codec/bsatn_decoder.dart';
-import '../utils/sdk_logger.dart';
 
 /// Row list with optional size hint for efficient decoding
 class BsatnRowList {
@@ -78,17 +79,17 @@ class CompressableQueryUpdate {
     if (tag == 0) {
       return CompressableQueryUpdate(QueryUpdate.decode(decoder));
     } else if (tag == 1) {
-      SdkLogger.e(
-        'INNER_BROTLI: per-table-update Brotli compression not implemented '
-        '(decoder.remaining=${decoder.remaining})',
+      final compressed = decoder.readByteArray();
+      final decompressed = Uint8List.fromList(brotli.decode(compressed));
+      return CompressableQueryUpdate(
+        QueryUpdate.decode(BsatnDecoder(decompressed)),
       );
-      throw UnimplementedError('Brotli compression not implemented');
     } else if (tag == 2) {
-      SdkLogger.e(
-        'INNER_GZIP: per-table-update Gzip compression not implemented '
-        '(decoder.remaining=${decoder.remaining})',
+      final compressed = decoder.readByteArray();
+      final decompressed = Uint8List.fromList(gzip.decode(compressed));
+      return CompressableQueryUpdate(
+        QueryUpdate.decode(BsatnDecoder(decompressed)),
       );
-      throw UnimplementedError('Gzip compression not implemented');
     }
 
     throw ArgumentError('Unknown CompressableQueryUpdate tag: $tag');

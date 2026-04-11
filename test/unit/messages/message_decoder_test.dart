@@ -46,10 +46,7 @@ void main() {
 
       final bytes = encoder.toBytes();
 
-      expect(
-        () => MessageDecoder.decode(bytes),
-        throwsA(isA<ArgumentError>()),
-      );
+      expect(() => MessageDecoder.decode(bytes), throwsA(isA<ArgumentError>()));
     });
 
     test('decodes a Gzip-compressed IdentityTokenMessage', () {
