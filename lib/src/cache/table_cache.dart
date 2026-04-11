@@ -302,6 +302,7 @@ class TableCache<T> {
   _RowChanges<T> _applyChanges(BsatnRowList deletes, BsatnRowList inserts) {
     final changes = _RowChanges<T>();
     final oldValues = <dynamic, T>{};
+    final pendingDeletes = <(dynamic, T)>[];
 
     final deleteBytes = deletes.getRows();
     final insertBytes = inserts.getRows();
@@ -314,9 +315,9 @@ class TableCache<T> {
         final old = _rowsByPrimaryKey.remove(primaryKey);
         if (old != null) {
           oldValues[primaryKey] = old;
-          changes.deleted.add(old);
+          pendingDeletes.add((primaryKey, old));
         } else {
-          changes.deleted.add(row);
+          pendingDeletes.add((primaryKey, row));
         }
       } else {
         _rows.remove(row);
@@ -324,6 +325,7 @@ class TableCache<T> {
       }
     }
 
+    final coalescedKeys = <dynamic>{};
     for (final bytes in insertBytes) {
       final bsatnDecoder = BsatnDecoder(bytes);
       final row = decoder.decode(bsatnDecoder);
@@ -332,6 +334,7 @@ class TableCache<T> {
       if (primaryKey != null) {
         if (oldValues.containsKey(primaryKey)) {
           changes.updated.add((oldValues[primaryKey]!, row));
+          coalescedKeys.add(primaryKey);
         } else {
           changes.inserted.add(row);
         }
@@ -339,6 +342,12 @@ class TableCache<T> {
       } else {
         changes.inserted.add(row);
         _rows.add(row);
+      }
+    }
+
+    for (final (primaryKey, deletedRow) in pendingDeletes) {
+      if (!coalescedKeys.contains(primaryKey)) {
+        changes.deleted.add(deletedRow);
       }
     }
 
