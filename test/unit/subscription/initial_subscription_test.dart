@@ -50,10 +50,11 @@ void main() {
         );
         table.applyInitialData(inserts, context);
 
-        final lastEvent = table.lastEvent.value;
-        expect(lastEvent, isNotNull);
-        expect(lastEvent, isA<TableInsertEvent<String>>());
-        expect(lastEvent!.context.event, isA<SubscribeAppliedEvent>());
+        final batch = table.lastBatch.value;
+        expect(batch, isNotNull);
+        expect(batch!.length, equals(1));
+        expect(batch.events.first, isA<TableInsertEvent<String>>());
+        expect(batch.context.event, isA<SubscribeAppliedEvent>());
       },
     );
 
@@ -61,13 +62,16 @@ void main() {
       bool sawInitial = false;
       bool sawReducer = false;
 
-      table.lastEvent.addListener(() {
-        final event = table.lastEvent.value;
-        if (event is TableInsertEvent<String>) {
-          if (event.context.event is SubscribeAppliedEvent) {
-            sawInitial = true;
-          } else if (event.context.event is ReducerEvent) {
-            sawReducer = true;
+      table.lastBatch.addListener(() {
+        final batch = table.lastBatch.value;
+        if (batch == null) return;
+        for (final event in batch.events) {
+          if (event is TableInsertEvent<String>) {
+            if (event.context.event is SubscribeAppliedEvent) {
+              sawInitial = true;
+            } else if (event.context.event is ReducerEvent) {
+              sawReducer = true;
+            }
           }
         }
       });
@@ -117,10 +121,13 @@ void main() {
       () {
         final capturedEvents = <Event>[];
 
-        table.lastEvent.addListener(() {
-          final event = table.lastEvent.value;
-          if (event is TableInsertEvent<String>) {
-            capturedEvents.add(event.context.event);
+        table.lastBatch.addListener(() {
+          final batch = table.lastBatch.value;
+          if (batch == null) return;
+          for (final event in batch.events) {
+            if (event is TableInsertEvent<String>) {
+              capturedEvents.add(event.context.event);
+            }
           }
         });
 
@@ -156,7 +163,7 @@ void main() {
       },
     );
 
-    test('unified lastEvent receives SubscribeAppliedEvent inserts', () {
+    test('unified lastBatch receives SubscribeAppliedEvent inserts', () {
       final subscribeContext = EventContext(
         myConnectionId: null,
         event: SubscribeAppliedEvent(),
@@ -170,26 +177,30 @@ void main() {
       );
       table.applyInitialData(inserts, subscribeContext);
 
-      final capturedEvent = table.lastEvent.value;
-      expect(capturedEvent, isA<TableInsertEvent<String>>());
-      expect(capturedEvent!.context.event, isA<SubscribeAppliedEvent>());
+      final batch = table.lastBatch.value;
+      expect(batch, isNotNull);
+      expect(batch!.events.first, isA<TableInsertEvent<String>>());
+      expect(batch.context.event, isA<SubscribeAppliedEvent>());
     });
 
     test('pattern matching distinguishes event types', () {
       bool sawInitial = false;
       bool sawRealtime = false;
 
-      table.lastEvent.addListener(() {
-        final event = table.lastEvent.value;
-        if (event is TableInsertEvent<String>) {
-          switch (event.context.event) {
-            case SubscribeAppliedEvent():
-              sawInitial = true;
-            case ReducerEvent():
-              sawRealtime = true;
-            case UnknownTransactionEvent():
-            case OptimisticEvent():
-              break;
+      table.lastBatch.addListener(() {
+        final batch = table.lastBatch.value;
+        if (batch == null) return;
+        for (final event in batch.events) {
+          if (event is TableInsertEvent<String>) {
+            switch (event.context.event) {
+              case SubscribeAppliedEvent():
+                sawInitial = true;
+              case ReducerEvent():
+                sawRealtime = true;
+              case UnknownTransactionEvent():
+              case OptimisticEvent():
+                break;
+            }
           }
         }
       });
@@ -242,11 +253,14 @@ void main() {
 
       var initialDataCount = 0;
 
-      table.lastEvent.addListener(() {
-        final event = table.lastEvent.value;
-        if (event is TableInsertEvent<String> &&
-            event.context.event is SubscribeAppliedEvent) {
-          initialDataCount++;
+      table.lastBatch.addListener(() {
+        final batch = table.lastBatch.value;
+        if (batch == null) return;
+        for (final event in batch.events) {
+          if (event is TableInsertEvent<String> &&
+              event.context.event is SubscribeAppliedEvent) {
+            initialDataCount++;
+          }
         }
       });
 
@@ -296,11 +310,14 @@ void main() {
 
       var realtimeCount = 0;
 
-      table.lastEvent.addListener(() {
-        final event = table.lastEvent.value;
-        if (event is TableInsertEvent<String> &&
-            event.context.event is! SubscribeAppliedEvent) {
-          realtimeCount++;
+      table.lastBatch.addListener(() {
+        final batch = table.lastBatch.value;
+        if (batch == null) return;
+        for (final event in batch.events) {
+          if (event is TableInsertEvent<String> &&
+              event.context.event is! SubscribeAppliedEvent) {
+            realtimeCount++;
+          }
         }
       });
 

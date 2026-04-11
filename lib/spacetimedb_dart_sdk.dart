@@ -16,6 +16,7 @@ export 'src/cache/table_cache.dart';
 export 'src/events/event.dart';
 export 'src/events/event_context.dart';
 export 'src/events/table_event.dart';
+export 'src/events/transaction_batch.dart';
 
 // Reducers (consumer-facing)
 export 'src/reducers/transaction_result.dart';

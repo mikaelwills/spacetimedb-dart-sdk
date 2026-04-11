@@ -67,15 +67,19 @@ void main() {
     print('   📝 Testing CREATE...');
     final createCompleter = Completer<Note>();
     void createListener() {
-      final event = client.note.lastEvent.value;
-      if (event is TableInsertEvent<Note> && event.row.title == uniqueTitle) {
-        if (!createCompleter.isCompleted) createCompleter.complete(event.row);
+      final batch = client.note.lastBatch.value;
+      if (batch == null) return;
+      for (final event in batch.events) {
+        if (event is TableInsertEvent<Note> && event.row.title == uniqueTitle) {
+          if (!createCompleter.isCompleted) createCompleter.complete(event.row);
+          return;
+        }
       }
     }
-    client.note.lastEvent.addListener(createListener);
+    client.note.lastBatch.addListener(createListener);
     client.reducers.createNote(title: uniqueTitle, content: 'Original Content');
     final createdNote = await createCompleter.future.timeout(Duration(seconds: 5));
-    client.note.lastEvent.removeListener(createListener);
+    client.note.lastBatch.removeListener(createListener);
     final noteId = createdNote.id;
     print('   ✅ CREATE Success. Got ID: \$noteId');
     expect(createdNote.content, equals('Original Content'));
@@ -97,30 +101,38 @@ void main() {
     print('   🔄 Testing UPDATE...');
     final updateCompleter = Completer<TableUpdateEvent<Note>>();
     void updateListener() {
-      final event = client.note.lastEvent.value;
-      if (event is TableUpdateEvent<Note> && event.newRow.id == noteId) {
-        if (!updateCompleter.isCompleted) updateCompleter.complete(event);
+      final batch = client.note.lastBatch.value;
+      if (batch == null) return;
+      for (final event in batch.events) {
+        if (event is TableUpdateEvent<Note> && event.newRow.id == noteId) {
+          if (!updateCompleter.isCompleted) updateCompleter.complete(event);
+          return;
+        }
       }
     }
-    client.note.lastEvent.addListener(updateListener);
+    client.note.lastBatch.addListener(updateListener);
     client.reducers.updateNote(noteId: noteId, title: uniqueTitle, content: 'Updated Content');
     final updateEvent = await updateCompleter.future.timeout(Duration(seconds: 5));
-    client.note.lastEvent.removeListener(updateListener);
+    client.note.lastBatch.removeListener(updateListener);
     print('   ✅ UPDATE Success.');
     expect(updateEvent.newRow.content, equals('Updated Content'));
 
     print('   🗑️ Testing DELETE...');
     final deleteCompleter = Completer<void>();
     void deleteListener() {
-      final event = client.note.lastEvent.value;
-      if (event is TableDeleteEvent<Note> && event.row.id == noteId) {
-        if (!deleteCompleter.isCompleted) deleteCompleter.complete();
+      final batch = client.note.lastBatch.value;
+      if (batch == null) return;
+      for (final event in batch.events) {
+        if (event is TableDeleteEvent<Note> && event.row.id == noteId) {
+          if (!deleteCompleter.isCompleted) deleteCompleter.complete();
+          return;
+        }
       }
     }
-    client.note.lastEvent.addListener(deleteListener);
+    client.note.lastBatch.addListener(deleteListener);
     client.reducers.deleteNote(noteId: noteId);
     await deleteCompleter.future.timeout(Duration(seconds: 5));
-    client.note.lastEvent.removeListener(deleteListener);
+    client.note.lastBatch.removeListener(deleteListener);
     print('   ✅ DELETE Success.');
 
     expect(client.note.find(noteId), isNull);

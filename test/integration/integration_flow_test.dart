@@ -213,7 +213,7 @@ void main() {
     });
 
     group('ValueNotifier Events - Real Listeners', () {
-      test('Optimistic changes notify via lastEvent', () async {
+      test('Optimistic changes notify via lastBatch', () async {
         final deadConnection = SpacetimeDbConnection(
           host: 'localhost:9999',
           database: 'notesdb',
@@ -230,15 +230,18 @@ void main() {
         final insertEvents = <Note>[];
         final deleteEvents = <Note>[];
         void listener() {
-          final event = table.lastEvent.value;
-          if (event is TableInsertEvent<Note>) {
-            insertEvents.add(event.row);
-          } else if (event is TableDeleteEvent<Note>) {
-            deleteEvents.add(event.row);
+          final batch = table.lastBatch.value;
+          if (batch == null) return;
+          for (final event in batch.events) {
+            if (event is TableInsertEvent<Note>) {
+              insertEvents.add(event.row);
+            } else if (event is TableDeleteEvent<Note>) {
+              deleteEvents.add(event.row);
+            }
           }
         }
 
-        table.lastEvent.addListener(listener);
+        table.lastBatch.addListener(listener);
 
         final note = createNote(1, 'Stream Test');
         optimistic.applyOptimisticChanges('req-1', [
@@ -254,7 +257,7 @@ void main() {
 
         expect(deleteEvents.length, equals(1));
 
-        table.lastEvent.removeListener(listener);
+        table.lastBatch.removeListener(listener);
         await manager.dispose();
         await deadConnection.dispose();
       });
