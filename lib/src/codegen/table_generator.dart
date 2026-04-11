@@ -404,6 +404,17 @@ class TableGenerator {
       Method(
         (m) =>
             m
+              ..name = 'hasPrimaryKey'
+              ..annotations.add(refer('override'))
+              ..type = MethodType.getter
+              ..returns = refer('bool')
+              ..body = const Code('return false;'),
+      ),
+    );
+    b.methods.add(
+      Method(
+        (m) =>
+            m
               ..name = 'getPrimaryKey'
               ..annotations.add(refer('override'))
               ..returns = refer('dynamic')
