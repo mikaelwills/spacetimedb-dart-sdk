@@ -38,8 +38,7 @@ class MessageDecoder {
         messageBytes = Uint8List.fromList(brotli.decode(compressedData));
 
       case CompressionTag.gzip:
-        final compressedLength = decoder.readU32();
-        final compressedData = decoder.readBytes(compressedLength);
+        final compressedData = decoder.readBytes(decoder.remaining);
         messageBytes = Uint8List.fromList(gzip.decode(compressedData));
     }
 
