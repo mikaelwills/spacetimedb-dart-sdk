@@ -11,6 +11,7 @@ class TableCache<T> {
   final String tableName;
   final RowDecoder<T> decoder;
   final bool isEvent;
+  final bool hasPrimaryKey;
 
   final Map<dynamic, T> _rowsByPrimaryKey = {};
   final List<T> _rows = [];
@@ -23,7 +24,7 @@ class TableCache<T> {
     required this.tableName,
     required this.decoder,
     this.isEvent = false,
-  });
+  }) : hasPrimaryKey = decoder.hasPrimaryKey;
 
   /// Apply transaction update with event context
   ///
@@ -86,9 +87,7 @@ class TableCache<T> {
   /// print('Total notes: ${noteTable.count()}');
   /// ```
   int count() {
-    return _rowsByPrimaryKey.isNotEmpty
-        ? _rowsByPrimaryKey.length
-        : _rows.length;
+    return hasPrimaryKey ? _rowsByPrimaryKey.length : _rows.length;
   }
 
   /// Finds a row by its primary key
@@ -113,7 +112,7 @@ class TableCache<T> {
   /// }
   /// ```
   Iterable<T> iter() {
-    return _rowsByPrimaryKey.isNotEmpty ? _rowsByPrimaryKey.values : _rows;
+    return hasPrimaryKey ? _rowsByPrimaryKey.values : _rows;
   }
 
   void applyDeletes(BsatnRowList deletes) {
@@ -208,6 +207,12 @@ class TableCache<T> {
   }
 
   void updateRow(T row) {
+    if (!hasPrimaryKey) {
+      throw StateError(
+        'updateRow called on no-PK table "$tableName". '
+        'Rebuild the cache via applyTransactionUpdate or loadFromSerializable instead.',
+      );
+    }
     final primaryKey = decoder.getPrimaryKey(row);
     if (primaryKey != null) {
       _rowsByPrimaryKey[primaryKey] = row;
@@ -216,6 +221,12 @@ class TableCache<T> {
   }
 
   void deleteRow(dynamic primaryKey) {
+    if (!hasPrimaryKey) {
+      throw StateError(
+        'deleteRow called on no-PK table "$tableName". '
+        'Rebuild the cache via applyTransactionUpdate or loadFromSerializable instead.',
+      );
+    }
     _rowsByPrimaryKey.remove(primaryKey);
     _refreshRowsNotifier();
   }
@@ -253,7 +264,7 @@ class TableCache<T> {
 
   void _refreshRowsNotifier() {
     rows.value =
-        _rowsByPrimaryKey.isNotEmpty
+        hasPrimaryKey
             ? List<T>.of(_rowsByPrimaryKey.values)
             : List<T>.of(_rows);
   }
