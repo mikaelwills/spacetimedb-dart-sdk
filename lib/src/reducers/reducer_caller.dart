@@ -121,10 +121,13 @@ class ReducerCaller {
     return _pendingRequests[requestId]?.uuidRequestId;
   }
 
-  void completeRequest(int requestId, TransactionResult result) {
+  /// Completes the pending request with the given [requestId]. Returns true
+  /// if the request was found and completed, false if no pending request
+  /// matched (e.g. requestId=0 from a protocol-level server error).
+  bool completeRequest(int requestId, TransactionResult result) {
     final pending = _pendingRequests.remove(requestId);
     if (pending == null) {
-      return;
+      return false;
     }
 
     pending.dispose();
@@ -143,6 +146,31 @@ class ReducerCaller {
         ),
       );
     }
+    return true;
+  }
+
+  /// Fail the oldest in-flight request for the given reducer name. Used when
+  /// the server returns a protocol-level failure (e.g. "no such reducer")
+  /// with `requestId=0` because it cannot associate the failure with a
+  /// specific outbound call. Without this fallback, such failures silently
+  /// miss the requestId lookup in [completeRequest] and the pending request
+  /// sits until [_timeoutRequest] fires 10s later.
+  ///
+  /// Returns true if a pending request was matched and failed.
+  bool failOldestPendingByReducerName(
+    String reducerName,
+    TransactionResult result,
+  ) {
+    int? matchedId;
+    for (final entry in _pendingRequests.entries) {
+      if (entry.value.reducerName == reducerName) {
+        matchedId = entry.key;
+        break;
+      }
+    }
+    if (matchedId == null) return false;
+    completeRequest(matchedId, result);
+    return true;
   }
 
   void failAllPendingRequests(String reason) {

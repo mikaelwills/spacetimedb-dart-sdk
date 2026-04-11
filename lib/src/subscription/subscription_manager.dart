@@ -283,9 +283,31 @@ class SubscriptionManager {
     if (_disposed) return;
     try {
       final message = MessageDecoder.decode(bytes);
+      final reqId = switch (message) {
+        TransactionUpdateMessage() => message.reducerCall.requestId,
+        TransactionUpdateLightMessage() => message.requestId,
+        _ => null,
+      };
+      final reducerName = switch (message) {
+        TransactionUpdateMessage() => message.reducerCall.reducerName,
+        _ => null,
+      };
+      final status = switch (message) {
+        TransactionUpdateMessage() => message.status,
+        _ => null,
+      };
+      SdkLogger.d(
+        'RX_MSG: ${message.runtimeType}'
+        '${reqId != null ? ' requestId=$reqId' : ''}'
+        '${reducerName != null ? ' reducer=$reducerName' : ''}'
+        '${status != null ? ' status=$status' : ''}',
+      );
       _routeMessage(message);
-    } catch (e) {
-      SdkLogger.e('Error decoding message: $e');
+    } catch (e, st) {
+      SdkLogger.e(
+        'RX_DECODE_FAILED: $e (${bytes.length} bytes, '
+        'head=${bytes.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')})\n$st',
+      );
     }
   }
 
@@ -459,7 +481,36 @@ class SubscriptionManager {
     );
 
     final result = TransactionResult.fromTransactionUpdate(message);
-    reducers.completeRequest(numericRequestId, result);
+    final matched = reducers.completeRequest(numericRequestId, result);
+
+    // Protocol-level failures (e.g. "no such reducer") come back with
+    // requestId=0 because the server never associates the failure with an
+    // outbound call. Without this fallback, the real pending request sits
+    // until the 10s client timeout fires. Only apply the fallback when
+    // status is Failed AND the requestId lookup missed AND we have a
+    // reducer name to key on.
+    if (!matched && message.status is Failed) {
+      final reducerName = message.reducerCall.reducerName;
+      if (reducerName.isNotEmpty) {
+        final fellBackTo = reducers.failOldestPendingByReducerName(
+          reducerName,
+          result,
+        );
+        if (fellBackTo) {
+          SdkLogger.w(
+            'TXN_FAILED_FALLBACK: no pending request for requestId=$numericRequestId, '
+            'failed oldest in-flight "$reducerName" by name. '
+            'Error: ${(message.status as Failed).message}',
+          );
+        } else {
+          SdkLogger.w(
+            'TXN_FAILED_DROPPED: no pending request for requestId=$numericRequestId '
+            'and no in-flight "$reducerName" by name to fall back on. '
+            'Error: ${(message.status as Failed).message}',
+          );
+        }
+      }
+    }
   }
 
   void _handleTransactionUpdateLight(TransactionUpdateLightMessage message) {
