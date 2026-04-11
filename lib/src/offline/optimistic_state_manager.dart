@@ -1,5 +1,6 @@
 import 'package:spacetimedb_dart_sdk/src/cache/client_cache.dart';
 import 'package:spacetimedb_dart_sdk/src/events/event_context.dart';
+import 'package:spacetimedb_dart_sdk/src/events/transaction_batch.dart';
 import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
 
 import 'optimistic_change.dart';
@@ -49,6 +50,8 @@ class OptimisticStateManager {
     if (changes == null) return;
 
     final entries = <OptimisticEntry>[];
+    final specsByTable = <String, List<TableEventSpec>>{};
+    final context = EventContext.optimistic(requestId: requestId);
 
     for (final change in changes) {
       final table = _cache.getTableByName(change.tableName);
@@ -74,9 +77,9 @@ class OptimisticStateManager {
               ),
             );
             table.insertRow(row);
-
-            final context = EventContext.optimistic(requestId: requestId);
-            table.emitInsert(row, context);
+            (specsByTable[change.tableName] ??= []).add(
+              TableEventSpec.insert(row),
+            );
           }
         case OptimisticChangeType.update:
           final oldRow = table.decoder.fromJson(change.oldRowJson!);
@@ -93,9 +96,9 @@ class OptimisticStateManager {
               ),
             );
             table.updateRow(newRow);
-
-            final context = EventContext.optimistic(requestId: requestId);
-            table.emitUpdate(oldRow, newRow, context);
+            (specsByTable[change.tableName] ??= []).add(
+              TableEventSpec.update(oldRow, newRow),
+            );
           }
         case OptimisticChangeType.delete:
           final row = table.decoder.fromJson(change.oldRowJson!);
@@ -110,10 +113,17 @@ class OptimisticStateManager {
               ),
             );
             table.deleteRow(pk);
-
-            final context = EventContext.optimistic(requestId: requestId);
-            table.emitDelete(row, context);
+            (specsByTable[change.tableName] ??= []).add(
+              TableEventSpec.delete(row),
+            );
           }
+      }
+    }
+
+    for (final entry in specsByTable.entries) {
+      final table = _cache.getTableByName(entry.key);
+      if (table != null) {
+        table.emitBatch(entry.value, context);
       }
     }
 

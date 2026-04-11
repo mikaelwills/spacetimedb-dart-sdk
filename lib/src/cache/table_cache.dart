@@ -4,6 +4,7 @@ import 'package:spacetimedb_dart_sdk/src/codec/bsatn_decoder.dart';
 import 'package:spacetimedb_dart_sdk/src/messages/shared_types.dart';
 import 'package:spacetimedb_dart_sdk/src/events/event_context.dart';
 import 'package:spacetimedb_dart_sdk/src/events/table_event.dart';
+import 'package:spacetimedb_dart_sdk/src/events/transaction_batch.dart';
 import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
 
 class TableCache<T> {
@@ -15,9 +16,8 @@ class TableCache<T> {
   final List<T> _rows = [];
 
   final ValueNotifier<List<T>> rows = ValueNotifier<List<T>>([]);
-  final ValueNotifier<TableEvent<T>?> lastEvent = ValueNotifier<TableEvent<T>?>(
-    null,
-  );
+  final ValueNotifier<TransactionBatch<T>?> lastBatch =
+      ValueNotifier<TransactionBatch<T>?>(null);
 
   TableCache({
     required this.tableName,
@@ -159,7 +159,7 @@ class TableCache<T> {
 
   void dispose() {
     rows.dispose();
-    lastEvent.dispose();
+    lastBatch.dispose();
   }
 
   List<Map<String, dynamic>> toSerializable() {
@@ -222,19 +222,24 @@ class TableCache<T> {
 
   T? getRow(dynamic primaryKey) => _rowsByPrimaryKey[primaryKey];
 
-  void emitInsert(T row, EventContext context) {
-    lastEvent.value = TableInsertEvent(context, row);
+  void emitBatch(List<TableEventSpec> specs, EventContext context) {
     _refreshRowsNotifier();
-  }
+    if (specs.isEmpty) return;
 
-  void emitUpdate(T oldRow, T newRow, EventContext context) {
-    lastEvent.value = TableUpdateEvent(context, oldRow, newRow);
-    _refreshRowsNotifier();
-  }
-
-  void emitDelete(T row, EventContext context) {
-    lastEvent.value = TableDeleteEvent(context, row);
-    _refreshRowsNotifier();
+    final events = <TableEvent<T>>[];
+    for (final spec in specs) {
+      switch (spec.kind) {
+        case TableEventKind.insert:
+          events.add(TableInsertEvent<T>(context, spec.newRow as T));
+        case TableEventKind.update:
+          events.add(
+            TableUpdateEvent<T>(context, spec.oldRow as T, spec.newRow as T),
+          );
+        case TableEventKind.delete:
+          events.add(TableDeleteEvent<T>(context, spec.oldRow as T));
+      }
+    }
+    lastBatch.value = TransactionBatch<T>(context, events);
   }
 
   void removeRowsWhere(bool Function(dynamic pk) test) {
@@ -259,19 +264,23 @@ class TableCache<T> {
         'EMIT_CHANGES[$tableName]: inserts=${changes.inserted.length}, updates=${changes.updated.length}, deletes=${changes.deleted.length}',
       );
     }
+
+    final events = <TableEvent<T>>[];
     for (final row in changes.inserted) {
-      lastEvent.value = TableInsertEvent(context, row);
+      events.add(TableInsertEvent<T>(context, row));
     }
-
     for (final row in changes.deleted) {
-      lastEvent.value = TableDeleteEvent(context, row);
+      events.add(TableDeleteEvent<T>(context, row));
     }
-
     for (final (oldRow, newRow) in changes.updated) {
-      lastEvent.value = TableUpdateEvent(context, oldRow, newRow);
+      events.add(TableUpdateEvent<T>(context, oldRow, newRow));
     }
 
     _refreshRowsNotifier();
+
+    if (events.isNotEmpty) {
+      lastBatch.value = TransactionBatch<T>(context, events);
+    }
   }
 
   void _decodeAndStoreRows(BsatnRowList rowList) {
