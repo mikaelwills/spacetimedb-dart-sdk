@@ -241,7 +241,6 @@ class SpacetimeDbConnection {
       (dynamic data) {
         _keepAlive?.notifyMessageReceived();
         _lastMessageReceived = DateTime.now();
-        _updateQuality();
 
         if (data is Uint8List) {
           _messageController.add(data);
