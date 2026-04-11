@@ -126,10 +126,15 @@ class SpacetimeDbClient {
 
     subscriptionManager.reducerRegistry.register(createFolderDef);
     subscriptionManager.reducerRegistry.register(createNoteDef);
+    subscriptionManager.reducerRegistry.register(createNotesBulkDef);
     subscriptionManager.reducerRegistry.register(deleteAllFoldersDef);
     subscriptionManager.reducerRegistry.register(deleteAllNotesDef);
     subscriptionManager.reducerRegistry.register(deleteFolderDef);
     subscriptionManager.reducerRegistry.register(deleteNoteDef);
+    subscriptionManager.reducerRegistry.register(diagInsertFiveDef);
+    subscriptionManager.reducerRegistry.register(mixedNoteBatchDef);
+    subscriptionManager.reducerRegistry.register(noOpDef);
+    subscriptionManager.reducerRegistry.register(updateAllNotesDef);
     subscriptionManager.reducerRegistry.register(updateNoteDef);
 
     final client = SpacetimeDbClient._(

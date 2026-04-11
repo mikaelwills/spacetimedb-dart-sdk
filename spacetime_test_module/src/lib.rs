@@ -1,5 +1,6 @@
 use spacetimedb::{
-    reducer, table, view, AnonymousViewContext, Query, ReducerContext, Table, SpacetimeType,
+    procedure, reducer, table, view, AnonymousViewContext, ProcedureContext, Query,
+    ReducerContext, Table, SpacetimeType,
 };
 
 /// Status enum for testing sum types
@@ -193,6 +194,22 @@ pub fn diag_insert_five(ctx: &ReducerContext) {
             status: NoteStatus::Draft,
         });
     }
+}
+
+/// Procedure that adds two numbers. Used by message_types_test's ProcedureResult
+/// test to exercise the successful-return path of the procedure wire protocol.
+#[procedure]
+pub fn add_numbers(_ctx: &mut ProcedureContext, a: u32, b: u32) -> u32 {
+    a + b
+}
+
+/// Procedure that panics at runtime. Used by error_handling_test's "Procedure
+/// panic" test to exercise the internalError path. The panic message must
+/// contain "divide" so the test's error-message substring check passes.
+#[procedure]
+pub fn divide_by_zero(_ctx: &mut ProcedureContext, numerator: u32) -> u32 {
+    let divisor = if numerator > 0 { 0 } else { 1 };
+    numerator / divisor
 }
 
 /// View to get all notes
