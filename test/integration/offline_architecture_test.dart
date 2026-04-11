@@ -450,7 +450,7 @@ void main() {
         expect(
           event,
           isA<TableInsertEvent<Note>>(),
-          reason: 'Optimistic insert should emit TableInsertEvent to lastEvent',
+          reason: 'Optimistic insert should emit TableInsertEvent to lastBatch',
         );
       },
       timeout: const Timeout(Duration(seconds: 30)),

@@ -73,3 +73,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes
+
+#### Replaced per-row `lastEvent` with transaction-aware `lastBatch`
+- Removed `ValueNotifier<TableEvent<T>?> lastEvent` from `TableCache`
+- Removed per-row emit methods: `emitInsert`, `emitUpdate`, `emitDelete`
+- Added `ValueNotifier<TransactionBatch<T>?> lastBatch` — fires exactly once per transaction with all row changes from that transaction as a `List<TableEvent<T>>`
+- Added `TransactionBatch<T>` type with `events`, `inserts`, `updates`, `deletes` accessors and the shared `EventContext`
+- Added `TableEventKind` enum + `TableEventSpec` data type for building batches across type-erased boundaries
+- Added `TableCache.emitBatch(List<TableEventSpec>, EventContext)` — the cache constructs typed `TableEvent<T>` internally from untyped specs
+- Events inside a batch are ordered: inserts, then deletes, then updates
+- `_emitChanges` now collects all row changes, refreshes `rows`, then fires `lastBatch` exactly once (was: wrote `lastEvent.value` up to N times per transaction)
+- `OptimisticStateManager` now flushes one `lastBatch` per affected table per apply, not one per row
+
+#### Migration guide
+- `table.lastEvent.addListener(cb)` → `table.lastBatch.addListener(cb)`
+- Inside the listener: iterate `batch.events` instead of inspecting a single event:
+  ```dart
+  table.lastBatch.addListener(() {
+    final batch = table.lastBatch.value;
+    if (batch == null) return;
+    for (final event in batch.events) {
+      switch (event) {
+        case TableInsertEvent(:final row): ...
+        case TableUpdateEvent(:final oldRow, :final newRow): ...
+        case TableDeleteEvent(:final row): ...
+      }
+    }
+  });
+  ```
+- `table.rows` is unchanged — still fires once per transaction, same semantics
+
+### Why
+The server delivers transactions as atomic units. `lastEvent` fired once per row, causing N Flutter rebuilds for an N-row transaction and quietly lying about the unit of delivery. `lastBatch` reflects the server's delivery model: one transaction, one notification, full row change list.
+

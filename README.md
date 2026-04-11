@@ -78,19 +78,21 @@ client.users.rows.addListener(() {
   print('Users changed: ${client.users.rows.value.length} rows');
 });
 
-// Event details — what changed and why
-client.users.lastEvent.addListener(() {
-  final event = client.users.lastEvent.value;
-  switch (event) {
-    case TableInsertEvent(:final row, :final context):
-      print('Added: ${row.name}');
-      if (context.isMyTransaction) showToast('Created ${row.name}');
-    case TableUpdateEvent(:final oldRow, :final newRow):
-      print('${oldRow.name} → ${newRow.name}');
-    case TableDeleteEvent(:final row):
-      print('Removed: ${row.name}');
-    case null:
-      break;
+// Transaction batches — every row change from one transaction, delivered once.
+// A reducer that touches N rows fires lastBatch a single time with N events.
+client.users.lastBatch.addListener(() {
+  final batch = client.users.lastBatch.value;
+  if (batch == null) return;
+  for (final event in batch.events) {
+    switch (event) {
+      case TableInsertEvent(:final row, :final context):
+        print('Added: ${row.name}');
+        if (context.isMyTransaction) showToast('Created ${row.name}');
+      case TableUpdateEvent(:final oldRow, :final newRow):
+        print('${oldRow.name} → ${newRow.name}');
+      case TableDeleteEvent(:final row):
+        print('Removed: ${row.name}');
+    }
   }
 });
 ```

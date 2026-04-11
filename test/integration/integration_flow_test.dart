@@ -213,7 +213,7 @@ void main() {
     });
 
     group('ValueNotifier Events - Real Listeners', () {
-      test('Optimistic changes notify via lastEvent', () async {
+      test('Optimistic changes notify via lastBatch', () async {
         final deadConnection = SpacetimeDbConnection(
           host: 'localhost:9999',
           database: 'notesdb',
