@@ -56,6 +56,26 @@ Future<void> setupTestEnvironment() async {
     print('Killing any existing server on port 3000...');
     await _killExistingServer();
 
+    // Wipe stale control-db and replicas. `--in-memory` does NOT clear
+    // these on disk — they accumulate database ownership records across
+    // runs. Without this wipe, each new test-setup login creates a fresh
+    // identity that cannot authorize `publish` against the retained
+    // database ownership from a previous run, and the publish fails with
+    // 403 Forbidden.
+    final home = Platform.environment['HOME'];
+    if (home != null) {
+      for (final sub in const ['control-db', 'replicas']) {
+        final dir = Directory('$home/.local/share/spacetime/data/$sub');
+        if (await dir.exists()) {
+          try {
+            await dir.delete(recursive: true);
+          } catch (e) {
+            print('Warning: failed to wipe $sub: $e');
+          }
+        }
+      }
+    }
+
     print('Starting fresh in-memory SpacetimeDB server...');
     Process.start('spacetime', [
       'start',
@@ -107,12 +127,15 @@ Future<void> setupTestEnvironment() async {
       'notesdb',
     ], workingDirectory: testModuleDir.path);
     if (publishResult.exitCode != 0) {
-      final stderr = publishResult.stderr.toString();
-      if (!stderr.contains('wasm-opt')) {
-        print('Publish stdout: ${publishResult.stdout}');
-        print('Publish stderr: $stderr');
-        throw Exception('Publish failed (exit code ${publishResult.exitCode})');
-      }
+      print('Publish stdout: ${publishResult.stdout}');
+      print('Publish stderr: ${publishResult.stderr}');
+      throw Exception(
+        'Publish failed (exit code ${publishResult.exitCode}). '
+        'If the only error is a wasm-opt warning, install wasm-opt from '
+        'https://github.com/WebAssembly/binaryen/releases — but note that '
+        'the `spacetime publish` CLI should exit 0 on a missing-wasm-opt '
+        'warning, so a non-zero exit means there is a real error above.',
+      );
     }
     print('Published notesdb');
 
