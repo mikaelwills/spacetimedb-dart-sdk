@@ -70,10 +70,10 @@ class ReducerEvent extends Event {
     required this.timestamp,
     required this.status,
     required this.callerIdentity,
-    this.callerConnectionId,
-    this.energyConsumed,
     required this.reducerName,
     required this.reducerArgs,
+    this.callerConnectionId,
+    this.energyConsumed,
   });
 }
 

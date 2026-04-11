@@ -65,6 +65,16 @@ class KeepAliveMonitor {
     _idleTimer = Timer(_idleThreshold, _triggerPing);
   }
 
+  /// Stop all monitoring and clean up timers
+  void stop() {
+    _stopped = true;
+    _idleTimer?.cancel();
+    _idleTimer = null;
+    _timeoutTimer?.cancel();
+    _timeoutTimer = null;
+    _isAwaitingPong = false;
+  }
+
   void _triggerPing() {
     if (_stopped) return;
 
@@ -76,15 +86,5 @@ class KeepAliveMonitor {
       stop();
       _onTimeoutCallback();
     });
-  }
-
-  /// Stop all monitoring and clean up timers
-  void stop() {
-    _stopped = true;
-    _idleTimer?.cancel();
-    _idleTimer = null;
-    _timeoutTimer?.cancel();
-    _timeoutTimer = null;
-    _isAwaitingPong = false;
   }
 }

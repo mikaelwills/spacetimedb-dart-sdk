@@ -64,7 +64,7 @@ class IndexSchema {
   final String? accessorName;
   final Map<String, dynamic> algorithm;
 
-  IndexSchema({this.name, this.accessorName, required this.algorithm});
+  IndexSchema({required this.algorithm, this.name, this.accessorName});
 
   factory IndexSchema.fromJson(Map<String, dynamic> json) {
     final nameJson = json['source_name'] ?? json['name'];
@@ -89,7 +89,7 @@ class ConstraintSchema {
   final String? name;
   final Map<String, dynamic> data;
 
-  ConstraintSchema({this.name, required this.data});
+  ConstraintSchema({required this.data, this.name});
 
   factory ConstraintSchema.fromJson(Map<String, dynamic> json) {
     final nameJson = json['source_name'] ?? json['name'];

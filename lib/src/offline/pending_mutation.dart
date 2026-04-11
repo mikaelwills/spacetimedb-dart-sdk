@@ -46,17 +46,25 @@ class PendingMutation {
   }
 
   factory PendingMutation.fromJson(Map<String, dynamic> json) {
-    final changesJson = json['optimisticChanges'] as List?;
+    final String requestId = json['requestId'] ?? '';
+    final String reducerName = json['reducerName'] ?? '';
+    final List encodedArgs = json['encodedArgs'] ?? const [];
+    final String createdAt = json['createdAt'] ?? '';
+    final List? changesJson = json['optimisticChanges'];
+
+    if (requestId.isEmpty || reducerName.isEmpty || createdAt.isEmpty) {
+      throw FormatException('Invalid PendingMutation JSON: $json');
+    }
+
     return PendingMutation(
-      requestId: json['requestId'] as String,
-      reducerName: json['reducerName'] as String,
-      encodedArgs: Uint8List.fromList(
-        (json['encodedArgs'] as List).cast<int>(),
-      ),
-      createdAt: DateTime.parse(json['createdAt'] as String),
+      requestId: requestId,
+      reducerName: reducerName,
+      encodedArgs: Uint8List.fromList(encodedArgs.cast<int>()),
+      createdAt: DateTime.parse(createdAt),
       optimisticChanges:
           changesJson
-              ?.map((c) => OptimisticChange.fromJson(c as Map<String, dynamic>))
+              ?.whereType<Map<String, dynamic>>()
+              .map(OptimisticChange.fromJson)
               .toList(),
     );
   }

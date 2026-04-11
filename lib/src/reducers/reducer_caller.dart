@@ -52,8 +52,6 @@ class ReducerCaller {
   }) : _offlineStorage = offlineStorage,
        _mutationHandler = mutationHandler;
 
-  bool get _isOnline => _connection.state is Connected;
-
   Future<TransactionResult> call(
     String reducerName,
     Uint8List args, {
@@ -81,6 +79,99 @@ class ReducerCaller {
     SdkLogger.d('NO OFFLINE STORAGE: Direct send (legacy path)');
     return _sendDirectly(reducerName, args, timeout, optimisticChanges);
   }
+
+  Future<TransactionResult> callWithBytes(
+    String reducerName,
+    Uint8List args, {
+    Duration? timeout,
+    String? requestId,
+  }) async {
+    final numericRequestId = _nextRequestId++;
+    SdkLogger.d(
+      'callWithBytes: $reducerName, numericId=$numericRequestId, uuidId=$requestId',
+    );
+    if (requestId != null) {
+      _requestIdByUuid[requestId] = numericRequestId;
+    }
+
+    final completer = Completer<TransactionResult>();
+    final effectiveTimeout = timeout ?? defaultTimeout;
+
+    final timer = Timer(effectiveTimeout, () {
+      _timeoutRequest(numericRequestId, reducerName, effectiveTimeout);
+    });
+
+    _pendingRequests[numericRequestId] = _PendingRequest(
+      completer: completer,
+      timeout: timer,
+      reducerName: reducerName,
+      uuidRequestId: requestId,
+    );
+
+    final message = CallReducerMessage(
+      reducerName: reducerName,
+      args: args,
+      requestId: numericRequestId,
+    );
+    _connection.send(message.encode());
+
+    return completer.future;
+  }
+
+  String? getUuidForRequest(int requestId) {
+    return _pendingRequests[requestId]?.uuidRequestId;
+  }
+
+  void completeRequest(int requestId, TransactionResult result) {
+    final pending = _pendingRequests.remove(requestId);
+    if (pending == null) {
+      return;
+    }
+
+    pending.dispose();
+    if (pending.uuidRequestId != null) {
+      _requestIdByUuid.remove(pending.uuidRequestId);
+    }
+
+    if (result.isSuccess) {
+      pending.completer.complete(result);
+    } else {
+      pending.completer.completeError(
+        ReducerException(
+          reducerName: pending.reducerName,
+          message: result.errorMessage ?? 'Unknown error',
+          result: result,
+        ),
+      );
+    }
+  }
+
+  void failAllPendingRequests(String reason) {
+    final entries = _pendingRequests.entries.toList();
+    for (var entry in entries) {
+      final requestId = entry.key;
+      final pending = entry.value;
+      pending.dispose();
+      if (pending.hasOptimisticChanges) {
+        _mutationHandler?.onRollbackOptimistic(requestId.toString());
+      }
+      pending.completer.completeError(
+        ConnectionException('Connection lost during reducer call: $reason'),
+      );
+    }
+    _pendingRequests.clear();
+    _requestIdByUuid.clear();
+  }
+
+  void dispose() {
+    for (var pending in _pendingRequests.values) {
+      pending.dispose();
+    }
+    _pendingRequests.clear();
+    _requestIdByUuid.clear();
+  }
+
+  bool get _isOnline => _connection.state is Connected;
 
   Future<TransactionResult> _queueAndMaybeSync(
     String reducerName,
@@ -161,72 +252,6 @@ class ReducerCaller {
     return completer.future;
   }
 
-  Future<TransactionResult> callWithBytes(
-    String reducerName,
-    Uint8List args, {
-    Duration? timeout,
-    String? requestId,
-  }) async {
-    final numericRequestId = _nextRequestId++;
-    SdkLogger.d(
-      'callWithBytes: $reducerName, numericId=$numericRequestId, uuidId=$requestId',
-    );
-    if (requestId != null) {
-      _requestIdByUuid[requestId] = numericRequestId;
-    }
-
-    final completer = Completer<TransactionResult>();
-    final effectiveTimeout = timeout ?? defaultTimeout;
-
-    final timer = Timer(effectiveTimeout, () {
-      _timeoutRequest(numericRequestId, reducerName, effectiveTimeout);
-    });
-
-    _pendingRequests[numericRequestId] = _PendingRequest(
-      completer: completer,
-      timeout: timer,
-      reducerName: reducerName,
-      uuidRequestId: requestId,
-    );
-
-    final message = CallReducerMessage(
-      reducerName: reducerName,
-      args: args,
-      requestId: numericRequestId,
-    );
-    _connection.send(message.encode());
-
-    return completer.future;
-  }
-
-  String? getUuidForRequest(int requestId) {
-    return _pendingRequests[requestId]?.uuidRequestId;
-  }
-
-  void completeRequest(int requestId, TransactionResult result) {
-    final pending = _pendingRequests.remove(requestId);
-    if (pending == null) {
-      return;
-    }
-
-    pending.dispose();
-    if (pending.uuidRequestId != null) {
-      _requestIdByUuid.remove(pending.uuidRequestId);
-    }
-
-    if (result.isSuccess) {
-      pending.completer.complete(result);
-    } else {
-      pending.completer.completeError(
-        ReducerException(
-          reducerName: pending.reducerName,
-          message: result.errorMessage ?? 'Unknown error',
-          result: result,
-        ),
-      );
-    }
-  }
-
   void _timeoutRequest(int requestId, String reducerName, Duration timeout) {
     final pending = _pendingRequests.remove(requestId);
     if (pending != null) {
@@ -243,31 +268,6 @@ class ReducerCaller {
         ),
       );
     }
-  }
-
-  void failAllPendingRequests(String reason) {
-    final entries = _pendingRequests.entries.toList();
-    for (var entry in entries) {
-      final requestId = entry.key;
-      final pending = entry.value;
-      pending.dispose();
-      if (pending.hasOptimisticChanges) {
-        _mutationHandler?.onRollbackOptimistic(requestId.toString());
-      }
-      pending.completer.completeError(
-        ConnectionException('Connection lost during reducer call: $reason'),
-      );
-    }
-    _pendingRequests.clear();
-    _requestIdByUuid.clear();
-  }
-
-  void dispose() {
-    for (var pending in _pendingRequests.values) {
-      pending.dispose();
-    }
-    _pendingRequests.clear();
-    _requestIdByUuid.clear();
   }
 }
 

@@ -219,8 +219,9 @@ class SchemaExtractor {
       );
     }
 
-    if (value.containsKey('sections')) {
-      return _flattenSections(value['sections'] as List);
+    final sections = value['sections'];
+    if (sections is List) {
+      return _flattenSections(sections);
     }
 
     return _deepCast(value);
@@ -277,16 +278,15 @@ class SchemaExtractor {
   /// Filter reducers to only client-callable ones and normalize field names
   static List<dynamic> _filterClientCallableReducers(List<dynamic> reducers) {
     return reducers
+        .whereType<Map>()
         .where((r) {
-          if (r is! Map) return false;
           final vis = r['visibility'];
           return vis is Map && vis.containsKey('ClientCallable');
         })
         .map((r) {
-          final map = r as Map;
           return <String, dynamic>{
-            'name': map['source_name'] ?? map['name'] ?? '',
-            'params': map['params'] ?? {},
+            'name': r['source_name'] ?? r['name'] ?? '',
+            'params': r['params'] ?? {},
             'lifecycle': {},
           };
         })

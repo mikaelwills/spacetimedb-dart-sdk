@@ -99,32 +99,9 @@ class MutationSyncer implements MutationHandler {
     persistTableSnapshots(onlyTables: touchedTables);
   }
 
-  void _updateSyncState(SyncState state) {
-    if (_disposed) return;
-    final prev = _currentSyncState;
-    if (prev.status != state.status ||
-        prev.pendingCount != state.pendingCount) {
-      SdkLogger.d(
-        'SyncState: ${prev.status}(${prev.pendingCount}) -> ${state.status}(${state.pendingCount})',
-      );
-    }
-    _currentSyncState = state;
-    _syncStateController.add(state);
-  }
-
   Future<void> updatePendingCount() async {
     final pending = await _storage.getPendingMutations();
     _cachedPendingCount = pending.length;
-    _updateSyncState(
-      _currentSyncState.copyWith(pendingCount: _cachedPendingCount),
-    );
-  }
-
-  void _decrementPendingCount() {
-    _cachedPendingCount = (_cachedPendingCount - 1).clamp(
-      0,
-      _cachedPendingCount,
-    );
     _updateSyncState(
       _currentSyncState.copyWith(pendingCount: _cachedPendingCount),
     );
@@ -287,29 +264,6 @@ class MutationSyncer implements MutationHandler {
     }
   }
 
-  void _scheduleRetry() {
-    if (_disposed) return;
-    _retryTimer?.cancel();
-
-    final delay = Duration(
-      milliseconds: (_initialRetryDelay.inMilliseconds * (1 << _retryAttempt))
-          .clamp(0, _maxRetryDelay.inMilliseconds),
-    );
-    _retryAttempt++;
-
-    SdkLogger.d(
-      'Scheduling sync retry in ${delay.inSeconds}s (attempt $_retryAttempt)',
-    );
-
-    _retryTimer = Timer(delay, () {
-      if (_disposed) return;
-      if (_connection.state is Connected) {
-        SdkLogger.d('Auto-retry: syncing pending mutations');
-        syncPendingMutations();
-      }
-    });
-  }
-
   Future<List<PendingMutation>> getPendingMutations() async {
     return _storage.getPendingMutations();
   }
@@ -386,5 +340,51 @@ class MutationSyncer implements MutationHandler {
     _syncStateController.close();
     _mutationSyncResultController.close();
     await _storage.dispose();
+  }
+
+  void _updateSyncState(SyncState state) {
+    if (_disposed) return;
+    final prev = _currentSyncState;
+    if (prev.status != state.status ||
+        prev.pendingCount != state.pendingCount) {
+      SdkLogger.d(
+        'SyncState: ${prev.status}(${prev.pendingCount}) -> ${state.status}(${state.pendingCount})',
+      );
+    }
+    _currentSyncState = state;
+    _syncStateController.add(state);
+  }
+
+  void _decrementPendingCount() {
+    _cachedPendingCount = (_cachedPendingCount - 1).clamp(
+      0,
+      _cachedPendingCount,
+    );
+    _updateSyncState(
+      _currentSyncState.copyWith(pendingCount: _cachedPendingCount),
+    );
+  }
+
+  void _scheduleRetry() {
+    if (_disposed) return;
+    _retryTimer?.cancel();
+
+    final delay = Duration(
+      milliseconds: (_initialRetryDelay.inMilliseconds * (1 << _retryAttempt))
+          .clamp(0, _maxRetryDelay.inMilliseconds),
+    );
+    _retryAttempt++;
+
+    SdkLogger.d(
+      'Scheduling sync retry in ${delay.inSeconds}s (attempt $_retryAttempt)',
+    );
+
+    _retryTimer = Timer(delay, () {
+      if (_disposed) return;
+      if (_connection.state is Connected) {
+        SdkLogger.d('Auto-retry: syncing pending mutations');
+        syncPendingMutations();
+      }
+    });
   }
 }

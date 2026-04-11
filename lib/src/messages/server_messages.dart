@@ -221,9 +221,9 @@ class OneOffQueryResponse implements ServerMessage {
   OneOffQueryResponse({
     required this.messageId,
     required this.requestId,
-    this.error,
     required this.tables,
     required this.totalHostExecutionDurationMicros,
+    this.error,
   });
 
   @override

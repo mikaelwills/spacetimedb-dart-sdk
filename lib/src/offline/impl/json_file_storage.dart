@@ -24,23 +24,6 @@ class JsonFileStorage implements OfflineStorage {
   JsonFileStorage({required this.basePath})
     : _fileStore = AtomicFileStore(basePath);
 
-  Future<T> _tracked<T>(Future<T> Function() operation) async {
-    if (_disposed) {
-      SdkLogger.w('Operation attempted after dispose, ignoring');
-      throw StateError('Storage has been disposed');
-    }
-    _pendingOperations++;
-    try {
-      return await operation();
-    } finally {
-      _pendingOperations--;
-      if (_pendingOperations == 0 && _allOperationsComplete != null) {
-        _allOperationsComplete!.complete();
-        _allOperationsComplete = null;
-      }
-    }
-  }
-
   @override
   Future<void> initialize() async {
     if (_initialized) return;
@@ -55,14 +38,6 @@ class JsonFileStorage implements OfflineStorage {
     await _fileStore.recoverFromTempFiles(_baseDir!);
     _initialized = true;
   }
-
-  Future<void> _ensureInitialized() async {
-    if (!_initialized) {
-      await initialize();
-    }
-  }
-
-  File _tableFile(String tableName) => File('$basePath/table_$tableName.json');
 
   @override
   Future<void> saveTableSnapshot(
@@ -90,7 +65,10 @@ class JsonFileStorage implements OfflineStorage {
       if (content == null) return null;
 
       try {
-        final data = jsonDecode(content) as List;
+        final data = jsonDecode(content);
+        if (data is! List) {
+          throw FormatException('Expected JSON list, got ${data.runtimeType}');
+        }
         await _fileStore.cleanupBackup(file);
         return data.cast<Map<String, dynamic>>();
       } catch (e) {
@@ -99,7 +77,12 @@ class JsonFileStorage implements OfflineStorage {
         if (await backupFile.exists()) {
           try {
             final backupContent = await backupFile.readAsString();
-            final data = jsonDecode(backupContent) as List;
+            final data = jsonDecode(backupContent);
+            if (data is! List) {
+              throw FormatException(
+                'Expected JSON list in backup, got ${data.runtimeType}',
+              );
+            }
             SdkLogger.i(
               'Recovered table snapshot for "$tableName" from backup',
             );
@@ -131,38 +114,6 @@ class JsonFileStorage implements OfflineStorage {
     return _locks.mutations.synchronized(() => _loadMutationsUnsafe());
   }
 
-  Future<List<PendingMutation>> _loadMutationsUnsafe() async {
-    final content = await _fileStore.readWithFallback(_mutationsFile!);
-    if (content == null) return [];
-
-    try {
-      final data = jsonDecode(content) as List;
-      return data
-          .map((e) => PendingMutation.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } catch (e) {
-      SdkLogger.e('Failed to parse pending mutations: $e');
-      final backupFile = File('${_mutationsFile!.path}.bak');
-      if (await backupFile.exists()) {
-        try {
-          final backupContent = await backupFile.readAsString();
-          final data = jsonDecode(backupContent) as List;
-          SdkLogger.i('Recovered ${data.length} pending mutations from backup');
-          return data
-              .map((e) => PendingMutation.fromJson(e as Map<String, dynamic>))
-              .toList();
-        } catch (backupError) {
-          SdkLogger.e(
-            'Backup also corrupted, pending mutations lost: $backupError',
-          );
-        }
-      } else {
-        SdkLogger.e('No backup file available, pending mutations lost');
-      }
-      return [];
-    }
-  }
-
   @override
   Future<void> dequeueMutation(String requestId) async {
     await _tracked(() async {
@@ -172,11 +123,6 @@ class JsonFileStorage implements OfflineStorage {
         await _saveMutationsUnsafe(mutations);
       });
     });
-  }
-
-  Future<void> _saveMutationsUnsafe(List<PendingMutation> mutations) async {
-    final json = jsonEncode(mutations.map((m) => m.toJson()).toList());
-    await _fileStore.atomicWrite(_mutationsFile!, json);
   }
 
   @override
@@ -199,24 +145,6 @@ class JsonFileStorage implements OfflineStorage {
       if (timeStr == null) return null;
       return DateTime.tryParse(timeStr);
     });
-  }
-
-  Future<Map<String, String>> _loadSyncTimesUnsafe() async {
-    final content = await _fileStore.readWithFallback(_syncTimesFile!);
-    if (content == null) return {};
-
-    try {
-      final data = jsonDecode(content) as Map<String, dynamic>;
-      return data.cast<String, String>();
-    } catch (e) {
-      SdkLogger.e('Failed to parse sync times: $e');
-      return {};
-    }
-  }
-
-  Future<void> _saveSyncTimesUnsafe(Map<String, String> times) async {
-    final json = jsonEncode(times);
-    await _fileStore.atomicWrite(_syncTimesFile!, json);
   }
 
   @override
@@ -267,5 +195,98 @@ class JsonFileStorage implements OfflineStorage {
       _allOperationsComplete = Completer<void>();
       await _allOperationsComplete!.future;
     }
+  }
+
+  Future<T> _tracked<T>(Future<T> Function() operation) async {
+    if (_disposed) {
+      SdkLogger.w('Operation attempted after dispose, ignoring');
+      throw StateError('Storage has been disposed');
+    }
+    _pendingOperations++;
+    try {
+      return await operation();
+    } finally {
+      _pendingOperations--;
+      if (_pendingOperations == 0 && _allOperationsComplete != null) {
+        _allOperationsComplete!.complete();
+        _allOperationsComplete = null;
+      }
+    }
+  }
+
+  Future<void> _ensureInitialized() async {
+    if (!_initialized) {
+      await initialize();
+    }
+  }
+
+  File _tableFile(String tableName) => File('$basePath/table_$tableName.json');
+
+  Future<List<PendingMutation>> _loadMutationsUnsafe() async {
+    final content = await _fileStore.readWithFallback(_mutationsFile!);
+    if (content == null) return [];
+
+    try {
+      final data = jsonDecode(content);
+      if (data is! List) {
+        throw FormatException('Expected JSON list, got ${data.runtimeType}');
+      }
+      return data
+          .whereType<Map<String, dynamic>>()
+          .map(PendingMutation.fromJson)
+          .toList();
+    } catch (e) {
+      SdkLogger.e('Failed to parse pending mutations: $e');
+      final backupFile = File('${_mutationsFile!.path}.bak');
+      if (await backupFile.exists()) {
+        try {
+          final backupContent = await backupFile.readAsString();
+          final data = jsonDecode(backupContent);
+          if (data is! List) {
+            throw FormatException(
+              'Expected JSON list in backup, got ${data.runtimeType}',
+            );
+          }
+          SdkLogger.i('Recovered ${data.length} pending mutations from backup');
+          return data
+              .whereType<Map<String, dynamic>>()
+              .map(PendingMutation.fromJson)
+              .toList();
+        } catch (backupError) {
+          SdkLogger.e(
+            'Backup also corrupted, pending mutations lost: $backupError',
+          );
+        }
+      } else {
+        SdkLogger.e('No backup file available, pending mutations lost');
+      }
+      return [];
+    }
+  }
+
+  Future<void> _saveMutationsUnsafe(List<PendingMutation> mutations) async {
+    final json = jsonEncode(mutations.map((m) => m.toJson()).toList());
+    await _fileStore.atomicWrite(_mutationsFile!, json);
+  }
+
+  Future<Map<String, String>> _loadSyncTimesUnsafe() async {
+    final content = await _fileStore.readWithFallback(_syncTimesFile!);
+    if (content == null) return {};
+
+    try {
+      final data = jsonDecode(content);
+      if (data is! Map) {
+        throw FormatException('Expected JSON object, got ${data.runtimeType}');
+      }
+      return data.cast<String, String>();
+    } catch (e) {
+      SdkLogger.e('Failed to parse sync times: $e');
+      return {};
+    }
+  }
+
+  Future<void> _saveSyncTimesUnsafe(Map<String, String> times) async {
+    final json = jsonEncode(times);
+    await _fileStore.atomicWrite(_syncTimesFile!, json);
   }
 }

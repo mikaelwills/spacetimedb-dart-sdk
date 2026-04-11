@@ -109,15 +109,6 @@ class MockConnection implements SpacetimeDbConnection {
     return _extractRequestId(sentMessages[index]);
   }
 
-  int _extractRequestId(Uint8List data) {
-    final decoder = BsatnDecoder(data);
-    decoder.readU8();
-    decoder.readString();
-    final argsLen = decoder.readU32();
-    decoder.readBytes(argsLen);
-    return decoder.readU32();
-  }
-
   void clearSent() {
     sentMessages.clear();
   }
@@ -151,5 +142,14 @@ class MockConnection implements SpacetimeDbConnection {
     int? requestId,
   }) async {
     throw UnimplementedError('Use ReducerCaller directly in tests');
+  }
+
+  int _extractRequestId(Uint8List data) {
+    final decoder = BsatnDecoder(data);
+    decoder.readU8();
+    decoder.readString();
+    final argsLen = decoder.readU32();
+    decoder.readBytes(argsLen);
+    return decoder.readU32();
   }
 }

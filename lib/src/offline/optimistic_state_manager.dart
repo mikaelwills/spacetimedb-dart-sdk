@@ -165,6 +165,22 @@ class OptimisticStateManager {
     return touchedTables;
   }
 
+  void clearNonOptimisticRows(String tableName) {
+    final table = _cache.getTableByName(tableName);
+    if (table == null) return;
+
+    final optimisticPKs = optimisticPrimaryKeysForTable(tableName);
+    if (optimisticPKs.isEmpty) {
+      table.clear();
+    } else {
+      table.removeRowsWhere((pk) => !optimisticPKs.contains(pk));
+    }
+  }
+
+  void clear() {
+    _entries.clear();
+  }
+
   void _rollbackEntry(OptimisticEntry entry) {
     final table = _cache.getTableByName(entry.tableName);
     if (table == null) return;
@@ -187,21 +203,5 @@ class OptimisticStateManager {
           }
         }
     }
-  }
-
-  void clearNonOptimisticRows(String tableName) {
-    final table = _cache.getTableByName(tableName);
-    if (table == null) return;
-
-    final optimisticPKs = optimisticPrimaryKeysForTable(tableName);
-    if (optimisticPKs.isEmpty) {
-      table.clear();
-    } else {
-      table.removeRowsWhere((pk) => !optimisticPKs.contains(pk));
-    }
-  }
-
-  void clear() {
-    _entries.clear();
   }
 }

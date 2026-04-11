@@ -94,33 +94,6 @@ class SpacetimeDbConnection {
     SdkLogger.i('Authentication token updated');
   }
 
-  Future<String?> _getWebSocketToken() async {
-    if (_currentToken == null) return null;
-
-    try {
-      final httpProtocol = ssl ? 'https' : 'http';
-      final url = Uri.parse(
-        '$httpProtocol://$host/v1/identity/websocket-token',
-      );
-
-      final response = await http.post(
-        url,
-        headers: {'Authorization': 'Bearer $_currentToken'},
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['token'] as String?;
-      } else {
-        SdkLogger.e('Failed to get WebSocket token: ${response.statusCode}');
-        return null;
-      }
-    } catch (e) {
-      SdkLogger.e('Error getting WebSocket token: $e');
-      return null;
-    }
-  }
-
   Future<void> connect() async {
     if (_state is! Disconnected) {
       SdkLogger.i('Already connected or connecting');
@@ -185,6 +158,91 @@ class SpacetimeDbConnection {
     _channel = null;
   }
 
+  void send(Uint8List data) {
+    if (!isConnected) {
+      SdkLogger.i('Cannot send: not connected');
+      return;
+    }
+    _channel!.sink.add(data);
+  }
+
+  void enableAutoReconnect(bool enabled) {
+    _shouldReconnect = enabled;
+  }
+
+  Future<void> reconnect() async {
+    await disconnect();
+    _reconnectAttempts = 0;
+    _updateQuality();
+    _shouldReconnect = true;
+    await connect();
+  }
+
+  Future<void> retryConnection() async {
+    if (_state is! FatalError && _state is! Disconnected) {
+      throw StateError('Cannot retry when state is $_state');
+    }
+
+    SdkLogger.i('Manual retry initiated');
+    _reconnectAttempts = 0;
+    _updateQuality();
+    _shouldReconnect = true;
+    await connect();
+  }
+
+  @Deprecated('Use SubscriptionManager.reducers.call() for async/await support')
+  Future<void> callReducer(
+    String reducerName,
+    Uint8List args, {
+    int? requestId,
+  }) async {
+    final message = CallReducerMessage(
+      reducerName: reducerName,
+      args: args,
+      requestId: requestId ?? _nextRequestId++,
+    );
+
+    send(message.encode());
+  }
+
+  Future<void> dispose() async {
+    _keepAlive?.stop();
+    await disconnect();
+    await _qualityController.close();
+    await _stateController.close();
+    await _messageController.close();
+    await _errorController.close();
+  }
+
+  Future<String?> _getWebSocketToken() async {
+    if (_currentToken == null) return null;
+
+    try {
+      final httpProtocol = ssl ? 'https' : 'http';
+      final url = Uri.parse(
+        '$httpProtocol://$host/v1/identity/websocket-token',
+      );
+
+      final response = await http.post(
+        url,
+        headers: {'Authorization': 'Bearer $_currentToken'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is! Map) return null;
+        final String token = data['token'] ?? '';
+        return token.isEmpty ? null : token;
+      } else {
+        SdkLogger.e('Failed to get WebSocket token: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      SdkLogger.e('Error getting WebSocket token: $e');
+      return null;
+    }
+  }
+
   void _updateState(ConnectionState newState) {
     final previous = _state;
     if (previous.runtimeType != newState.runtimeType) {
@@ -226,14 +284,6 @@ class SpacetimeDbConnection {
       _lastLoggedState = _state;
     }
     _qualityController.add(quality);
-  }
-
-  void send(Uint8List data) {
-    if (!isConnected) {
-      SdkLogger.i('Cannot send: not connected');
-      return;
-    }
-    _channel!.sink.add(data);
   }
 
   void _setupMessageListener() {
@@ -320,45 +370,6 @@ class SpacetimeDbConnection {
     });
   }
 
-  void enableAutoReconnect(bool enabled) {
-    _shouldReconnect = enabled;
-  }
-
-  Future<void> reconnect() async {
-    await disconnect();
-    _reconnectAttempts = 0;
-    _updateQuality();
-    _shouldReconnect = true;
-    await connect();
-  }
-
-  Future<void> retryConnection() async {
-    if (_state is! FatalError && _state is! Disconnected) {
-      throw StateError('Cannot retry when state is $_state');
-    }
-
-    SdkLogger.i('Manual retry initiated');
-    _reconnectAttempts = 0;
-    _updateQuality();
-    _shouldReconnect = true;
-    await connect();
-  }
-
-  @Deprecated('Use SubscriptionManager.reducers.call() for async/await support')
-  Future<void> callReducer(
-    String reducerName,
-    Uint8List args, {
-    int? requestId,
-  }) async {
-    final message = CallReducerMessage(
-      reducerName: reducerName,
-      args: args,
-      requestId: requestId ?? _nextRequestId++,
-    );
-
-    send(message.encode());
-  }
-
   void _setupKeepAlive() {
     _keepAlive = KeepAliveMonitor(
       onSendPing: () {
@@ -391,15 +402,6 @@ class SpacetimeDbConnection {
   void _handleStaleConnection() {
     _keepAlive?.stop();
     _channel?.sink.close();
-  }
-
-  Future<void> dispose() async {
-    _keepAlive?.stop();
-    await disconnect();
-    await _qualityController.close();
-    await _stateController.close();
-    await _messageController.close();
-    await _errorController.close();
   }
 }
 

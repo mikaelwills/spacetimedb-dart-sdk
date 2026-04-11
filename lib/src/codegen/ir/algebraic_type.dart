@@ -201,6 +201,14 @@ sealed class AlgebraicType {
     _ => false,
   };
 
+  String? refTypeName(List<TypeDef> typeDefs) => switch (this) {
+    RefType(index: final i) => () {
+      final typeDef = typeDefs.where((td) => td.typeRef == i).firstOrNull;
+      return (typeDef != null && typeDef.name.isNotEmpty) ? typeDef.name : null;
+    }(),
+    _ => null,
+  };
+
   static String _resolveRefTypeName(
     int index,
     TypeSpace? typeSpace,
@@ -219,14 +227,6 @@ sealed class AlgebraicType {
     if (input.isEmpty) return input;
     return input[0].toUpperCase() + input.substring(1);
   }
-
-  String? refTypeName(List<TypeDef> typeDefs) => switch (this) {
-    RefType(index: final i) => () {
-      final typeDef = typeDefs.where((td) => td.typeRef == i).firstOrNull;
-      return (typeDef != null && typeDef.name.isNotEmpty) ? typeDef.name : null;
-    }(),
-    _ => null,
-  };
 }
 
 class PrimitiveType extends AlgebraicType {
@@ -270,7 +270,7 @@ class ProductField {
   final String? name;
   final AlgebraicType type;
 
-  const ProductField({this.name, required this.type});
+  const ProductField({required this.type, this.name});
 
   factory ProductField.fromJson(Map<String, dynamic> json) {
     final nameObj = json['name'];
@@ -290,7 +290,7 @@ class IrSumVariant {
   final String? name;
   final AlgebraicType type;
 
-  const IrSumVariant({this.name, required this.type});
+  const IrSumVariant({required this.type, this.name});
 
   factory IrSumVariant.fromJson(Map<String, dynamic> json) {
     final nameObj = json['name'];

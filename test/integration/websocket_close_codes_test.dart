@@ -60,9 +60,8 @@ void main() {
       channel.stream.listen(
         (data) {
           receivedData = true;
-          print(
-            '  Received data: ${data.runtimeType} (${(data as List).length} bytes)',
-          );
+          final length = data is List ? data.length : -1;
+          print('  Received data: ${data.runtimeType} ($length bytes)');
         },
         onError: (e) => print('  Error: $e'),
         onDone: () {

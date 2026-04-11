@@ -63,7 +63,7 @@ class ProductElement {
   final String? name;
   final AlgebraicType type;
 
-  ProductElement({this.name, required this.type});
+  ProductElement({required this.type, this.name});
 
   factory ProductElement.fromJson(Map<String, dynamic> json) {
     final nameObj = json['name'];
@@ -134,9 +134,9 @@ class SumVariant {
   final AlgebraicType parsedType;
 
   SumVariant({
-    this.name,
     required this.algebraicType,
     required this.parsedType,
+    this.name,
   });
 
   factory SumVariant.fromJson(Map<String, dynamic> json) {

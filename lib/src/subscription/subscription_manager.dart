@@ -132,7 +132,113 @@ class SubscriptionManager {
   Identity? get identity => _identity;
   String? get address => _address;
 
-  // --- Connection Monitoring ---
+  Future<void> subscribe(List<String> queries) async {
+    _activeSubscriptionQueries.addAll(queries);
+
+    final message = SubscribeMessage(queries);
+    _connection.send(message.encode());
+
+    await onInitialSubscription.first;
+  }
+
+  void subscribeSingle(String query, {int requestId = 0, int queryId = 0}) {
+    final message = SubscribeSingleMessage(
+      query,
+      requestId: requestId,
+      queryId: queryId,
+    );
+    _connection.send(message.encode());
+  }
+
+  void subscribeMulti(
+    List<String> queries, {
+    int requestId = 0,
+    int queryId = 0,
+  }) {
+    final message = SubscribeMultiMessage(
+      queries,
+      requestId: requestId,
+      queryId: queryId,
+    );
+    _connection.send(message.encode());
+  }
+
+  void oneOffQuery(Uint8List messageId, String query) {
+    final message = OneOffQueryMessage(
+      messageId: messageId,
+      queryString: query,
+    );
+    _connection.send(message.encode());
+  }
+
+  void unsubscribe(int queryId, {int requestId = 0}) {
+    final message = UnsubscribeMessage(queryId: queryId, requestId: requestId);
+    _connection.send(message.encode());
+  }
+
+  void unsubscribeMulti(int queryId, {int requestId = 0}) {
+    final message = UnsubscribeMultiMessage(
+      queryId: queryId,
+      requestId: requestId,
+    );
+    _connection.send(message.encode());
+  }
+
+  void callProcedure(
+    String procedureName,
+    Uint8List args, {
+    int requestId = 0,
+  }) {
+    final message = CallProcedureMessage(
+      procedureName: procedureName,
+      args: args,
+      requestId: requestId,
+    );
+    _connection.send(message.encode());
+  }
+
+  // --- Offline API (delegates to syncer/coordinator) ---
+
+  Future<void> loadFromOfflineCache() async {
+    await _mutationSyncer?.loadFromOfflineCache();
+  }
+
+  Future<void> syncPendingMutations() async {
+    await _mutationSyncer?.syncPendingMutations();
+  }
+
+  Future<List<PendingMutation>> getPendingMutations() async {
+    return await _mutationSyncer?.getPendingMutations() ?? [];
+  }
+
+  Future<void> clearPendingMutation(String requestId) async {
+    await _mutationSyncer?.clearPendingMutation(requestId);
+  }
+
+  Future<void> clearAllPendingMutations() async {
+    await _mutationSyncer?.clearAllPendingMutations();
+  }
+
+  // --- Lifecycle ---
+
+  Future<void> dispose() async {
+    _disposed = true;
+    _messageSubscription?.cancel();
+    _connectionStatusSubscription?.cancel();
+    _initialSubscriptionController.close();
+    _transactionUpdateController.close();
+    _transactionUpdateLightController.close();
+    _identityTokenController.close();
+    _oneOffQueryResponseController.close();
+    _subscribeAppliedController.close();
+    _unsubscribeAppliedController.close();
+    _subscriptionErrorController.close();
+    _subscribeMultiAppliedController.close();
+    _unsubscribeMultiAppliedController.close();
+    _procedureResultController.close();
+    reducerEmitter.dispose();
+    await _mutationSyncer?.dispose();
+  }
 
   void _startConnectionMonitoring() {
     bool wasReconnecting = false;
@@ -168,8 +274,6 @@ class SubscriptionManager {
       _mutationSyncer!.syncPendingMutations();
     }
   }
-
-  // --- Message Handling ---
 
   void _startListening() {
     _messageSubscription = _connection.onMessage.listen(_handleMessage);
@@ -261,8 +365,6 @@ class SubscriptionManager {
       _connection.send(resubscribe.encode());
     }
   }
-
-  // --- Transaction Processing ---
 
   Future<void> _handleInitialSubscription(
     InitialSubscriptionMessage message,
@@ -467,115 +569,5 @@ class SubscriptionManager {
     _mutationSyncer?.persistTableSnapshots(
       onlyTables: tableUpdates.map((tu) => tu.tableName).toSet(),
     );
-  }
-
-  // --- Subscription API ---
-
-  Future<void> subscribe(List<String> queries) async {
-    _activeSubscriptionQueries.addAll(queries);
-
-    final message = SubscribeMessage(queries);
-    _connection.send(message.encode());
-
-    await onInitialSubscription.first;
-  }
-
-  void subscribeSingle(String query, {int requestId = 0, int queryId = 0}) {
-    final message = SubscribeSingleMessage(
-      query,
-      requestId: requestId,
-      queryId: queryId,
-    );
-    _connection.send(message.encode());
-  }
-
-  void subscribeMulti(
-    List<String> queries, {
-    int requestId = 0,
-    int queryId = 0,
-  }) {
-    final message = SubscribeMultiMessage(
-      queries,
-      requestId: requestId,
-      queryId: queryId,
-    );
-    _connection.send(message.encode());
-  }
-
-  void oneOffQuery(Uint8List messageId, String query) {
-    final message = OneOffQueryMessage(
-      messageId: messageId,
-      queryString: query,
-    );
-    _connection.send(message.encode());
-  }
-
-  void unsubscribe(int queryId, {int requestId = 0}) {
-    final message = UnsubscribeMessage(queryId: queryId, requestId: requestId);
-    _connection.send(message.encode());
-  }
-
-  void unsubscribeMulti(int queryId, {int requestId = 0}) {
-    final message = UnsubscribeMultiMessage(
-      queryId: queryId,
-      requestId: requestId,
-    );
-    _connection.send(message.encode());
-  }
-
-  void callProcedure(
-    String procedureName,
-    Uint8List args, {
-    int requestId = 0,
-  }) {
-    final message = CallProcedureMessage(
-      procedureName: procedureName,
-      args: args,
-      requestId: requestId,
-    );
-    _connection.send(message.encode());
-  }
-
-  // --- Offline API (delegates to syncer/coordinator) ---
-
-  Future<void> loadFromOfflineCache() async {
-    await _mutationSyncer?.loadFromOfflineCache();
-  }
-
-  Future<void> syncPendingMutations() async {
-    await _mutationSyncer?.syncPendingMutations();
-  }
-
-  Future<List<PendingMutation>> getPendingMutations() async {
-    return await _mutationSyncer?.getPendingMutations() ?? [];
-  }
-
-  Future<void> clearPendingMutation(String requestId) async {
-    await _mutationSyncer?.clearPendingMutation(requestId);
-  }
-
-  Future<void> clearAllPendingMutations() async {
-    await _mutationSyncer?.clearAllPendingMutations();
-  }
-
-  // --- Lifecycle ---
-
-  Future<void> dispose() async {
-    _disposed = true;
-    _messageSubscription?.cancel();
-    _connectionStatusSubscription?.cancel();
-    _initialSubscriptionController.close();
-    _transactionUpdateController.close();
-    _transactionUpdateLightController.close();
-    _identityTokenController.close();
-    _oneOffQueryResponseController.close();
-    _subscribeAppliedController.close();
-    _unsubscribeAppliedController.close();
-    _subscriptionErrorController.close();
-    _subscribeMultiAppliedController.close();
-    _unsubscribeMultiAppliedController.close();
-    _procedureResultController.close();
-    reducerEmitter.dispose();
-    await _mutationSyncer?.dispose();
   }
 }

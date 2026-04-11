@@ -25,34 +25,6 @@ class TableCache<T> {
     this.isEvent = false,
   });
 
-  void _refreshRowsNotifier() {
-    rows.value =
-        _rowsByPrimaryKey.isNotEmpty
-            ? List<T>.of(_rowsByPrimaryKey.values)
-            : List<T>.of(_rows);
-  }
-
-  void _emitChanges(_RowChanges<T> changes, EventContext context) {
-    if (!isEvent) {
-      SdkLogger.d(
-        'EMIT_CHANGES[$tableName]: inserts=${changes.inserted.length}, updates=${changes.updated.length}, deletes=${changes.deleted.length}',
-      );
-    }
-    for (final row in changes.inserted) {
-      lastEvent.value = TableInsertEvent(context, row);
-    }
-
-    for (final row in changes.deleted) {
-      lastEvent.value = TableDeleteEvent(context, row);
-    }
-
-    for (final (oldRow, newRow) in changes.updated) {
-      lastEvent.value = TableUpdateEvent(context, oldRow, newRow);
-    }
-
-    _refreshRowsNotifier();
-  }
-
   /// Apply transaction update with event context
   ///
   /// Updates the cache with inserts/deletes from a transaction and emits
@@ -144,22 +116,6 @@ class TableCache<T> {
     return _rowsByPrimaryKey.isNotEmpty ? _rowsByPrimaryKey.values : _rows;
   }
 
-  void _decodeAndStoreRows(BsatnRowList rowList) {
-    final rowBytes = rowList.getRows();
-
-    for (final bytes in rowBytes) {
-      final bsatnDecoder = BsatnDecoder(bytes);
-      final row = decoder.decode(bsatnDecoder);
-
-      final primaryKey = decoder.getPrimaryKey(row);
-      if (primaryKey != null) {
-        _rowsByPrimaryKey[primaryKey] = row;
-      } else {
-        _rows.add(row);
-      }
-    }
-  }
-
   void applyDeletes(BsatnRowList deletes) {
     final rowBytes = deletes.getRows();
     for (final bytes in rowBytes) {
@@ -172,52 +128,6 @@ class TableCache<T> {
         _rows.remove(row);
       }
     }
-  }
-
-  _RowChanges<T> _applyChanges(BsatnRowList deletes, BsatnRowList inserts) {
-    final changes = _RowChanges<T>();
-    final oldValues = <dynamic, T>{};
-
-    final deleteBytes = deletes.getRows();
-    final insertBytes = inserts.getRows();
-
-    for (final bytes in deleteBytes) {
-      final bsatnDecoder = BsatnDecoder(bytes);
-      final row = decoder.decode(bsatnDecoder);
-      final primaryKey = decoder.getPrimaryKey(row);
-      if (primaryKey != null) {
-        final old = _rowsByPrimaryKey.remove(primaryKey);
-        if (old != null) {
-          oldValues[primaryKey] = old;
-          changes.deleted.add(old);
-        } else {
-          changes.deleted.add(row);
-        }
-      } else {
-        _rows.remove(row);
-        changes.deleted.add(row);
-      }
-    }
-
-    for (final bytes in insertBytes) {
-      final bsatnDecoder = BsatnDecoder(bytes);
-      final row = decoder.decode(bsatnDecoder);
-      final primaryKey = decoder.getPrimaryKey(row);
-
-      if (primaryKey != null) {
-        if (oldValues.containsKey(primaryKey)) {
-          changes.updated.add((oldValues[primaryKey]!, row));
-        } else {
-          changes.inserted.add(row);
-        }
-        _rowsByPrimaryKey[primaryKey] = row;
-      } else {
-        changes.inserted.add(row);
-        _rows.add(row);
-      }
-    }
-
-    return changes;
   }
 
   /// Clears all rows from the cache
@@ -334,6 +244,96 @@ class TableCache<T> {
       return test(pk);
     });
     _refreshRowsNotifier();
+  }
+
+  void _refreshRowsNotifier() {
+    rows.value =
+        _rowsByPrimaryKey.isNotEmpty
+            ? List<T>.of(_rowsByPrimaryKey.values)
+            : List<T>.of(_rows);
+  }
+
+  void _emitChanges(_RowChanges<T> changes, EventContext context) {
+    if (!isEvent) {
+      SdkLogger.d(
+        'EMIT_CHANGES[$tableName]: inserts=${changes.inserted.length}, updates=${changes.updated.length}, deletes=${changes.deleted.length}',
+      );
+    }
+    for (final row in changes.inserted) {
+      lastEvent.value = TableInsertEvent(context, row);
+    }
+
+    for (final row in changes.deleted) {
+      lastEvent.value = TableDeleteEvent(context, row);
+    }
+
+    for (final (oldRow, newRow) in changes.updated) {
+      lastEvent.value = TableUpdateEvent(context, oldRow, newRow);
+    }
+
+    _refreshRowsNotifier();
+  }
+
+  void _decodeAndStoreRows(BsatnRowList rowList) {
+    final rowBytes = rowList.getRows();
+
+    for (final bytes in rowBytes) {
+      final bsatnDecoder = BsatnDecoder(bytes);
+      final row = decoder.decode(bsatnDecoder);
+
+      final primaryKey = decoder.getPrimaryKey(row);
+      if (primaryKey != null) {
+        _rowsByPrimaryKey[primaryKey] = row;
+      } else {
+        _rows.add(row);
+      }
+    }
+  }
+
+  _RowChanges<T> _applyChanges(BsatnRowList deletes, BsatnRowList inserts) {
+    final changes = _RowChanges<T>();
+    final oldValues = <dynamic, T>{};
+
+    final deleteBytes = deletes.getRows();
+    final insertBytes = inserts.getRows();
+
+    for (final bytes in deleteBytes) {
+      final bsatnDecoder = BsatnDecoder(bytes);
+      final row = decoder.decode(bsatnDecoder);
+      final primaryKey = decoder.getPrimaryKey(row);
+      if (primaryKey != null) {
+        final old = _rowsByPrimaryKey.remove(primaryKey);
+        if (old != null) {
+          oldValues[primaryKey] = old;
+          changes.deleted.add(old);
+        } else {
+          changes.deleted.add(row);
+        }
+      } else {
+        _rows.remove(row);
+        changes.deleted.add(row);
+      }
+    }
+
+    for (final bytes in insertBytes) {
+      final bsatnDecoder = BsatnDecoder(bytes);
+      final row = decoder.decode(bsatnDecoder);
+      final primaryKey = decoder.getPrimaryKey(row);
+
+      if (primaryKey != null) {
+        if (oldValues.containsKey(primaryKey)) {
+          changes.updated.add((oldValues[primaryKey]!, row));
+        } else {
+          changes.inserted.add(row);
+        }
+        _rowsByPrimaryKey[primaryKey] = row;
+      } else {
+        changes.inserted.add(row);
+        _rows.add(row);
+      }
+    }
+
+    return changes;
   }
 }
 

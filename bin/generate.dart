@@ -38,16 +38,16 @@ void main(List<String> arguments) async {
   try {
     final results = parser.parse(arguments);
 
-    if (results['help'] as bool) {
+    if (results['help'] ?? false) {
       _printUsage(parser);
       return;
     }
 
-    final database = results['database'] as String?;
-    final server = results['server'] as String?;
-    final projectPath = results['project-path'] as String?;
-    final binPath = results['bin-path'] as String?;
-    final output = results['output'] as String;
+    final String? database = results['database'];
+    final String? server = results['server'];
+    final String? projectPath = results['project-path'];
+    final String? binPath = results['bin-path'];
+    final String output = results['output'] ?? '';
 
     // Validate: must provide EITHER (server + database) OR (project-path) OR (bin-path)
     final hasNetwork = server != null && database != null;

@@ -62,18 +62,32 @@ class OptimisticChange {
   };
 
   factory OptimisticChange.fromJson(Map<String, dynamic> json) {
-    final type = OptimisticChangeType.values.byName(json['type'] as String);
-    final tableName = json['tableName'] as String;
-    final oldRowJson = json['oldRowJson'] as Map<String, dynamic>?;
-    final newRowJson = json['newRowJson'] as Map<String, dynamic>?;
+    final String typeName = json['type'] ?? '';
+    final String tableName = json['tableName'] ?? '';
+    final Map<String, dynamic>? oldRowJson = json['oldRowJson'];
+    final Map<String, dynamic>? newRowJson = json['newRowJson'];
 
+    if (typeName.isEmpty || tableName.isEmpty) {
+      throw FormatException('Invalid OptimisticChange JSON: $json');
+    }
+
+    final type = OptimisticChangeType.values.byName(typeName);
     switch (type) {
       case OptimisticChangeType.insert:
-        return OptimisticChange.insert(tableName, newRowJson!);
+        if (newRowJson == null) {
+          throw FormatException('Insert missing newRowJson: $json');
+        }
+        return OptimisticChange.insert(tableName, newRowJson);
       case OptimisticChangeType.update:
-        return OptimisticChange.update(tableName, oldRowJson!, newRowJson!);
+        if (oldRowJson == null || newRowJson == null) {
+          throw FormatException('Update missing old/newRowJson: $json');
+        }
+        return OptimisticChange.update(tableName, oldRowJson, newRowJson);
       case OptimisticChangeType.delete:
-        return OptimisticChange.delete(tableName, oldRowJson!);
+        if (oldRowJson == null) {
+          throw FormatException('Delete missing oldRowJson: $json');
+        }
+        return OptimisticChange.delete(tableName, oldRowJson);
     }
   }
 }

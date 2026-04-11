@@ -51,14 +51,6 @@ class BsatnDecoder {
     return hexDump(remaining);
   }
 
-  void _checkRemaining(int needed) {
-    if (_offset + needed > _bytes.length) {
-      throw StateError(
-        'Not enough bytes: need $needed, have $remaining at offset $_offset',
-      );
-    }
-  }
-
   /// Decodes an unsigned 8-bit integer (0-255)
   ///
   /// Example:
@@ -272,5 +264,13 @@ class BsatnDecoder {
     }
 
     return map;
+  }
+
+  void _checkRemaining(int needed) {
+    if (_offset + needed > _bytes.length) {
+      throw StateError(
+        'Not enough bytes: need $needed, have $remaining at offset $_offset',
+      );
+    }
   }
 }

@@ -40,25 +40,27 @@ void main() async {
     if (line.trim().isEmpty) continue;
 
     try {
-      final json = jsonDecode(line) as Map<String, dynamic>;
-      final type = json['type'] as String?;
+      final decoded = jsonDecode(line);
+      if (decoded is! Map<String, dynamic>) continue;
+      final json = decoded;
+      final String type = json['type'] ?? '';
 
       // 1. Track Groups (to build full test names)
       if (type == 'group') {
-        final group = json['group'] as Map<String, dynamic>;
-        final id = group['id'] as int;
-        final name = group['name'] as String?;
-        if (name != null && name.isNotEmpty) {
+        final Map<String, dynamic> group = json['group'] ?? const {};
+        final int id = group['id'] ?? 0;
+        final String name = group['name'] ?? '';
+        if (name.isNotEmpty) {
           groupNames[id] = name;
         }
       }
       // 2. Track Test Starts (Build the full name)
       else if (type == 'testStart') {
-        final test = json['test'] as Map<String, dynamic>;
-        final id = test['id'] as int;
-        final name = test['name'] as String;
-        final groupIds =
-            (test['groupIDs'] as List<dynamic>?)?.cast<int>() ?? [];
+        final Map<String, dynamic> test = json['test'] ?? const {};
+        final int id = test['id'] ?? 0;
+        final String name = test['name'] ?? '';
+        final List groupIdsRaw = test['groupIDs'] ?? const [];
+        final groupIds = groupIdsRaw.cast<int>();
 
         // Build full name: "Group Name - SubGroup - Test Name"
         final buffer = StringBuffer();
@@ -72,21 +74,21 @@ void main() async {
       }
       // 3. Capture Errors
       else if (type == 'error') {
-        final testId = json['testID'] as int;
-        final error = json['error'] as String;
-        final stackTrace = json['stackTrace'] as String?;
+        final int testId = json['testID'] ?? 0;
+        final String error = json['error'] ?? '';
+        final String stackTrace = json['stackTrace'] ?? '';
 
         testErrors.putIfAbsent(testId, () => StringBuffer()).writeln(error);
-        if (stackTrace != null) {
+        if (stackTrace.isNotEmpty) {
           testErrors[testId]!.writeln(stackTrace);
         }
       }
       // 4. Process Done (The Filter Logic)
       else if (type == 'testDone') {
-        final testId = json['testID'] as int;
-        final result = json['result'] as String?;
-        final hidden = json['hidden'] as bool? ?? false;
-        final skipped = json['skipped'] as bool? ?? false;
+        final int testId = json['testID'] ?? 0;
+        final String result = json['result'] ?? '';
+        final bool hidden = json['hidden'] ?? false;
+        final bool skipped = json['skipped'] ?? false;
 
         // CRITICAL FIX: Ignore "hidden" tests.
         // These are usually Suites or Groups that "failed" only because a child failed.
