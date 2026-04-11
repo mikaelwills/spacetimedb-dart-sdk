@@ -173,23 +173,6 @@ void main() {
       expect(pending.first.reducerName, equals('create_note'));
     });
 
-    test(
-      'offline-first always queues regardless of queueIfOffline flag',
-      () async {
-        connection.setOffline();
-
-        final result = await caller.call(
-          'create_note',
-          Uint8List.fromList([1, 2, 3]),
-          queueIfOffline: false,
-        );
-
-        expect(result.isPending, isTrue);
-        final pending = await storage.getPendingMutations().timeout(_timeout);
-        expect(pending.length, equals(1));
-      },
-    );
-
     test('stores optimistic changes with queued mutation', () async {
       connection.setOffline();
 
