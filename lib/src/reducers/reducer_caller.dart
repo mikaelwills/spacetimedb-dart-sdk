@@ -56,14 +56,13 @@ class ReducerCaller {
     String reducerName,
     Uint8List args, {
     Duration? timeout,
-    bool queueIfOffline = true,
-    bool isEventTable = false,
+    bool dropIfOffline = false,
     List<OptimisticChange>? optimisticChanges,
   }) async {
-    if (isEventTable) {
-      if (!_isOnline) {
-        return TransactionResult.dropped(reducerName: reducerName);
-      }
+    if (dropIfOffline && !_isOnline) {
+      return TransactionResult.dropped(reducerName: reducerName);
+    }
+    if (dropIfOffline) {
       return _sendDirectly(reducerName, args, timeout, optimisticChanges);
     }
 

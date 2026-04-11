@@ -112,7 +112,7 @@ class ReducerGenerator {
     }
     final defName = '${toCamelCase(reducer.name)}Def';
     encoderStatements.writeln(
-      "return await _reducerCaller.call($defName.name, encoder.toBytes(), optimisticChanges: optimisticChanges, isEventTable: isEventTable);",
+      "return await _reducerCaller.call($defName.name, encoder.toBytes(), optimisticChanges: optimisticChanges, dropIfOffline: dropIfOffline);",
     );
 
     return Method((m) {
@@ -147,7 +147,7 @@ class ReducerGenerator {
         Parameter(
           (p) =>
               p
-                ..name = 'isEventTable'
+                ..name = 'dropIfOffline'
                 ..named = true
                 ..defaultTo = const Code('false')
                 ..type = refer('bool'),

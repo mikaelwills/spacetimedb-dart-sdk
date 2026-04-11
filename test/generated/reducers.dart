@@ -15,7 +15,7 @@ class Reducers {
     required String path,
     required String name,
     List<OptimisticChange>? optimisticChanges,
-    bool isEventTable = false,
+    bool dropIfOffline = false,
   }) async {
     final encoder = BsatnEncoder();
     encoder.writeString(path);
@@ -24,7 +24,7 @@ class Reducers {
       createFolderDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
-      isEventTable: isEventTable,
+      dropIfOffline: dropIfOffline,
     );
   }
 
@@ -32,7 +32,7 @@ class Reducers {
     required String title,
     required String content,
     List<OptimisticChange>? optimisticChanges,
-    bool isEventTable = false,
+    bool dropIfOffline = false,
   }) async {
     final encoder = BsatnEncoder();
     encoder.writeString(title);
@@ -41,40 +41,40 @@ class Reducers {
       createNoteDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
-      isEventTable: isEventTable,
+      dropIfOffline: dropIfOffline,
     );
   }
 
   Future<TransactionResult> deleteAllFolders({
     List<OptimisticChange>? optimisticChanges,
-    bool isEventTable = false,
+    bool dropIfOffline = false,
   }) async {
     final encoder = BsatnEncoder();
     return await _reducerCaller.call(
       deleteAllFoldersDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
-      isEventTable: isEventTable,
+      dropIfOffline: dropIfOffline,
     );
   }
 
   Future<TransactionResult> deleteAllNotes({
     List<OptimisticChange>? optimisticChanges,
-    bool isEventTable = false,
+    bool dropIfOffline = false,
   }) async {
     final encoder = BsatnEncoder();
     return await _reducerCaller.call(
       deleteAllNotesDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
-      isEventTable: isEventTable,
+      dropIfOffline: dropIfOffline,
     );
   }
 
   Future<TransactionResult> deleteFolder({
     required String path,
     List<OptimisticChange>? optimisticChanges,
-    bool isEventTable = false,
+    bool dropIfOffline = false,
   }) async {
     final encoder = BsatnEncoder();
     encoder.writeString(path);
@@ -82,14 +82,14 @@ class Reducers {
       deleteFolderDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
-      isEventTable: isEventTable,
+      dropIfOffline: dropIfOffline,
     );
   }
 
   Future<TransactionResult> deleteNote({
     required int noteId,
     List<OptimisticChange>? optimisticChanges,
-    bool isEventTable = false,
+    bool dropIfOffline = false,
   }) async {
     final encoder = BsatnEncoder();
     encoder.writeU32(noteId);
@@ -97,7 +97,7 @@ class Reducers {
       deleteNoteDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
-      isEventTable: isEventTable,
+      dropIfOffline: dropIfOffline,
     );
   }
 
@@ -106,7 +106,7 @@ class Reducers {
     required String title,
     required String content,
     List<OptimisticChange>? optimisticChanges,
-    bool isEventTable = false,
+    bool dropIfOffline = false,
   }) async {
     final encoder = BsatnEncoder();
     encoder.writeU32(noteId);
@@ -116,7 +116,7 @@ class Reducers {
       updateNoteDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
-      isEventTable: isEventTable,
+      dropIfOffline: dropIfOffline,
     );
   }
 
