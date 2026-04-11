@@ -169,3 +169,35 @@ class EventCollector<T> {
     table.lastBatch.removeListener(_listener);
   }
 }
+
+/// Records every fire of a [ValueListenable], capturing fire count and a
+/// snapshot of the value at each fire.
+///
+/// Used by reactive-invariant tests to assert that N-row transactions fire
+/// exactly once, and that the observed values match the post-transaction
+/// state. Dispose removes the listener.
+class NotifierFireRecorder<T> {
+  final ValueListenable<T> listenable;
+  int fireCount = 0;
+  final List<T> values = [];
+  late final VoidCallback _listener;
+
+  NotifierFireRecorder(this.listenable) {
+    _listener = () {
+      fireCount++;
+      values.add(listenable.value);
+    };
+    listenable.addListener(_listener);
+  }
+
+  T? get lastValue => values.isEmpty ? null : values.last;
+
+  void reset() {
+    fireCount = 0;
+    values.clear();
+  }
+
+  void dispose() {
+    listenable.removeListener(_listener);
+  }
+}

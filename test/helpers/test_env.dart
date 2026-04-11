@@ -57,6 +57,11 @@ Future<TestEnv> createTestEnv({
   subManager.reducerRegistry.register(updateNoteDef);
   subManager.reducerRegistry.register(deleteNoteDef);
   subManager.reducerRegistry.register(deleteAllNotesDef);
+  subManager.reducerRegistry.register(createNotesBulkDef);
+  subManager.reducerRegistry.register(updateAllNotesDef);
+  subManager.reducerRegistry.register(mixedNoteBatchDef);
+  subManager.reducerRegistry.register(noOpDef);
+  subManager.reducerRegistry.register(diagInsertFiveDef);
   subManager.reducerRegistry.register(createFolderDef);
   subManager.reducerRegistry.register(deleteFolderDef);
   subManager.reducerRegistry.register(deleteAllFoldersDef);

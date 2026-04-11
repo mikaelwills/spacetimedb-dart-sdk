@@ -40,6 +40,26 @@ class CreateNoteArgsDecoder implements ReducerArgDecoder<CreateNoteArgs> {
   }
 }
 
+class CreateNotesBulkArgs {
+  CreateNotesBulkArgs({required this.count, required this.titlePrefix});
+
+  final int count;
+
+  final String titlePrefix;
+}
+
+class CreateNotesBulkArgsDecoder
+    implements ReducerArgDecoder<CreateNotesBulkArgs> {
+  const CreateNotesBulkArgsDecoder();
+
+  @override
+  CreateNotesBulkArgs decode(BsatnDecoder decoder) {
+    final count = decoder.readU32();
+    final titlePrefix = decoder.readString();
+    return CreateNotesBulkArgs(count: count, titlePrefix: titlePrefix);
+  }
+}
+
 class DeleteAllFoldersArgs {
   DeleteAllFoldersArgs();
 }
@@ -100,6 +120,86 @@ class DeleteNoteArgsDecoder implements ReducerArgDecoder<DeleteNoteArgs> {
   }
 }
 
+class DiagInsertFiveArgs {
+  DiagInsertFiveArgs();
+}
+
+class DiagInsertFiveArgsDecoder
+    implements ReducerArgDecoder<DiagInsertFiveArgs> {
+  const DiagInsertFiveArgsDecoder();
+
+  @override
+  DiagInsertFiveArgs decode(BsatnDecoder decoder) {
+    return DiagInsertFiveArgs();
+  }
+}
+
+class MixedNoteBatchArgs {
+  MixedNoteBatchArgs({
+    required this.inserts,
+    required this.updates,
+    required this.deletes,
+    required this.marker,
+  });
+
+  final int inserts;
+
+  final int updates;
+
+  final int deletes;
+
+  final String marker;
+}
+
+class MixedNoteBatchArgsDecoder
+    implements ReducerArgDecoder<MixedNoteBatchArgs> {
+  const MixedNoteBatchArgsDecoder();
+
+  @override
+  MixedNoteBatchArgs decode(BsatnDecoder decoder) {
+    final inserts = decoder.readU32();
+    final updates = decoder.readU32();
+    final deletes = decoder.readU32();
+    final marker = decoder.readString();
+    return MixedNoteBatchArgs(
+      inserts: inserts,
+      updates: updates,
+      deletes: deletes,
+      marker: marker,
+    );
+  }
+}
+
+class NoOpArgs {
+  NoOpArgs();
+}
+
+class NoOpArgsDecoder implements ReducerArgDecoder<NoOpArgs> {
+  const NoOpArgsDecoder();
+
+  @override
+  NoOpArgs decode(BsatnDecoder decoder) {
+    return NoOpArgs();
+  }
+}
+
+class UpdateAllNotesArgs {
+  UpdateAllNotesArgs({required this.newContent});
+
+  final String newContent;
+}
+
+class UpdateAllNotesArgsDecoder
+    implements ReducerArgDecoder<UpdateAllNotesArgs> {
+  const UpdateAllNotesArgsDecoder();
+
+  @override
+  UpdateAllNotesArgs decode(BsatnDecoder decoder) {
+    final newContent = decoder.readString();
+    return UpdateAllNotesArgs(newContent: newContent);
+  }
+}
+
 class UpdateNoteArgs {
   UpdateNoteArgs({
     required this.noteId,
@@ -134,6 +234,10 @@ const createNoteDef = ReducerDef<CreateNoteArgs>(
   'create_note',
   CreateNoteArgsDecoder(),
 );
+const createNotesBulkDef = ReducerDef<CreateNotesBulkArgs>(
+  'create_notes_bulk',
+  CreateNotesBulkArgsDecoder(),
+);
 const deleteAllFoldersDef = ReducerDef<DeleteAllFoldersArgs>(
   'delete_all_folders',
   DeleteAllFoldersArgsDecoder(),
@@ -149,6 +253,19 @@ const deleteFolderDef = ReducerDef<DeleteFolderArgs>(
 const deleteNoteDef = ReducerDef<DeleteNoteArgs>(
   'delete_note',
   DeleteNoteArgsDecoder(),
+);
+const diagInsertFiveDef = ReducerDef<DiagInsertFiveArgs>(
+  'diag_insert_five',
+  DiagInsertFiveArgsDecoder(),
+);
+const mixedNoteBatchDef = ReducerDef<MixedNoteBatchArgs>(
+  'mixed_note_batch',
+  MixedNoteBatchArgsDecoder(),
+);
+const noOpDef = ReducerDef<NoOpArgs>('no_op', NoOpArgsDecoder());
+const updateAllNotesDef = ReducerDef<UpdateAllNotesArgs>(
+  'update_all_notes',
+  UpdateAllNotesArgsDecoder(),
 );
 const updateNoteDef = ReducerDef<UpdateNoteArgs>(
   'update_note',

@@ -140,21 +140,14 @@ void main() {
         ),
       );
 
-      // Should implement decode method
-      expect(code, contains('CreateNoteArgs? decode(BsatnDecoder decoder)'));
+      expect(code, contains('CreateNoteArgs decode(BsatnDecoder decoder)'));
 
-      // Should decode parameters
       expect(code, contains('final title = decoder.readString();'));
       expect(code, contains('final content = decoder.readString();'));
 
-      // Should return constructed args object
       expect(code, contains('return CreateNoteArgs('));
       expect(code, contains('title: title,'));
       expect(code, contains('content: content,'));
-
-      // Should catch errors and return null
-      expect(code, contains('} catch (e) {'));
-      expect(code, contains('return null;'));
     });
 
     test('ClientGenerator wires ReducerEmitter', () {
