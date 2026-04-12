@@ -2,6 +2,23 @@
 
 import 'package:spacetimedb_dart_sdk/codegen.dart';
 
+class BulkInsertEntitiesArgs {
+  BulkInsertEntitiesArgs({required this.count});
+
+  final int count;
+}
+
+class BulkInsertEntitiesArgsDecoder
+    implements ReducerArgDecoder<BulkInsertEntitiesArgs> {
+  const BulkInsertEntitiesArgsDecoder();
+
+  @override
+  BulkInsertEntitiesArgs decode(BsatnDecoder decoder) {
+    final count = decoder.readU32();
+    return BulkInsertEntitiesArgs(count: count);
+  }
+}
+
 class CreateFolderArgs {
   CreateFolderArgs({required this.path, required this.name});
 
@@ -170,6 +187,26 @@ class MixedNoteBatchArgsDecoder
   }
 }
 
+class MutateRandomEntitiesArgs {
+  MutateRandomEntitiesArgs({required this.count, required this.seed});
+
+  final int count;
+
+  final Int64 seed;
+}
+
+class MutateRandomEntitiesArgsDecoder
+    implements ReducerArgDecoder<MutateRandomEntitiesArgs> {
+  const MutateRandomEntitiesArgsDecoder();
+
+  @override
+  MutateRandomEntitiesArgs decode(BsatnDecoder decoder) {
+    final count = decoder.readU32();
+    final seed = decoder.readU64();
+    return MutateRandomEntitiesArgs(count: count, seed: seed);
+  }
+}
+
 class NoOpArgs {
   NoOpArgs();
 }
@@ -226,6 +263,10 @@ class UpdateNoteArgsDecoder implements ReducerArgDecoder<UpdateNoteArgs> {
   }
 }
 
+const bulkInsertEntitiesDef = ReducerDef<BulkInsertEntitiesArgs>(
+  'bulk_insert_entities',
+  BulkInsertEntitiesArgsDecoder(),
+);
 const createFolderDef = ReducerDef<CreateFolderArgs>(
   'create_folder',
   CreateFolderArgsDecoder(),
@@ -261,6 +302,10 @@ const diagInsertFiveDef = ReducerDef<DiagInsertFiveArgs>(
 const mixedNoteBatchDef = ReducerDef<MixedNoteBatchArgs>(
   'mixed_note_batch',
   MixedNoteBatchArgsDecoder(),
+);
+const mutateRandomEntitiesDef = ReducerDef<MutateRandomEntitiesArgs>(
+  'mutate_random_entities',
+  MutateRandomEntitiesArgsDecoder(),
 );
 const noOpDef = ReducerDef<NoOpArgs>('no_op', NoOpArgsDecoder());
 const updateAllNotesDef = ReducerDef<UpdateAllNotesArgs>(

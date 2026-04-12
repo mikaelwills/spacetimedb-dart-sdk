@@ -11,6 +11,21 @@ class Reducers {
 
   final ReducerEmitter _reducerEmitter;
 
+  Future<TransactionResult> bulkInsertEntities({
+    required int count,
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    encoder.writeU32(count);
+    return await _reducerCaller.call(
+      bulkInsertEntitiesDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
   Future<TransactionResult> createFolder({
     required String path,
     required String name,
@@ -152,6 +167,23 @@ class Reducers {
     );
   }
 
+  Future<TransactionResult> mutateRandomEntities({
+    required int count,
+    required Int64 seed,
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    encoder.writeU32(count);
+    encoder.writeU64(seed);
+    return await _reducerCaller.call(
+      mutateRandomEntitiesDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
   Future<TransactionResult> noOp({
     List<OptimisticChange>? optimisticChanges,
     bool dropIfOffline = false,
@@ -197,6 +229,18 @@ class Reducers {
       optimisticChanges: optimisticChanges,
       dropIfOffline: dropIfOffline,
     );
+  }
+
+  StreamSubscription<void> onBulkInsertEntities(
+    void Function(EventContext ctx, int count) callback,
+  ) {
+    return _reducerEmitter.on(bulkInsertEntitiesDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! BulkInsertEntitiesArgs) return;
+      callback(ctx, args.count);
+    });
   }
 
   StreamSubscription<void> onCreateFolder(
@@ -311,6 +355,20 @@ class Reducers {
       final args = event.reducerArgs;
       if (args is! MixedNoteBatchArgs) return;
       callback(ctx, args.inserts, args.updates, args.deletes, args.marker);
+    });
+  }
+
+  StreamSubscription<void> onMutateRandomEntities(
+    void Function(EventContext ctx, int count, Int64 seed) callback,
+  ) {
+    return _reducerEmitter.on(mutateRandomEntitiesDef).listen((
+      EventContext ctx,
+    ) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! MutateRandomEntitiesArgs) return;
+      callback(ctx, args.count, args.seed);
     });
   }
 

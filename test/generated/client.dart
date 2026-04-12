@@ -5,8 +5,9 @@ import 'dart:async';
 import 'package:spacetimedb_dart_sdk/codegen.dart';
 import 'reducers.dart';
 import 'reducer_args.dart';
-import 'folder.dart';
 import 'note.dart';
+import 'entity.dart';
+import 'folder.dart';
 
 class SpacetimeDbClient {
   SpacetimeDbClient._({
@@ -61,12 +62,16 @@ class SpacetimeDbClient {
     return subscriptions.onMutationSyncResult;
   }
 
-  TableCache<Folder> get folder {
-    return subscriptions.cache.getTableByTypedName<Folder>('folder');
-  }
-
   TableCache<Note> get note {
     return subscriptions.cache.getTableByTypedName<Note>('note');
+  }
+
+  TableCache<Entity> get entity {
+    return subscriptions.cache.getTableByTypedName<Entity>('entity');
+  }
+
+  TableCache<Folder> get folder {
+    return subscriptions.cache.getTableByTypedName<Folder>('folder');
   }
 
   TableCache<Note> get allNotes {
@@ -108,11 +113,15 @@ class SpacetimeDbClient {
       offlineStorage: offlineStorage,
     );
 
+    subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
+    subscriptionManager.cache.registerDecoder<Entity>(
+      'entity',
+      EntityDecoder(),
+    );
     subscriptionManager.cache.registerDecoder<Folder>(
       'folder',
       FolderDecoder(),
     );
-    subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
 
     subscriptionManager.cache.registerDecoder<Note>('all_notes', NoteDecoder());
     subscriptionManager.cache.registerDecoder<Note>(
@@ -124,6 +133,7 @@ class SpacetimeDbClient {
       NoteDecoder(),
     );
 
+    subscriptionManager.reducerRegistry.register(bulkInsertEntitiesDef);
     subscriptionManager.reducerRegistry.register(createFolderDef);
     subscriptionManager.reducerRegistry.register(createNoteDef);
     subscriptionManager.reducerRegistry.register(createNotesBulkDef);
@@ -133,6 +143,7 @@ class SpacetimeDbClient {
     subscriptionManager.reducerRegistry.register(deleteNoteDef);
     subscriptionManager.reducerRegistry.register(diagInsertFiveDef);
     subscriptionManager.reducerRegistry.register(mixedNoteBatchDef);
+    subscriptionManager.reducerRegistry.register(mutateRandomEntitiesDef);
     subscriptionManager.reducerRegistry.register(noOpDef);
     subscriptionManager.reducerRegistry.register(updateAllNotesDef);
     subscriptionManager.reducerRegistry.register(updateNoteDef);
