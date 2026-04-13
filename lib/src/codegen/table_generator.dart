@@ -190,11 +190,12 @@ class TableGenerator {
     final body = StringBuffer();
     for (final element in productType.elements) {
       final fieldName = toCamelCase(element.name ?? 'unknown');
-      if (element.type.isRef) {
-        body.writeln('$fieldName.encode(encoder);');
-      } else {
-        body.writeln('encoder.${element.type.encoderMethod}($fieldName);');
-      }
+      final expr = element.type.encodeExpression(
+        fieldName,
+        typeSpace: schema.typeSpace,
+        typeDefs: schema.types,
+      );
+      body.writeln('$expr;');
     }
 
     return Method(
@@ -218,15 +219,11 @@ class TableGenerator {
     final args = StringBuffer();
     for (final element in productType.elements) {
       final fieldName = toCamelCase(element.name ?? 'unknown');
-      if (element.type.isRef) {
-        final typeName = element.type.toDartTypeName(
-          typeSpace: schema.typeSpace,
-          typeDefs: schema.types,
-        );
-        args.writeln('$fieldName: $typeName.decode(decoder),');
-      } else {
-        args.writeln('$fieldName: decoder.${element.type.decoderMethod}(),');
-      }
+      final expr = element.type.decodeExpression(
+        typeSpace: schema.typeSpace,
+        typeDefs: schema.types,
+      );
+      args.writeln('$fieldName: $expr,');
     }
 
     return Method(

@@ -233,6 +233,31 @@ pub fn notes_query_all(ctx: &AnonymousViewContext) -> impl Query<Note> {
     ctx.from.note().build()
 }
 
+#[table(accessor = tagged_item, public)]
+pub struct TaggedItem {
+    #[primary_key]
+    pub id: u32,
+    pub name: String,
+    pub tag_ids: Vec<u64>,
+    pub labels: Vec<String>,
+}
+
+#[reducer]
+pub fn create_tagged_item(
+    ctx: &ReducerContext,
+    id: u32,
+    name: String,
+    tag_ids: Vec<u64>,
+    labels: Vec<String>,
+) {
+    ctx.db.tagged_item().insert(TaggedItem {
+        id,
+        name,
+        tag_ids,
+        labels,
+    });
+}
+
 /// Initialize with some test data
 #[reducer(init)]
 pub fn init(ctx: &ReducerContext) {

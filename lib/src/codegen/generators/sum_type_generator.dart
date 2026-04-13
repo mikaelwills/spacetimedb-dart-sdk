@@ -193,8 +193,8 @@ $fromJsonCases      default: throw Exception('Unknown $enumName variant: \$type'
     }
 
     final dartType = fieldType.toDartTypeName();
-    final decoderMethod = fieldType.decoderMethod;
-    final encoderMethod = fieldType.encoderMethod;
+    final decodeExpr = fieldType.decodeExpression();
+    final encodeExpr = fieldType.encodeExpression('value');
     final toJsonValue = _getToJsonValue('value', fieldType);
     final fromJsonValue = _getFromJsonValue('value', fieldType, dartType);
 
@@ -240,7 +240,7 @@ $fromJsonCases      default: throw Exception('Unknown $enumName variant: \$type'
                             ..type = refer('BsatnDecoder'),
                     ),
                   )
-                  ..body = Code('return $className(decoder.$decoderMethod());'),
+                  ..body = Code('return $className($decodeExpr);'),
           ),
         )
         ..constructors.add(
@@ -275,9 +275,7 @@ $fromJsonCases      default: throw Exception('Unknown $enumName variant: \$type'
                             ..type = refer('BsatnEncoder'),
                     ),
                   )
-                  ..body = Code(
-                    'encoder.writeU8($tag); encoder.$encoderMethod(value);',
-                  ),
+                  ..body = Code('encoder.writeU8($tag); $encodeExpr;'),
           ),
         )
         ..methods.add(
@@ -344,10 +342,8 @@ $fromJsonCases      default: throw Exception('Unknown $enumName variant: \$type'
                   ..toThis = true,
           ),
         );
-        decodeArgs.writeln('decoder.${element.type.decoderMethod}(),');
-        encodeBody.writeln(
-          'encoder.${element.type.encoderMethod}($fieldName);',
-        );
+        decodeArgs.writeln('${element.type.decodeExpression()},');
+        encodeBody.writeln('${element.type.encodeExpression(fieldName)};');
         toJsonEntries.writeln("'$fieldName': $toJsonValue,");
         fromJsonArgs.writeln('$fromJsonValue,');
       }
@@ -481,12 +477,8 @@ $fromJsonCases      default: throw Exception('Unknown $enumName variant: \$type'
                   ..toThis = true,
           ),
         );
-        decodeArgs.writeln(
-          '$fieldName: decoder.${element.type.decoderMethod}(),',
-        );
-        encodeBody.writeln(
-          'encoder.${element.type.encoderMethod}($fieldName);',
-        );
+        decodeArgs.writeln('$fieldName: ${element.type.decodeExpression()},');
+        encodeBody.writeln('${element.type.encodeExpression(fieldName)};');
         toJsonEntries.writeln("'$fieldName': $toJsonValue,");
         fromJsonArgs.writeln('$fieldName: $fromJsonValue,');
       }

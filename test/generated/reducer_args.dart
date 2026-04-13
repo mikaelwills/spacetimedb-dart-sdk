@@ -60,6 +60,42 @@ class CreateNotesBulkArgsDecoder
   }
 }
 
+class CreateTaggedItemArgs {
+  CreateTaggedItemArgs({
+    required this.id,
+    required this.name,
+    required this.tagIds,
+    required this.labels,
+  });
+
+  final int id;
+
+  final String name;
+
+  final List<Int64> tagIds;
+
+  final List<String> labels;
+}
+
+class CreateTaggedItemArgsDecoder
+    implements ReducerArgDecoder<CreateTaggedItemArgs> {
+  const CreateTaggedItemArgsDecoder();
+
+  @override
+  CreateTaggedItemArgs decode(BsatnDecoder decoder) {
+    final id = decoder.readU32();
+    final name = decoder.readString();
+    final tagIds = decoder.readArray<Int64>(() => decoder.readU64());
+    final labels = decoder.readArray<String>(() => decoder.readString());
+    return CreateTaggedItemArgs(
+      id: id,
+      name: name,
+      tagIds: tagIds,
+      labels: labels,
+    );
+  }
+}
+
 class DeleteAllFoldersArgs {
   DeleteAllFoldersArgs();
 }
@@ -237,6 +273,10 @@ const createNoteDef = ReducerDef<CreateNoteArgs>(
 const createNotesBulkDef = ReducerDef<CreateNotesBulkArgs>(
   'create_notes_bulk',
   CreateNotesBulkArgsDecoder(),
+);
+const createTaggedItemDef = ReducerDef<CreateTaggedItemArgs>(
+  'create_tagged_item',
+  CreateTaggedItemArgsDecoder(),
 );
 const deleteAllFoldersDef = ReducerDef<DeleteAllFoldersArgs>(
   'delete_all_folders',

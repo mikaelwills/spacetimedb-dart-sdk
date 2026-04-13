@@ -106,9 +106,7 @@ class ReducerGenerator {
     encoderStatements.writeln('final encoder = BsatnEncoder();');
     for (final param in reducer.params.elements) {
       final paramName = toCamelCase(param.name ?? 'unknown');
-      encoderStatements.writeln(
-        'encoder.${param.type.encoderMethod}($paramName);',
-      );
+      encoderStatements.writeln('${param.type.encodeExpression(paramName)};');
     }
     final defName = '${toCamelCase(reducer.name)}Def';
     encoderStatements.writeln(
@@ -256,9 +254,13 @@ class ReducerGenerator {
     final decodeBody = StringBuffer();
     for (final param in reducer.params.elements) {
       final paramName = toCamelCase(param.name ?? 'unknown');
-      if (param.type.isPrimitive) {
+      if (param.type is ArrayType) {
         decodeBody.writeln(
-          'final $paramName = decoder.${param.type.decoderMethod}();',
+          'final $paramName = ${param.type.decodeExpression()};',
+        );
+      } else if (param.type.isPrimitive) {
+        decodeBody.writeln(
+          'final $paramName = ${param.type.decodeExpression()};',
         );
       } else {
         final typeName = _getDartClassName(param.type);

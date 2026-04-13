@@ -168,6 +168,73 @@ sealed class AlgebraicType {
     _ => 'read',
   };
 
+  String encodeExpression(
+    String valueName, {
+    TypeSpace? typeSpace,
+    List<TypeDef>? typeDefs,
+  }) => switch (this) {
+    PrimitiveType() ||
+    IdentityType() ||
+    TimestampType() ||
+    ByteArrayType() => 'encoder.$encoderMethod($valueName)',
+    ArrayType(element: final inner) => () {
+      final innerDart = inner.toDartTypeName(
+        typeSpace: typeSpace,
+        typeDefs: typeDefs,
+      );
+      final innerExpr = inner.encodeExpression(
+        'item',
+        typeSpace: typeSpace,
+        typeDefs: typeDefs,
+      );
+      return 'encoder.writeArray<$innerDart>($valueName, (item) => $innerExpr)';
+    }(),
+    RefType() => '$valueName.encode(encoder)',
+    IrProductType() =>
+      throw StateError(
+        'codegen: unhandled IrProductType in encodeExpression for \$$valueName '
+        '(inline product types are not supported; use a RefType)',
+      ),
+    IrSumType() =>
+      throw StateError(
+        'codegen: unhandled IrSumType in encodeExpression for \$$valueName '
+        '(inline sum types are not supported; use a RefType)',
+      ),
+  };
+
+  String decodeExpression({TypeSpace? typeSpace, List<TypeDef>? typeDefs}) =>
+      switch (this) {
+        PrimitiveType() ||
+        IdentityType() ||
+        TimestampType() ||
+        ByteArrayType() => 'decoder.$decoderMethod()',
+        ArrayType(element: final inner) => () {
+          final innerDart = inner.toDartTypeName(
+            typeSpace: typeSpace,
+            typeDefs: typeDefs,
+          );
+          final innerExpr = inner.decodeExpression(
+            typeSpace: typeSpace,
+            typeDefs: typeDefs,
+          );
+          return 'decoder.readArray<$innerDart>(() => $innerExpr)';
+        }(),
+        RefType() => () {
+          final name = toDartTypeName(typeSpace: typeSpace, typeDefs: typeDefs);
+          return '$name.decode(decoder)';
+        }(),
+        IrProductType() =>
+          throw StateError(
+            'codegen: unhandled IrProductType in decodeExpression '
+            '(inline product types are not supported; use a RefType)',
+          ),
+        IrSumType() =>
+          throw StateError(
+            'codegen: unhandled IrSumType in decodeExpression '
+            '(inline sum types are not supported; use a RefType)',
+          ),
+      };
+
   bool get isPrimitive => switch (this) {
     PrimitiveType() => true,
     IdentityType() => true,
