@@ -6,6 +6,7 @@ import 'package:spacetimedb_dart_sdk/codegen.dart';
 import 'reducers.dart';
 import 'reducer_args.dart';
 import 'folder.dart';
+import 'tagged_item.dart';
 import 'note.dart';
 
 class SpacetimeDbClient {
@@ -65,6 +66,10 @@ class SpacetimeDbClient {
     return subscriptions.cache.getTableByTypedName<Folder>('folder');
   }
 
+  TableCache<TaggedItem> get taggedItem {
+    return subscriptions.cache.getTableByTypedName<TaggedItem>('tagged_item');
+  }
+
   TableCache<Note> get note {
     return subscriptions.cache.getTableByTypedName<Note>('note');
   }
@@ -112,6 +117,10 @@ class SpacetimeDbClient {
       'folder',
       FolderDecoder(),
     );
+    subscriptionManager.cache.registerDecoder<TaggedItem>(
+      'tagged_item',
+      TaggedItemDecoder(),
+    );
     subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
 
     subscriptionManager.cache.registerDecoder<Note>('all_notes', NoteDecoder());
@@ -127,6 +136,7 @@ class SpacetimeDbClient {
     subscriptionManager.reducerRegistry.register(createFolderDef);
     subscriptionManager.reducerRegistry.register(createNoteDef);
     subscriptionManager.reducerRegistry.register(createNotesBulkDef);
+    subscriptionManager.reducerRegistry.register(createTaggedItemDef);
     subscriptionManager.reducerRegistry.register(deleteAllFoldersDef);
     subscriptionManager.reducerRegistry.register(deleteAllNotesDef);
     subscriptionManager.reducerRegistry.register(deleteFolderDef);

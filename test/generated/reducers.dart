@@ -62,6 +62,27 @@ class Reducers {
     );
   }
 
+  Future<TransactionResult> createTaggedItem({
+    required int id,
+    required String name,
+    required List<Int64> tagIds,
+    required List<String> labels,
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    encoder.writeU32(id);
+    encoder.writeString(name);
+    encoder.writeArray<Int64>(tagIds, (item) => encoder.writeU64(item));
+    encoder.writeArray<String>(labels, (item) => encoder.writeString(item));
+    return await _reducerCaller.call(
+      createTaggedItemDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
   Future<TransactionResult> deleteAllFolders({
     List<OptimisticChange>? optimisticChanges,
     bool dropIfOffline = false,
@@ -232,6 +253,25 @@ class Reducers {
       final args = event.reducerArgs;
       if (args is! CreateNotesBulkArgs) return;
       callback(ctx, args.count, args.titlePrefix);
+    });
+  }
+
+  StreamSubscription<void> onCreateTaggedItem(
+    void Function(
+      EventContext ctx,
+      int id,
+      String name,
+      List<Int64> tagIds,
+      List<String> labels,
+    )
+    callback,
+  ) {
+    return _reducerEmitter.on(createTaggedItemDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! CreateTaggedItemArgs) return;
+      callback(ctx, args.id, args.name, args.tagIds, args.labels);
     });
   }
 
