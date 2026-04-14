@@ -5,9 +5,9 @@ import 'dart:async';
 import 'package:spacetimedb_dart_sdk/codegen.dart';
 import 'reducers.dart';
 import 'reducer_args.dart';
-import 'note.dart';
 import 'tagged_item.dart';
 import 'folder.dart';
+import 'note.dart';
 
 class SpacetimeDbClient {
   SpacetimeDbClient._({
@@ -62,16 +62,16 @@ class SpacetimeDbClient {
     return subscriptions.onMutationSyncResult;
   }
 
-  TableCache<Note> get note {
-    return subscriptions.cache.getTableByTypedName<Note>('note');
-  }
-
   TableCache<TaggedItem> get taggedItem {
     return subscriptions.cache.getTableByTypedName<TaggedItem>('tagged_item');
   }
 
   TableCache<Folder> get folder {
     return subscriptions.cache.getTableByTypedName<Folder>('folder');
+  }
+
+  TableCache<Note> get note {
+    return subscriptions.cache.getTableByTypedName<Note>('note');
   }
 
   TableCache<Note> get allNotes {
@@ -113,7 +113,6 @@ class SpacetimeDbClient {
       offlineStorage: offlineStorage,
     );
 
-    subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
     subscriptionManager.cache.registerDecoder<TaggedItem>(
       'tagged_item',
       TaggedItemDecoder(),
@@ -122,6 +121,7 @@ class SpacetimeDbClient {
       'folder',
       FolderDecoder(),
     );
+    subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
 
     subscriptionManager.cache.registerDecoder<Note>('all_notes', NoteDecoder());
     subscriptionManager.cache.registerDecoder<Note>(
