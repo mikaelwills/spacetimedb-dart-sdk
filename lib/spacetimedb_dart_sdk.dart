@@ -14,6 +14,9 @@ export 'src/connection/connection_config.dart';
 // Cache
 export 'src/cache/table_cache.dart';
 
+// Utilities
+export 'src/utils/value_listenable_extensions.dart';
+
 // Events
 export 'src/events/event.dart';
 export 'src/events/event_context.dart';
