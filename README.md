@@ -99,6 +99,30 @@ client.users.lastBatch.addListener(() {
 });
 ```
 
+### Watching individual rows
+
+For UIs that follow a single row (chat message, player entity, selected item), use `rowNotifier(primaryKey)` instead of listening to `rows` and filtering. The notifier only fires when that specific row's value changes — 1000 entity-watchers at game scale drops from `O(listeners × rows_touched)` to `O(rows_touched)` per transaction.
+
+```dart
+final entity = client.entity.rowNotifier(entityId);
+
+// Riverpod / Flutter consumers
+final hp = watchListenable(ref, entity).value?.health ?? 0;
+
+// Plain Flutter
+entity.addListener(() {
+  if (entity.value == null) print('deleted');
+  else print('hp: ${entity.value!.health}');
+});
+```
+
+**Semantics:**
+- Fires when the row's value changes per `==`. A server touch that doesn't change any field is de-duplicated.
+- `value` is `null` when the row is absent (never inserted, or deleted).
+- The notifier is cached per primary key — repeated calls with the same key return the same instance.
+- Auto-disposes when the last listener detaches; a subsequent `rowNotifier(pk)` call returns a fresh instance.
+- Only valid on tables with a declared primary key.
+
 ## Reducers
 
 A reducer call returns a `TransactionResult` on success and throws `SpacetimeDbReducerException` on server-side failure (`Failed` / `OutOfEnergy`). Fire-and-forget is fine — ignore the result if you don't need it.

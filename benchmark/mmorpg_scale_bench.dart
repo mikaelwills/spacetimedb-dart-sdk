@@ -8,6 +8,7 @@ import 'package:test/test.dart';
 
 import '../test/helpers/integration_test_helper.dart';
 import '../test/generated/client.dart';
+import '../test/generated/entity.dart';
 
 const _configs = [
   _BenchConfig(
@@ -43,6 +44,15 @@ const _configs = [
     listeners: 100,
   ),
   _BenchConfig(
+    'mmorpg-per-row-notifier',
+    txPerSec: 1000,
+    rowsPerTx: 10,
+    tableSize: 100000,
+    durationSec: 10,
+    listeners: 1000,
+    useRowNotifier: true,
+  ),
+  _BenchConfig(
     'thousands-realistic',
     txPerSec: 5000,
     rowsPerTx: 20,
@@ -68,6 +78,7 @@ class _BenchConfig {
     required this.tableSize,
     required this.durationSec,
     required this.listeners,
+    this.useRowNotifier = false,
   });
   final String name;
   final int txPerSec;
@@ -75,6 +86,7 @@ class _BenchConfig {
   final int tableSize;
   final int durationSec;
   final int listeners;
+  final bool useRowNotifier;
 }
 
 class _BenchResult {
@@ -240,19 +252,41 @@ Future<_BenchResult> _runConfig(_BenchConfig config) async {
     client.entity.lastBatch.addListener(batchListener);
 
     final fanoutListeners = <VoidCallback>[];
-    for (var i = 0; i < config.listeners; i++) {
-      void listener() {
-        final sw = Stopwatch()..start();
-        client.entity.count();
-        sw.stop();
-        fanouts.add(sw.elapsedMicroseconds);
-        if (sw.elapsedMicroseconds > 16000) {
-          frameBudgetMisses++;
-        }
-      }
+    final rowNotifiersAttached = <ValueNotifier<Entity?>>[];
 
-      client.entity.rows.addListener(listener);
-      fanoutListeners.add(listener);
+    if (config.useRowNotifier) {
+      final entityIds =
+          client.entity.iter().map((e) => e.id).take(config.listeners).toList();
+      for (final id in entityIds) {
+        void listener() {
+          final sw = Stopwatch()..start();
+          sw.stop();
+          fanouts.add(sw.elapsedMicroseconds);
+          if (sw.elapsedMicroseconds > 16000) {
+            frameBudgetMisses++;
+          }
+        }
+
+        final n = client.entity.rowNotifier(id);
+        n.addListener(listener);
+        fanoutListeners.add(listener);
+        rowNotifiersAttached.add(n);
+      }
+    } else {
+      for (var i = 0; i < config.listeners; i++) {
+        void listener() {
+          final sw = Stopwatch()..start();
+          client.entity.count();
+          sw.stop();
+          fanouts.add(sw.elapsedMicroseconds);
+          if (sw.elapsedMicroseconds > 16000) {
+            frameBudgetMisses++;
+          }
+        }
+
+        client.entity.rows.addListener(listener);
+        fanoutListeners.add(listener);
+      }
     }
 
     print(
@@ -307,8 +341,14 @@ Future<_BenchResult> _runConfig(_BenchConfig config) async {
 
     await msgSub.cancel();
     client.entity.lastBatch.removeListener(batchListener);
-    for (final l in fanoutListeners) {
-      client.entity.rows.removeListener(l);
+    if (config.useRowNotifier) {
+      for (var i = 0; i < rowNotifiersAttached.length; i++) {
+        rowNotifiersAttached[i].removeListener(fanoutListeners[i]);
+      }
+    } else {
+      for (final l in fanoutListeners) {
+        client.entity.rows.removeListener(l);
+      }
     }
 
     try {
