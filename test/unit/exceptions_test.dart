@@ -11,6 +11,7 @@ String classify(SpacetimeDbException e) => switch (e) {
   SpacetimeDbTimeoutException() => 'timeout',
   SpacetimeDbSchemaException() => 'schema',
   SpacetimeDbProtocolException() => 'protocol',
+  SpacetimeDbSubscriptionException() => 'subscription',
 };
 
 void main() {
@@ -39,6 +40,11 @@ void main() {
             'timeout',
         SpacetimeDbSchemaException('unknown shape'): 'schema',
         SpacetimeDbProtocolException('underflow'): 'protocol',
+        SpacetimeDbSubscriptionException(
+              '`note` is not a valid table',
+              tableName: 'note',
+            ):
+            'subscription',
       };
 
       for (final entry in cases.entries) {
@@ -61,6 +67,7 @@ void main() {
         SpacetimeDbTimeoutException('t', elapsed: Duration.zero),
         SpacetimeDbSchemaException('s'),
         SpacetimeDbProtocolException('p'),
+        SpacetimeDbSubscriptionException('sub'),
       ];
 
       for (final e in exceptions) {

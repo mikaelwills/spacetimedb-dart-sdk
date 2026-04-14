@@ -158,6 +158,33 @@ await client.subscriptions.subscribe([
 ]);
 ```
 
+### Waiting for initial data per table
+
+Every `TableCache` exposes a `subscribed` Future that resolves when the server has delivered the initial batch for that table — including empty tables. Useful for showing a loading spinner until a specific table is ready.
+
+```dart
+await client.connect(initialSubscriptions: [
+  'SELECT * FROM notes',
+  'SELECT * FROM folders',
+]);
+
+await client.notes.subscribed;
+print('notes ready: ${client.notes.rows.value.length}');
+
+await client.folders.subscribed;  // resolves even if empty
+print('folders ready: ${client.folders.rows.value.length}');
+```
+
+The future completes exactly once and stays completed across reconnects. If the server rejects the subscription (e.g. the table name is invalid), it throws `SpacetimeDbSubscriptionException`:
+
+```dart
+try {
+  await client.notes.subscribed;
+} on SpacetimeDbSubscriptionException catch (e) {
+  print('subscription rejected: ${e.message}');
+}
+```
+
 ## Sum Types (Rust Enums)
 
 ```dart
