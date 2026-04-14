@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:spacetimedb_dart_sdk/src/cache/row_decoder.dart';
 import 'package:spacetimedb_dart_sdk/src/codec/bsatn_decoder.dart';
@@ -20,11 +22,38 @@ class TableCache<T> {
   final ValueNotifier<TransactionBatch<T>?> lastBatch =
       ValueNotifier<TransactionBatch<T>?>(null);
 
+  final Completer<void> _subscribedCompleter = Completer<void>();
+
+  /// Resolves when the server has delivered the initial subscription batch
+  /// for this table. Completes exactly once; stays completed across
+  /// reconnects. Resolves even for empty tables (no row-count gate). Throws
+  /// [SpacetimeDbSubscriptionException] if the server rejects a subscription
+  /// query that references this table by name.
+  ///
+  /// ```dart
+  /// await client.connect(initialSubscriptions: ['SELECT * FROM notes']);
+  /// await client.notes.subscribed;
+  /// print('notes ready: ${client.notes.rows.value.length}');
+  /// ```
+  Future<void> get subscribed => _subscribedCompleter.future;
+
   TableCache({
     required this.tableName,
     required this.decoder,
     this.isEvent = false,
   }) : hasPrimaryKey = decoder.hasPrimaryKey;
+
+  void markSubscribed() {
+    if (!_subscribedCompleter.isCompleted) {
+      _subscribedCompleter.complete();
+    }
+  }
+
+  void markSubscribeFailed(Object error) {
+    if (!_subscribedCompleter.isCompleted) {
+      _subscribedCompleter.completeError(error);
+    }
+  }
 
   /// Apply transaction update with event context
   ///
@@ -157,6 +186,9 @@ class TableCache<T> {
   }
 
   void dispose() {
+    if (!_subscribedCompleter.isCompleted) {
+      _subscribedCompleter.complete();
+    }
     rows.dispose();
     lastBatch.dispose();
   }

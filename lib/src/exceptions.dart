@@ -47,3 +47,15 @@ class SpacetimeDbSchemaException extends SpacetimeDbException {
 class SpacetimeDbProtocolException extends SpacetimeDbException {
   SpacetimeDbProtocolException(super.message);
 }
+
+class SpacetimeDbSubscriptionException extends SpacetimeDbException {
+  final String? tableName;
+
+  SpacetimeDbSubscriptionException(super.message, {this.tableName});
+
+  @override
+  String toString() {
+    final suffix = tableName != null ? ' (table: $tableName)' : '';
+    return 'SpacetimeDbSubscriptionException$suffix: $message';
+  }
+}

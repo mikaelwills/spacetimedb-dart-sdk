@@ -15,6 +15,7 @@ import '../reducers/reducer_caller.dart';
 import '../reducers/reducer_registry.dart';
 import '../reducers/reducer_emitter.dart';
 import '../reducers/transaction_result.dart';
+import '../exceptions.dart';
 import '../events/event.dart';
 import '../events/event_context.dart';
 import '../auth/identity.dart';
@@ -382,6 +383,11 @@ class SubscriptionManager {
       'Subscription failed for table "$badTable", removed query. Resubscribing with ${_activeSubscriptionQueries.length} remaining queries...',
     );
 
+    final badTableCache = cache.getTableByName(badTable);
+    badTableCache?.markSubscribeFailed(
+      SpacetimeDbSubscriptionException(message.error, tableName: badTable),
+    );
+
     if (_activeSubscriptionQueries.isNotEmpty) {
       final resubscribe = SubscribeMessage(_activeSubscriptionQueries.toList());
       _connection.send(resubscribe.encode());
@@ -420,6 +426,21 @@ class SubscriptionManager {
         final rows = update.update.inserts.getRows();
         SdkLogger.d('    Inserting ${rows.length} rows');
         table.applyInitialData(update.update.inserts, context);
+      }
+
+      table.markSubscribed();
+    }
+
+    // Server omits tables with zero matching rows from `tableUpdates`.
+    // Parse FROM <table> out of the active queries and mark those tables
+    // subscribed too, so `client.<table>.subscribed` resolves for empty
+    // initial results instead of hanging forever.
+    final fromRegex = RegExp(r'FROM\s+(\w+)', caseSensitive: false);
+    for (final query in _activeSubscriptionQueries) {
+      for (final match in fromRegex.allMatches(query)) {
+        final tableName = match.group(1)!;
+        final table = cache.getTableByName(tableName);
+        table?.markSubscribed();
       }
     }
 
