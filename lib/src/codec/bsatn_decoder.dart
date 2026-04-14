@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:fixnum/fixnum.dart';
 import 'package:spacetimedb_dart_sdk/src/auth/identity.dart';
+import 'package:spacetimedb_dart_sdk/src/exceptions.dart';
 
 /// Decodes BSATN (Binary Spacetime Algebraic Type Notation) format into Dart values
 ///
@@ -160,7 +161,9 @@ class BsatnDecoder {
   bool readBool() {
     final byte = readU8();
     if (byte > 1) {
-      throw FormatException('Invalid boolean value: $byte (expected 0 or 1)');
+      throw SpacetimeDbProtocolException(
+        'Invalid boolean value: $byte (expected 0 or 1)',
+      );
     }
     return byte == 1;
   }
@@ -268,7 +271,7 @@ class BsatnDecoder {
 
   void _checkRemaining(int needed) {
     if (_offset + needed > _bytes.length) {
-      throw StateError(
+      throw SpacetimeDbProtocolException(
         'Not enough bytes: need $needed, have $remaining at offset $_offset',
       );
     }

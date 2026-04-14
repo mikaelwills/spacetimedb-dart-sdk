@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed (Breaking)
+
+- Unified exception hierarchy under sealed `SpacetimeDbException` root.
+  Consumers can now write `on SpacetimeDbException catch (e)` once to cover
+  every SDK-originated runtime failure, and `switch` over the sealed root
+  for exhaustive analyzer coverage.
+- Renamed exceptions:
+  - `ReducerException` → `SpacetimeDbReducerException`
+  - `ConnectionException` → `SpacetimeDbConnectionException`
+  - `SchemaParseException` → `SpacetimeDbSchemaException`
+  - SDK-imposed reducer-call timeouts now throw `SpacetimeDbTimeoutException`
+    instead of `dart:async` `TimeoutException`. Note: this is a taxonomy
+    change — the new type does not extend `TimeoutException`. Existing
+    `on TimeoutException` catches around reducer calls must migrate.
+- `SpacetimeDbAuthException` now extends `SpacetimeDbConnectionException`
+  (auth failure is a connection-failure subtype).
+- `connect()` now wraps raw transport errors (`SocketException`,
+  `HandshakeException`, `WebSocketException`) into
+  `SpacetimeDbConnectionException` instead of rethrowing. Consumers no
+  longer need to import `dart:io` / `web_socket_channel` to catch
+  connect-time failures.
+- BSATN decoder now throws `SpacetimeDbProtocolException` for wire-protocol
+  decode failures (buffer underflow, invalid bool tag) instead of
+  `StateError` / `FormatException`.
+
 ## [0.1.0] - 2024-11-21
 
 ### Added

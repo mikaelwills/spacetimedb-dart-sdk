@@ -3,6 +3,7 @@ import 'package:fixnum/fixnum.dart';
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/src/codec/bsatn_decoder.dart';
 import 'package:spacetimedb_dart_sdk/src/codec/bsatn_encoder.dart';
+import 'package:spacetimedb_dart_sdk/src/exceptions.dart';
 
 void main() {
   group('BSATN Primitives', () {
@@ -292,14 +293,20 @@ void main() {
       decoder.readU8();
       decoder.readU8();
 
-      expect(() => decoder.readU8(), throwsStateError);
+      expect(
+        () => decoder.readU8(),
+        throwsA(isA<SpacetimeDbProtocolException>()),
+      );
     });
 
     test('Invalid boolean value throws', () {
       final decoder = BsatnDecoder(
         Uint8List.fromList([2]),
       ); // Invalid (not 0 or 1)
-      expect(() => decoder.readBool(), throwsFormatException);
+      expect(
+        () => decoder.readBool(),
+        throwsA(isA<SpacetimeDbProtocolException>()),
+      );
     });
 
     test('Out of range u8 throws', () {

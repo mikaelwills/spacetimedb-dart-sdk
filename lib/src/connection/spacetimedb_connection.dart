@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:spacetimedb_dart_sdk/src/connection/connection_state.dart';
+import 'package:spacetimedb_dart_sdk/src/exceptions.dart';
 import 'package:spacetimedb_dart_sdk/src/connection/connection_quality.dart';
 import 'package:spacetimedb_dart_sdk/src/connection/connection_config.dart';
 import 'package:spacetimedb_dart_sdk/src/connection/keep_alive_monitor.dart';
@@ -141,7 +142,10 @@ class SpacetimeDbConnection {
         );
       }
 
-      rethrow;
+      throw SpacetimeDbConnectionException(
+        'Connection failed: $e',
+        lastKnownState: const Disconnected(),
+      );
     }
   }
 
@@ -409,13 +413,4 @@ class SpacetimeDbConnection {
     _keepAlive?.stop();
     _channel?.sink.close();
   }
-}
-
-class SpacetimeDbAuthException implements Exception {
-  final String message;
-
-  SpacetimeDbAuthException(this.message);
-
-  @override
-  String toString() => 'SpacetimeDbAuthException: $message';
 }

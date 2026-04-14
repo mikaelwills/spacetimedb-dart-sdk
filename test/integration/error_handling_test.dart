@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_dart_sdk/codegen.dart';
@@ -114,7 +113,7 @@ void main() {
         timeout: const Duration(milliseconds: 200),
       );
 
-      await expectLater(future, throwsA(isA<TimeoutException>()));
+      await expectLater(future, throwsA(isA<SpacetimeDbTimeoutException>()));
 
       expect(env.connection.isConnected, isTrue);
     });

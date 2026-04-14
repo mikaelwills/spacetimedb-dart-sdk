@@ -4,8 +4,7 @@ import 'dart:typed_data';
 import 'package:spacetimedb_dart_sdk/src/cache/client_cache.dart';
 import 'package:spacetimedb_dart_sdk/src/connection/spacetimedb_connection.dart';
 import 'package:spacetimedb_dart_sdk/src/connection/connection_state.dart';
-import 'package:spacetimedb_dart_sdk/src/reducers/reducer_caller.dart'
-    show ReducerException;
+import 'package:spacetimedb_dart_sdk/src/exceptions.dart';
 import 'package:spacetimedb_dart_sdk/src/reducers/transaction_result.dart';
 import 'package:spacetimedb_dart_sdk/src/reducers/mutation_handler.dart';
 import 'package:spacetimedb_dart_sdk/src/offline/offline_storage.dart';
@@ -202,7 +201,7 @@ class MutationSyncer implements MutationHandler {
               );
             }
           }
-        } on ReducerException catch (e) {
+        } on SpacetimeDbReducerException catch (e) {
           _optimisticState.rollbackOptimisticChanges(mutation.requestId);
           await _storage.dequeueMutation(mutation.requestId);
           _decrementPendingCount();
@@ -219,7 +218,7 @@ class MutationSyncer implements MutationHandler {
               ),
             );
           }
-        } on TimeoutException catch (e) {
+        } on SpacetimeDbTimeoutException catch (e) {
           SdkLogger.w(
             'Timeout syncing ${mutation.reducerName}: $e. Keeping in queue for retry.',
           );
