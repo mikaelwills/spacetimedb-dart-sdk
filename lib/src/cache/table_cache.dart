@@ -18,6 +18,8 @@ class TableCache<T> {
   final Map<dynamic, T> _rowsByPrimaryKey = {};
   final List<T> _rows = [];
 
+  final Map<dynamic, _AutoDisposeNotifier<T?>> _rowNotifiers = {};
+
   final ValueNotifier<List<T>> rows = ValueNotifier<List<T>>([]);
   final ValueNotifier<TransactionBatch<T>?> lastBatch =
       ValueNotifier<TransactionBatch<T>?>(null);
@@ -168,6 +170,9 @@ class TableCache<T> {
     _rowsByPrimaryKey.clear();
     _rows.clear();
     _refreshRowsNotifier();
+    if (_rowNotifiers.isNotEmpty) {
+      _notifyRowListeners(_rowNotifiers.keys.toList());
+    }
   }
 
   /// Apply initial subscription data with event context
@@ -189,6 +194,10 @@ class TableCache<T> {
     if (!_subscribedCompleter.isCompleted) {
       _subscribedCompleter.complete();
     }
+    for (final notifier in _rowNotifiers.values) {
+      notifier.dispose();
+    }
+    _rowNotifiers.clear();
     rows.dispose();
     lastBatch.dispose();
   }
@@ -226,6 +235,9 @@ class TableCache<T> {
       }
     }
     _refreshRowsNotifier();
+    if (_rowNotifiers.isNotEmpty) {
+      _notifyRowListeners(_rowNotifiers.keys.toList());
+    }
   }
 
   void insertRow(T row) {
@@ -236,6 +248,9 @@ class TableCache<T> {
       _rows.add(row);
     }
     _refreshRowsNotifier();
+    if (primaryKey != null && _rowNotifiers.containsKey(primaryKey)) {
+      _notifyRowListeners([primaryKey]);
+    }
   }
 
   void updateRow(T row) {
@@ -250,6 +265,9 @@ class TableCache<T> {
       _rowsByPrimaryKey[primaryKey] = row;
     }
     _refreshRowsNotifier();
+    if (primaryKey != null && _rowNotifiers.containsKey(primaryKey)) {
+      _notifyRowListeners([primaryKey]);
+    }
   }
 
   void deleteRow(dynamic primaryKey) {
@@ -261,9 +279,44 @@ class TableCache<T> {
     }
     _rowsByPrimaryKey.remove(primaryKey);
     _refreshRowsNotifier();
+    if (_rowNotifiers.containsKey(primaryKey)) {
+      _notifyRowListeners([primaryKey]);
+    }
   }
 
   T? getRow(dynamic primaryKey) => _rowsByPrimaryKey[primaryKey];
+
+  /// Returns a [ValueNotifier] that fires only when the row with this
+  /// [primaryKey] changes. Fires when the row's value changes per `==` —
+  /// a server touch that doesn't change any field is de-duplicated.
+  ///
+  /// The notifier is cached per key: repeated calls with the same key
+  /// return the same instance. When the last listener detaches, the notifier
+  /// is disposed and removed from the cache on the next microtask; a
+  /// subsequent `rowNotifier(pk)` call creates a fresh instance.
+  ///
+  /// Only valid for tables with a declared primary key. Throws [StateError]
+  /// on no-PK tables.
+  ///
+  /// ```dart
+  /// final entity = client.entity.rowNotifier(entityId);
+  /// entity.addListener(() => print('entity changed: ${entity.value}'));
+  /// ```
+  ValueNotifier<T?> rowNotifier(dynamic primaryKey) {
+    if (!hasPrimaryKey) {
+      throw StateError(
+        'rowNotifier called on no-PK table "$tableName". '
+        'Per-row notifiers require a declared primary key.',
+      );
+    }
+    return _rowNotifiers.putIfAbsent(
+      primaryKey,
+      () => _AutoDisposeNotifier<T?>(
+        _rowsByPrimaryKey[primaryKey],
+        onEmpty: () => _removeRowNotifier(primaryKey),
+      ),
+    );
+  }
 
   void emitBatch(List<TableEventSpec> specs, EventContext context) {
     _refreshRowsNotifier();
@@ -286,12 +339,21 @@ class TableCache<T> {
   }
 
   void removeRowsWhere(bool Function(dynamic pk) test) {
+    final touchedKeys = <dynamic>[];
+    if (_rowNotifiers.isNotEmpty) {
+      for (final key in _rowNotifiers.keys) {
+        if (test(key)) touchedKeys.add(key);
+      }
+    }
     _rowsByPrimaryKey.removeWhere((key, _) => test(key));
     _rows.removeWhere((row) {
       final pk = decoder.getPrimaryKey(row);
       return test(pk);
     });
     _refreshRowsNotifier();
+    if (touchedKeys.isNotEmpty) {
+      _notifyRowListeners(touchedKeys);
+    }
   }
 
   void _refreshRowsNotifier() {
@@ -299,6 +361,20 @@ class TableCache<T> {
         hasPrimaryKey
             ? List<T>.of(_rowsByPrimaryKey.values)
             : List<T>.of(_rows);
+  }
+
+  void _removeRowNotifier(dynamic primaryKey) {
+    final removed = _rowNotifiers.remove(primaryKey);
+    removed?.dispose();
+  }
+
+  void _notifyRowListeners(Iterable<dynamic> touchedKeys) {
+    for (final key in touchedKeys) {
+      final notifier = _rowNotifiers[key];
+      if (notifier != null) {
+        notifier.value = _rowsByPrimaryKey[key];
+      }
+    }
   }
 
   void _emitChanges(_RowChanges<T> changes, EventContext context) {
@@ -320,6 +396,23 @@ class TableCache<T> {
     }
 
     _refreshRowsNotifier();
+
+    if (_rowNotifiers.isNotEmpty) {
+      final touchedKeys = <dynamic>{};
+      for (final row in changes.inserted) {
+        final pk = decoder.getPrimaryKey(row);
+        if (pk != null) touchedKeys.add(pk);
+      }
+      for (final row in changes.deleted) {
+        final pk = decoder.getPrimaryKey(row);
+        if (pk != null) touchedKeys.add(pk);
+      }
+      for (final (_, newRow) in changes.updated) {
+        final pk = decoder.getPrimaryKey(newRow);
+        if (pk != null) touchedKeys.add(pk);
+      }
+      _notifyRowListeners(touchedKeys);
+    }
 
     if (events.isNotEmpty) {
       lastBatch.value = TransactionBatch<T>(context, events);
@@ -402,4 +495,26 @@ class _RowChanges<T> {
   final List<T> inserted = [];
   final List<T> deleted = [];
   final List<(T, T)> updated = [];
+}
+
+class _AutoDisposeNotifier<T> extends ValueNotifier<T> {
+  final VoidCallback onEmpty;
+  bool _disposed = false;
+
+  _AutoDisposeNotifier(super.value, {required this.onEmpty});
+
+  @override
+  void removeListener(VoidCallback listener) {
+    super.removeListener(listener);
+    scheduleMicrotask(() {
+      if (_disposed) return;
+      if (!hasListeners) onEmpty();
+    });
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 }

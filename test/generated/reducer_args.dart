@@ -187,19 +187,6 @@ class DiagInsertFiveArgsDecoder
   }
 }
 
-class InitArgs {
-  InitArgs();
-}
-
-class InitArgsDecoder implements ReducerArgDecoder<InitArgs> {
-  const InitArgsDecoder();
-
-  @override
-  InitArgs decode(BsatnDecoder decoder) {
-    return InitArgs();
-  }
-}
-
 class MixedNoteBatchArgs {
   MixedNoteBatchArgs({
     required this.inserts,
@@ -352,7 +339,6 @@ const diagInsertFiveDef = ReducerDef<DiagInsertFiveArgs>(
   'diag_insert_five',
   DiagInsertFiveArgsDecoder(),
 );
-const initDef = ReducerDef<InitArgs>('init', InitArgsDecoder());
 const mixedNoteBatchDef = ReducerDef<MixedNoteBatchArgs>(
   'mixed_note_batch',
   MixedNoteBatchArgsDecoder(),

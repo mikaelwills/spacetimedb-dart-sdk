@@ -237,26 +237,6 @@ class Reducers {
     );
   }
 
-  /// Calls the `init` reducer.
-  ///
-  /// Returns a [TransactionResult] on success. Throws
-  /// [SpacetimeDbReducerException] if the reducer returns `Failed` or
-  /// `OutOfEnergy`. The returned status is one of `Committed`,
-  /// `Pending` (queued to offline storage), or `Dropped` (skipped via
-  /// `dropIfOffline: true` while offline).
-  Future<TransactionResult> init({
-    List<OptimisticChange>? optimisticChanges,
-    bool dropIfOffline = false,
-  }) async {
-    final encoder = BsatnEncoder();
-    return await _reducerCaller.call(
-      initDef.name,
-      encoder.toBytes(),
-      optimisticChanges: optimisticChanges,
-      dropIfOffline: dropIfOffline,
-    );
-  }
-
   /// Calls the `mixed_note_batch` reducer.
   ///
   /// Returns a [TransactionResult] on success. Throws
@@ -500,16 +480,6 @@ class Reducers {
       if (event is! ReducerEvent) return;
       final args = event.reducerArgs;
       if (args is! DiagInsertFiveArgs) return;
-      callback(ctx);
-    });
-  }
-
-  StreamSubscription<void> onInit(void Function(EventContext ctx) callback) {
-    return _reducerEmitter.on(initDef).listen((EventContext ctx) {
-      final event = ctx.event;
-      if (event is! ReducerEvent) return;
-      final args = event.reducerArgs;
-      if (args is! InitArgs) return;
       callback(ctx);
     });
   }
