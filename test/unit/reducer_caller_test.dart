@@ -244,7 +244,7 @@ void main() {
         final requestId = mockConnection.getLastSentRequestId();
 
         // 2. Wait for timeout to fire
-        await expectLater(future, throwsA(isA<TimeoutException>()));
+        await expectLater(future, throwsA(isA<SpacetimeDbTimeoutException>()));
 
         // 3. MEMORY CHECK: Send response AFTER timeout
         // If map wasn't cleaned up, this could cause a StateError (double-complete)
@@ -274,7 +274,7 @@ void main() {
         try {
           await future;
           fail('Should have thrown TimeoutException');
-        } on TimeoutException catch (e) {
+        } on SpacetimeDbTimeoutException catch (e) {
           expect(e.message, contains('specific_reducer_name'));
           expect(e.message, contains('timed out'));
         }
@@ -313,10 +313,19 @@ void main() {
         // Simulate connection loss before any responses
         reducerCaller.failAllPendingRequests('WebSocket closed unexpectedly');
 
-        // All should fail with ConnectionException
-        await expectLater(future1, throwsA(isA<ConnectionException>()));
-        await expectLater(future2, throwsA(isA<ConnectionException>()));
-        await expectLater(future3, throwsA(isA<ConnectionException>()));
+        // All should fail with SpacetimeDbConnectionException
+        await expectLater(
+          future1,
+          throwsA(isA<SpacetimeDbConnectionException>()),
+        );
+        await expectLater(
+          future2,
+          throwsA(isA<SpacetimeDbConnectionException>()),
+        );
+        await expectLater(
+          future3,
+          throwsA(isA<SpacetimeDbConnectionException>()),
+        );
       });
 
       test('Connection loss includes reason in error', () async {
@@ -326,15 +335,15 @@ void main() {
 
         try {
           await future;
-          fail('Should have thrown ConnectionException');
-        } on ConnectionException catch (e) {
+          fail('Should have thrown SpacetimeDbConnectionException');
+        } on SpacetimeDbConnectionException catch (e) {
           expect(e.message, contains('502 Bad Gateway'));
         }
       });
     });
 
     group('Test F: Error Propagation', () {
-      test('Failed reducer throws ReducerException', () async {
+      test('Failed reducer throws SpacetimeDbReducerException', () async {
         final future = reducerCaller.call('failing_reducer', Uint8List(0));
         final requestId = mockConnection.getLastSentRequestId();
 
@@ -347,34 +356,37 @@ void main() {
 
         try {
           await future;
-          fail('Should have thrown ReducerException');
-        } on ReducerException catch (e) {
+          fail('Should have thrown SpacetimeDbReducerException');
+        } on SpacetimeDbReducerException catch (e) {
           expect(e.reducerName, equals('failing_reducer'));
           expect(e.message, contains('Validation error'));
           expect(e.result.isFailed, isTrue);
         }
       });
 
-      test('OutOfEnergy throws ReducerException with budget info', () async {
-        final future = reducerCaller.call('expensive_reducer', Uint8List(0));
-        final requestId = mockConnection.getLastSentRequestId();
+      test(
+        'OutOfEnergy throws SpacetimeDbReducerException with budget info',
+        () async {
+          final future = reducerCaller.call('expensive_reducer', Uint8List(0));
+          final requestId = mockConnection.getLastSentRequestId();
 
-        final oomResponse = _createTransactionUpdate(
-          requestId: requestId,
-          status: OutOfEnergy('Budget: 1000, Used: 1200'),
-          reducerName: 'expensive_reducer',
-        );
-        mockConnection.simulateIncoming(oomResponse);
+          final oomResponse = _createTransactionUpdate(
+            requestId: requestId,
+            status: OutOfEnergy('Budget: 1000, Used: 1200'),
+            reducerName: 'expensive_reducer',
+          );
+          mockConnection.simulateIncoming(oomResponse);
 
-        try {
-          await future;
-          fail('Should have thrown ReducerException');
-        } on ReducerException catch (e) {
-          expect(e.reducerName, equals('expensive_reducer'));
-          expect(e.message, contains('Budget'));
-          expect(e.result.isOutOfEnergy, isTrue);
-        }
-      });
+          try {
+            await future;
+            fail('Should have thrown SpacetimeDbReducerException');
+          } on SpacetimeDbReducerException catch (e) {
+            expect(e.reducerName, equals('expensive_reducer'));
+            expect(e.message, contains('Budget'));
+            expect(e.result.isOutOfEnergy, isTrue);
+          }
+        },
+      );
     });
 
     group('Test G: Race Condition Safety', () {
@@ -406,7 +418,7 @@ void main() {
         try {
           final result = await future;
           expect(result.isSuccess, isTrue); // Response won
-        } on TimeoutException {
+        } on SpacetimeDbTimeoutException {
           // Timeout won - also valid
         }
 

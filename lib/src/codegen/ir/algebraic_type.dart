@@ -1,3 +1,4 @@
+import 'package:spacetimedb_dart_sdk/src/exceptions.dart';
 import '../models/type_models.dart';
 
 enum PrimitiveKind {
@@ -99,7 +100,7 @@ sealed class AlgebraicType {
       return const TimestampType();
     }
 
-    throw SchemaParseException(
+    throw SpacetimeDbSchemaException(
       'Unknown algebraic type shape: ${json.keys.toList()}',
     );
   }
@@ -374,11 +375,4 @@ class IrSumVariant {
       type: AlgebraicType.fromJson(algebraicTypeJson),
     );
   }
-}
-
-class SchemaParseException implements Exception {
-  final String message;
-  const SchemaParseException(this.message);
-  @override
-  String toString() => 'SchemaParseException: $message';
 }

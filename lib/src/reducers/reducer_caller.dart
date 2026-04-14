@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:spacetimedb_dart_sdk/src/connection/spacetimedb_connection.dart';
 import 'package:spacetimedb_dart_sdk/src/connection/connection_state.dart';
+import 'package:spacetimedb_dart_sdk/src/exceptions.dart';
 import 'package:spacetimedb_dart_sdk/src/messages/client_messages.dart';
 import 'package:spacetimedb_dart_sdk/src/reducers/transaction_result.dart';
 import 'package:spacetimedb_dart_sdk/src/offline/offline_storage.dart';
@@ -139,7 +140,7 @@ class ReducerCaller {
       pending.completer.complete(result);
     } else {
       pending.completer.completeError(
-        ReducerException(
+        SpacetimeDbReducerException(
           reducerName: pending.reducerName,
           message: result.errorMessage ?? 'Unknown error',
           result: result,
@@ -183,7 +184,9 @@ class ReducerCaller {
         _mutationHandler?.onRollbackOptimistic(requestId.toString());
       }
       pending.completer.completeError(
-        ConnectionException('Connection lost during reducer call: $reason'),
+        SpacetimeDbConnectionException(
+          'Connection lost during reducer call: $reason',
+        ),
       );
     }
     _pendingRequests.clear();
@@ -289,35 +292,11 @@ class ReducerCaller {
         _mutationHandler?.onRollbackOptimistic(requestId.toString());
       }
       pending.completer.completeError(
-        TimeoutException(
+        SpacetimeDbTimeoutException(
           'Reducer "$reducerName" timed out after ${timeout.inSeconds}s',
-          timeout,
+          elapsed: timeout,
         ),
       );
     }
   }
-}
-
-class ReducerException implements Exception {
-  final String reducerName;
-  final String message;
-  final TransactionResult result;
-
-  ReducerException({
-    required this.reducerName,
-    required this.message,
-    required this.result,
-  });
-
-  @override
-  String toString() => 'ReducerException($reducerName): $message';
-}
-
-class ConnectionException implements Exception {
-  final String message;
-
-  ConnectionException(this.message);
-
-  @override
-  String toString() => 'ConnectionException: $message';
 }

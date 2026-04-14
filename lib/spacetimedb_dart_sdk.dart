@@ -2,9 +2,11 @@ library spacetimedb_dart_sdk;
 
 export 'package:fixnum/fixnum.dart' show Int64;
 
+// Exceptions
+export 'src/exceptions.dart';
+
 // Connection
-export 'src/connection/spacetimedb_connection.dart'
-    show SpacetimeDbConnection, SpacetimeDbAuthException;
+export 'src/connection/spacetimedb_connection.dart' show SpacetimeDbConnection;
 export 'src/connection/connection_state.dart';
 export 'src/connection/connection_quality.dart';
 export 'src/connection/connection_config.dart';
