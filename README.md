@@ -303,18 +303,48 @@ Storage options: `JsonFileStorage` (file-based), `InMemoryOfflineStorage` (testi
 
 ### Optimistic Updates
 
+Pass a list of `OptimisticChange` entries to any reducer call. Each entry describes one row write the reducer will produce (a reducer that writes 4 tables needs 4 entries). The SDK applies them to the local cache immediately, then keeps them on server-ack or rolls them back on failure.
+
+The typed-row helpers (`insertRow`, `updateRow`, `deleteRow`) extract the table name and serialize via the decoder — no hand-typed map, no stringly-typed table name:
+
 ```dart
-// Insert with immediate UI update
+final tempId = nextOptimisticIntId();  // client-side temp PK
+
 await client.reducers.createNote(
-  id: uuid.v4(), // Client-side IDs required for optimistic inserts
   title: 'New Note',
-  optimisticChanges: [OptimisticChange.insert('note', note.toJson())],
+  body: 'body',
+  optimisticChanges: [
+    OptimisticChange.insertRow(
+      client.note,
+      Note(id: tempId, title: 'New Note', body: 'body', createdAt: DateTime.now()),
+    ),
+  ],
 );
 
-// Update/delete
-optimisticChanges: [OptimisticChange.update('note', oldRow.toJson(), newRow.toJson())]
-optimisticChanges: [OptimisticChange.delete('note', row.toJson())]
+// Update — supply old and new rows
+optimisticChanges: [OptimisticChange.updateRow(client.note, oldNote, newNote)]
+
+// Delete — supply the row being removed
+optimisticChanges: [OptimisticChange.deleteRow(client.note, row)]
 ```
+
+For multi-table reducers, stage one `OptimisticChange` per table write:
+
+```dart
+await client.reducers.createOrder(
+  itemId: 1,
+  optimisticChanges: [
+    OptimisticChange.insertRow(client.order, placeholderOrder),
+    OptimisticChange.insertRow(client.orderLine, placeholderLine),
+    OptimisticChange.insertRow(client.inventoryDelta, placeholderDelta),
+    OptimisticChange.insertRow(client.auditLog, placeholderAudit),
+  ],
+);
+```
+
+**ID generation:** optimistic inserts require a client-side temporary primary key. Use `nextOptimisticIntId()` for integer PKs or `Uuid().v4()` for string PKs. Server-assigned auto-increment IDs don't work with optimism — the temp row and the server row end up as duplicates.
+
+The raw `OptimisticChange.insert/update/delete(tableName, Map<String, dynamic>)` constructors remain available when you need to hand-craft the row shape (e.g. the decoder doesn't implement `toJson`, or you're testing).
 
 ### Sync State
 

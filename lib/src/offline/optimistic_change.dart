@@ -1,3 +1,5 @@
+import 'package:spacetimedb_dart_sdk/src/cache/table_cache.dart';
+
 enum OptimisticChangeType { insert, update, delete }
 
 /// Represents a change to be applied optimistically to the local cache.
@@ -54,6 +56,40 @@ class OptimisticChange {
       oldRowJson = row,
       newRowJson = null;
 
+  /// Build an insert change from a typed row. The SDK extracts the table
+  /// name and serializes the row via the decoder — no hand-typed map and
+  /// no stringly-typed table name.
+  ///
+  /// ```dart
+  /// optimisticChanges: [
+  ///   OptimisticChange.insertRow(client.note, Note(id: tempId, title: 'Hi', body: 'there')),
+  /// ],
+  /// ```
+  ///
+  /// Throws [UnsupportedError] if the decoder does not implement `toJson`
+  /// (regenerate the table decoder to add it).
+  static OptimisticChange insertRow<T>(TableCache<T> table, T row) {
+    return OptimisticChange.insert(table.tableName, _requireJson(table, row));
+  }
+
+  /// Build an update change from two typed rows (old + new).
+  static OptimisticChange updateRow<T>(
+    TableCache<T> table,
+    T oldRow,
+    T newRow,
+  ) {
+    return OptimisticChange.update(
+      table.tableName,
+      _requireJson(table, oldRow),
+      _requireJson(table, newRow),
+    );
+  }
+
+  /// Build a delete change from a typed row.
+  static OptimisticChange deleteRow<T>(TableCache<T> table, T row) {
+    return OptimisticChange.delete(table.tableName, _requireJson(table, row));
+  }
+
   Map<String, dynamic> toJson() => {
     'tableName': tableName,
     'type': type.name,
@@ -90,4 +126,35 @@ class OptimisticChange {
         return OptimisticChange.delete(tableName, oldRowJson);
     }
   }
+
+  static Map<String, dynamic> _requireJson<T>(TableCache<T> table, T row) {
+    final json = table.decoder.toJson(row);
+    if (json == null) {
+      throw UnsupportedError(
+        'Table "${table.tableName}" decoder does not implement toJson. '
+        'Regenerate with a current codegen to enable typed optimistic changes, '
+        'or use OptimisticChange.insert/update/delete with a raw Map.',
+      );
+    }
+    return json;
+  }
 }
+
+/// Generate a client-side temporary integer primary key for optimistic
+/// inserts. Returns a negative microsecond-timestamp so it cannot collide
+/// with server-assigned positive IDs.
+///
+/// For UUID / String primary keys, use `Uuid().v4()` or your own scheme
+/// instead.
+///
+/// ```dart
+/// final tempId = nextOptimisticIntId();
+/// await client.reducers.createNote(
+///   title: 'Hi',
+///   body: 'there',
+///   optimisticChanges: [
+///     OptimisticChange.insertRow(client.note, Note(id: tempId, title: 'Hi', body: 'there')),
+///   ],
+/// );
+/// ```
+int nextOptimisticIntId() => -DateTime.now().microsecondsSinceEpoch;
