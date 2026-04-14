@@ -185,6 +185,31 @@ try {
 }
 ```
 
+## Reactive Helpers
+
+Everything reactive in the SDK (`rows`, `lastBatch`, views) is a `ValueListenable<T>`. Four extension methods cover the common async patterns without boilerplate:
+
+```dart
+// Resolves with the first non-null value (current or future)
+final user = await client.currentUser.firstNonNull();
+
+// Resolves when a predicate first holds
+await client.connection.stateNotifier
+    .firstWhere((s) => s is Connected);
+
+// Resolves on the next change (ignores current value)
+await player.positionNotifier.next;
+runTween(player.positionNotifier.value);
+
+// Bridge to Stream<T> for rxdart / StreamBuilder / bloc interop
+StreamBuilder<User?>(
+  stream: client.currentUser.toStream(),
+  builder: (ctx, snap) => ...,
+);
+```
+
+All four clean up their listeners automatically on resolve or cancel.
+
 ## Sum Types (Rust Enums)
 
 ```dart
