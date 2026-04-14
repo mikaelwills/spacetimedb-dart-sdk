@@ -101,12 +101,20 @@ client.users.lastBatch.addListener(() {
 
 ## Reducers
 
+A reducer call returns a `TransactionResult` on success and throws `SpacetimeDbReducerException` on server-side failure (`Failed` / `OutOfEnergy`). Fire-and-forget is fine — ignore the result if you don't need it.
+
 ```dart
-// Call and get result
-final result = await client.reducers.createUser(name: 'Alice', email: 'alice@example.com');
-print(result.isSuccess);
-print(result.energyConsumed);
-print(result.executionDuration);
+// Fire-and-forget
+await client.reducers.createUser(name: 'Alice', email: 'alice@example.com');
+
+// Use the result (energy cost, server timestamp, queued/dropped status)
+try {
+  final result = await client.reducers.createUser(name: 'Alice', email: 'alice@example.com');
+  print('energy: ${result.energyConsumed}, duration: ${result.executionDuration}');
+  if (result.isPending) print('queued offline, will sync on reconnect');
+} on SpacetimeDbReducerException catch (e) {
+  print('reducer failed: ${e.message}');
+}
 
 // Listen to reducer events (from any client)
 client.reducers.onCreateUser((ctx, name, email) {
@@ -114,6 +122,13 @@ client.reducers.onCreateUser((ctx, name, email) {
   print('By: ${ctx.callerIdentity}');
 });
 ```
+
+On success the result's `status` is one of:
+- `Committed` — server acknowledged the mutation.
+- `Pending` — offline storage is configured and the mutation is queued on disk; it will sync when the connection is restored. The eventual server ack/reject surfaces via `MutationSyncer.results` (not on this future).
+- `Dropped` — the call was made with `dropIfOffline: true` while offline, so it was discarded.
+
+`Failed` and `OutOfEnergy` never reach the return value — they are thrown as `SpacetimeDbReducerException`.
 
 ## Views
 
