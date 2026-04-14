@@ -65,6 +65,8 @@ Future<TestEnv> createTestEnv({
   subManager.reducerRegistry.register(createFolderDef);
   subManager.reducerRegistry.register(deleteFolderDef);
   subManager.reducerRegistry.register(deleteAllFoldersDef);
+  subManager.reducerRegistry.register(bulkInsertEntitiesDef);
+  subManager.reducerRegistry.register(mutateRandomEntitiesDef);
 
   final reducers = gen.Reducers(subManager.reducers, subManager.reducerEmitter);
 

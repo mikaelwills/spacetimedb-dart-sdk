@@ -258,6 +258,52 @@ pub fn create_tagged_item(
     });
 }
 
+#[table(accessor = entity, public)]
+pub struct Entity {
+    #[primary_key]
+    pub id: u64,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub health: u32,
+}
+
+#[reducer]
+pub fn bulk_insert_entities(ctx: &ReducerContext, count: u32) {
+    let max_id = ctx.db.entity().iter().map(|e| e.id).max().unwrap_or(0);
+    for i in 0..count as u64 {
+        ctx.db.entity().insert(Entity {
+            id: max_id + 1 + i,
+            x: i as f32 * 0.1,
+            y: i as f32 * 0.2,
+            z: i as f32 * 0.3,
+            health: 100,
+        });
+    }
+}
+
+#[reducer]
+pub fn mutate_random_entities(ctx: &ReducerContext, count: u32, seed: u64) {
+    let ids: Vec<u64> = ctx.db.entity().iter().map(|e| e.id).collect();
+    if ids.is_empty() {
+        return;
+    }
+    let len = ids.len() as u64;
+    let mut rng = seed;
+    for _ in 0..count {
+        rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let idx = (rng >> 33) % len;
+        let target_id = ids[idx as usize];
+        if let Some(mut e) = ctx.db.entity().id().find(target_id) {
+            e.x += 1.0;
+            e.y += 1.0;
+            e.z += 1.0;
+            e.health = e.health.wrapping_add(1);
+            ctx.db.entity().id().update(e);
+        }
+    }
+}
+
 /// Initialize with some test data
 #[reducer(init)]
 pub fn init(ctx: &ReducerContext) {

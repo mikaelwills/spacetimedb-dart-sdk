@@ -11,6 +11,28 @@ class Reducers {
 
   final ReducerEmitter _reducerEmitter;
 
+  /// Calls the `bulk_insert_entities` reducer.
+  ///
+  /// Returns a [TransactionResult] on success. Throws
+  /// [SpacetimeDbReducerException] if the reducer returns `Failed` or
+  /// `OutOfEnergy`. The returned status is one of `Committed`,
+  /// `Pending` (queued to offline storage), or `Dropped` (skipped via
+  /// `dropIfOffline: true` while offline).
+  Future<TransactionResult> bulkInsertEntities({
+    required int count,
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    encoder.writeU32(count);
+    return await _reducerCaller.call(
+      bulkInsertEntitiesDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
   /// Calls the `create_folder` reducer.
   ///
   /// Returns a [TransactionResult] on success. Throws
@@ -215,6 +237,26 @@ class Reducers {
     );
   }
 
+  /// Calls the `init` reducer.
+  ///
+  /// Returns a [TransactionResult] on success. Throws
+  /// [SpacetimeDbReducerException] if the reducer returns `Failed` or
+  /// `OutOfEnergy`. The returned status is one of `Committed`,
+  /// `Pending` (queued to offline storage), or `Dropped` (skipped via
+  /// `dropIfOffline: true` while offline).
+  Future<TransactionResult> init({
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    return await _reducerCaller.call(
+      initDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
   /// Calls the `mixed_note_batch` reducer.
   ///
   /// Returns a [TransactionResult] on success. Throws
@@ -237,6 +279,30 @@ class Reducers {
     encoder.writeString(marker);
     return await _reducerCaller.call(
       mixedNoteBatchDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
+  /// Calls the `mutate_random_entities` reducer.
+  ///
+  /// Returns a [TransactionResult] on success. Throws
+  /// [SpacetimeDbReducerException] if the reducer returns `Failed` or
+  /// `OutOfEnergy`. The returned status is one of `Committed`,
+  /// `Pending` (queued to offline storage), or `Dropped` (skipped via
+  /// `dropIfOffline: true` while offline).
+  Future<TransactionResult> mutateRandomEntities({
+    required int count,
+    required Int64 seed,
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    encoder.writeU32(count);
+    encoder.writeU64(seed);
+    return await _reducerCaller.call(
+      mutateRandomEntitiesDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
       dropIfOffline: dropIfOffline,
@@ -309,6 +375,18 @@ class Reducers {
       optimisticChanges: optimisticChanges,
       dropIfOffline: dropIfOffline,
     );
+  }
+
+  StreamSubscription<void> onBulkInsertEntities(
+    void Function(EventContext ctx, int count) callback,
+  ) {
+    return _reducerEmitter.on(bulkInsertEntitiesDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! BulkInsertEntitiesArgs) return;
+      callback(ctx, args.count);
+    });
   }
 
   StreamSubscription<void> onCreateFolder(
@@ -426,6 +504,16 @@ class Reducers {
     });
   }
 
+  StreamSubscription<void> onInit(void Function(EventContext ctx) callback) {
+    return _reducerEmitter.on(initDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! InitArgs) return;
+      callback(ctx);
+    });
+  }
+
   StreamSubscription<void> onMixedNoteBatch(
     void Function(
       EventContext ctx,
@@ -442,6 +530,20 @@ class Reducers {
       final args = event.reducerArgs;
       if (args is! MixedNoteBatchArgs) return;
       callback(ctx, args.inserts, args.updates, args.deletes, args.marker);
+    });
+  }
+
+  StreamSubscription<void> onMutateRandomEntities(
+    void Function(EventContext ctx, int count, Int64 seed) callback,
+  ) {
+    return _reducerEmitter.on(mutateRandomEntitiesDef).listen((
+      EventContext ctx,
+    ) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! MutateRandomEntitiesArgs) return;
+      callback(ctx, args.count, args.seed);
     });
   }
 
