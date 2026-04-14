@@ -117,7 +117,16 @@ class ReducerGenerator {
       m
         ..name = methodName
         ..modifier = MethodModifier.async
-        ..returns = refer('Future<TransactionResult>');
+        ..returns = refer('Future<TransactionResult>')
+        ..docs.addAll([
+          '/// Calls the `${reducer.name}` reducer.',
+          '///',
+          '/// Returns a [TransactionResult] on success. Throws',
+          '/// [SpacetimeDbReducerException] if the reducer returns `Failed` or',
+          '/// `OutOfEnergy`. The returned status is one of `Committed`,',
+          '/// `Pending` (queued to offline storage), or `Dropped` (skipped via',
+          '/// `dropIfOffline: true` while offline).',
+        ]);
 
       for (final param in reducer.params.elements) {
         final paramName = toCamelCase(param.name ?? 'unknown');

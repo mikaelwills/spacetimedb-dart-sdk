@@ -5,11 +5,21 @@ import '../messages/update_status.dart';
 
 /// Result of a reducer call, containing execution status and metadata.
 ///
-/// This is returned when awaiting a reducer call:
+/// Returned when awaiting a reducer call that completed without throwing.
+/// `Failed` and `OutOfEnergy` statuses never reach this object — the
+/// underlying call throws `SpacetimeDbReducerException` in those cases, so
+/// the only statuses you'll observe here are `Committed`, `Pending`, and
+/// `Dropped`. This means `if (result.isSuccess) { ... } else { ... }` has a
+/// dead failure branch; use try/catch for failures and inspect the result for
+/// metadata (energy, timestamp) or the `Pending`/`Dropped` offline states.
+///
 /// ```dart
-/// final result = await client.reducers.createNote(title: 'Hello', content: 'World');
-/// if (result.isSuccess) {
-///   print('Reducer completed successfully');
+/// try {
+///   final result = await client.reducers.createNote(title: 'Hi', body: 'there');
+///   print('energy: ${result.energyConsumed}');
+///   if (result.isPending) print('queued offline, will sync on reconnect');
+/// } on SpacetimeDbReducerException catch (e) {
+///   print('reducer failed: ${e.message}');
 /// }
 /// ```
 class TransactionResult {
