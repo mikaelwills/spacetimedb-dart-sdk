@@ -32,7 +32,6 @@ build/
 # Development notes
 show_failed_tests
 test_writing_protocol
-system_protocol.md
 
 # Rust build artifacts
 spacetime_test_module/target/
