@@ -1,8 +1,8 @@
 // ignore_for_file: avoid_print
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/src/codec/bsatn_encoder.dart';
-import 'package:spacetimedb_dart_sdk/src/codec/bsatn_decoder.dart';
-import 'package:spacetimedb_dart_sdk/src/messages/client_messages.dart';
+import 'package:spacetimedb_sdk/src/codec/bsatn_encoder.dart';
+import 'package:spacetimedb_sdk/src/codec/bsatn_decoder.dart';
+import 'package:spacetimedb_sdk/src/messages/client_messages.dart';
 
 void main() {
   test('CallReducer message encoding structure', () {

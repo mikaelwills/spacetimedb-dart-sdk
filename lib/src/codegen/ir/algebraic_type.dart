@@ -1,4 +1,4 @@
-import 'package:spacetimedb_dart_sdk/src/exceptions.dart';
+import 'package:spacetimedb_sdk/src/exceptions.dart';
 import '../models/type_models.dart';
 
 enum PrimitiveKind {

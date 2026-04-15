@@ -1,7 +1,7 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
 import 'dart:async';
-import 'package:spacetimedb_dart_sdk/codegen.dart';
+import 'package:spacetimedb_sdk/codegen.dart';
 import 'reducer_args.dart';
 
 class Reducers {

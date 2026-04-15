@@ -1,4 +1,4 @@
-import 'package:spacetimedb_dart_sdk/src/cache/table_cache.dart';
+import 'package:spacetimedb_sdk/src/cache/table_cache.dart';
 
 enum OptimisticChangeType { insert, update, delete }
 

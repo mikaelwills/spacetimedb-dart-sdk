@@ -5,13 +5,13 @@ import 'dart:math' show Random;
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
-import 'package:spacetimedb_dart_sdk/src/connection/connection_state.dart';
-import 'package:spacetimedb_dart_sdk/src/exceptions.dart';
-import 'package:spacetimedb_dart_sdk/src/connection/connection_quality.dart';
-import 'package:spacetimedb_dart_sdk/src/connection/connection_config.dart';
-import 'package:spacetimedb_dart_sdk/src/connection/keep_alive_monitor.dart';
-import 'package:spacetimedb_dart_sdk/src/messages/client_messages.dart';
-import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
+import 'package:spacetimedb_sdk/src/connection/connection_state.dart';
+import 'package:spacetimedb_sdk/src/exceptions.dart';
+import 'package:spacetimedb_sdk/src/connection/connection_quality.dart';
+import 'package:spacetimedb_sdk/src/connection/connection_config.dart';
+import 'package:spacetimedb_sdk/src/connection/keep_alive_monitor.dart';
+import 'package:spacetimedb_sdk/src/messages/client_messages.dart';
+import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 import 'platform.dart' show kIsWeb;
 import 'package:web_socket_channel/web_socket_channel.dart';
 

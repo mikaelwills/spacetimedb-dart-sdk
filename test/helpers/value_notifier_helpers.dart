@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:spacetimedb_dart_sdk/codegen.dart';
+import 'package:spacetimedb_sdk/codegen.dart';
 
 Future<T> waitForInsert<T>(
   TableCache<T> table,

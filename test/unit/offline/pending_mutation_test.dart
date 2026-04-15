@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/src/offline/pending_mutation.dart';
+import 'package:spacetimedb_sdk/src/offline/pending_mutation.dart';
 
 void main() {
   group('PendingMutation', () {

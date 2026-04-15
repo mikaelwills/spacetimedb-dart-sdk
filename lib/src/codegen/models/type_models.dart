@@ -1,9 +1,9 @@
 /// Type system models for SpacetimeDB schema
 library;
 
-import 'package:spacetimedb_dart_sdk/src/codegen/ir/algebraic_type.dart';
+import 'package:spacetimedb_sdk/src/codegen/ir/algebraic_type.dart';
 
-export 'package:spacetimedb_dart_sdk/src/codegen/ir/algebraic_type.dart';
+export 'package:spacetimedb_sdk/src/codegen/ir/algebraic_type.dart';
 
 class TypeSpace {
   final List<TypeSpaceEntry> types;

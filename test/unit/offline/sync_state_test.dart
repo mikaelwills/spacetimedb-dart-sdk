@@ -1,5 +1,5 @@
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/src/offline/sync_state.dart';
+import 'package:spacetimedb_sdk/src/offline/sync_state.dart';
 
 void main() {
   group('SyncState', () {

@@ -3,8 +3,8 @@ library;
 // ignore_for_file: avoid_print
 import 'dart:async';
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/src/messages/server_messages.dart';
-import 'package:spacetimedb_dart_sdk/src/subscription/subscription_manager.dart';
+import 'package:spacetimedb_sdk/src/messages/server_messages.dart';
+import 'package:spacetimedb_sdk/src/subscription/subscription_manager.dart';
 import '../generated/note.dart';
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';

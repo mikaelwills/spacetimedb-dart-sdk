@@ -142,7 +142,7 @@ Future<void> setupTestEnvironment() async {
     print('Generating test code from local project...');
     final generateResult = await _run('dart', [
       'run',
-      'spacetimedb_dart_sdk:generate',
+      'spacetimedb_sdk:generate',
       '--project-path',
       'spacetime_test_module',
       '--output',

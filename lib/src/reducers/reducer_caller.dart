@@ -1,17 +1,17 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:spacetimedb_dart_sdk/src/connection/spacetimedb_connection.dart';
-import 'package:spacetimedb_dart_sdk/src/connection/connection_state.dart';
-import 'package:spacetimedb_dart_sdk/src/exceptions.dart';
-import 'package:spacetimedb_dart_sdk/src/messages/client_messages.dart';
-import 'package:spacetimedb_dart_sdk/src/reducers/transaction_result.dart';
-import 'package:spacetimedb_dart_sdk/src/offline/offline_storage.dart';
-import 'package:spacetimedb_dart_sdk/src/offline/pending_mutation.dart';
-import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
+import 'package:spacetimedb_sdk/src/connection/spacetimedb_connection.dart';
+import 'package:spacetimedb_sdk/src/connection/connection_state.dart';
+import 'package:spacetimedb_sdk/src/exceptions.dart';
+import 'package:spacetimedb_sdk/src/messages/client_messages.dart';
+import 'package:spacetimedb_sdk/src/reducers/transaction_result.dart';
+import 'package:spacetimedb_sdk/src/offline/offline_storage.dart';
+import 'package:spacetimedb_sdk/src/offline/pending_mutation.dart';
+import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 
-import 'package:spacetimedb_dart_sdk/src/reducers/mutation_handler.dart';
-export 'package:spacetimedb_dart_sdk/src/offline/optimistic_change.dart';
+import 'package:spacetimedb_sdk/src/reducers/mutation_handler.dart';
+export 'package:spacetimedb_sdk/src/offline/optimistic_change.dart';
 import 'package:uuid/uuid.dart';
 
 class _PendingRequest {

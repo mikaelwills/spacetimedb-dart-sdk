@@ -1,4 +1,4 @@
-import 'package:spacetimedb_dart_sdk/src/codegen/models.dart';
+import 'package:spacetimedb_sdk/src/codegen/models.dart';
 
 enum ViewReturnType { array, option, single, query, unknown }
 

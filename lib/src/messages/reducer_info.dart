@@ -1,5 +1,5 @@
 import 'dart:typed_data';
-import 'package:spacetimedb_dart_sdk/src/codec/bsatn_decoder.dart';
+import 'package:spacetimedb_sdk/src/codec/bsatn_decoder.dart';
 
 /// Metadata about which reducer caused a transaction
 ///

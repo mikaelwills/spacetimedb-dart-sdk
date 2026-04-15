@@ -3,7 +3,7 @@ library;
 // ignore_for_file: avoid_print
 import 'dart:typed_data';
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/codegen.dart';
+import 'package:spacetimedb_sdk/codegen.dart';
 
 import '../generated/note.dart';
 import '../generated/note_status.dart';

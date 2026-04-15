@@ -1,7 +1,7 @@
 import 'package:code_builder/code_builder.dart' hide TypeDef;
-import 'package:spacetimedb_dart_sdk/src/codegen/models.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/view_generator.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/codegen_emitter.dart';
+import 'package:spacetimedb_sdk/src/codegen/models.dart';
+import 'package:spacetimedb_sdk/src/codegen/view_generator.dart';
+import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
 
 class ClientGenerator {
   final DatabaseSchema schema;
@@ -14,7 +14,7 @@ class ClientGenerator {
   String generate() {
     final imports = <Directive>[
       Directive.import('dart:async'),
-      Directive.import('package:spacetimedb_dart_sdk/codegen.dart'),
+      Directive.import('package:spacetimedb_sdk/codegen.dart'),
       Directive.import('reducers.dart'),
     ];
 

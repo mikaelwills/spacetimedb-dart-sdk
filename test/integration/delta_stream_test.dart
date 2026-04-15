@@ -1,7 +1,7 @@
 library;
 
 // ignore_for_file: avoid_print
-import 'package:spacetimedb_dart_sdk/spacetimedb_dart_sdk.dart';
+import 'package:spacetimedb_sdk/spacetimedb_sdk.dart';
 import 'package:test/test.dart';
 import '../generated/note.dart';
 import '../helpers/integration_test_helper.dart';

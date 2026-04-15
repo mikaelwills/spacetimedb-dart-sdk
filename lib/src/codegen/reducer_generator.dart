@@ -1,6 +1,6 @@
 import 'package:code_builder/code_builder.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/models.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/codegen_emitter.dart';
+import 'package:spacetimedb_sdk/src/codegen/models.dart';
+import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
 
 class ReducerGenerator {
   final List<ReducerSchema> reducers;
@@ -13,7 +13,7 @@ class ReducerGenerator {
           b
             ..directives.addAll([
               Directive.import('dart:async'),
-              Directive.import('package:spacetimedb_dart_sdk/codegen.dart'),
+              Directive.import('package:spacetimedb_sdk/codegen.dart'),
               Directive.import('reducer_args.dart'),
             ])
             ..body.add(_buildReducersClass()),
@@ -36,7 +36,7 @@ class ReducerGenerator {
       (b) =>
           b
             ..directives.add(
-              Directive.import('package:spacetimedb_dart_sdk/codegen.dart'),
+              Directive.import('package:spacetimedb_sdk/codegen.dart'),
             )
             ..body.addAll(specs),
     );

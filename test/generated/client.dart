@@ -2,12 +2,12 @@
 // ignore_for_file: avoid_print
 
 import 'dart:async';
-import 'package:spacetimedb_dart_sdk/codegen.dart';
+import 'package:spacetimedb_sdk/codegen.dart';
 import 'reducers.dart';
 import 'reducer_args.dart';
 import 'entity.dart';
-import 'folder.dart';
 import 'note.dart';
+import 'folder.dart';
 import 'tagged_item.dart';
 
 class SpacetimeDbClient {
@@ -67,12 +67,12 @@ class SpacetimeDbClient {
     return subscriptions.cache.getTableByTypedName<Entity>('entity');
   }
 
-  TableCache<Folder> get folder {
-    return subscriptions.cache.getTableByTypedName<Folder>('folder');
-  }
-
   TableCache<Note> get note {
     return subscriptions.cache.getTableByTypedName<Note>('note');
+  }
+
+  TableCache<Folder> get folder {
+    return subscriptions.cache.getTableByTypedName<Folder>('folder');
   }
 
   TableCache<TaggedItem> get taggedItem {
@@ -122,11 +122,11 @@ class SpacetimeDbClient {
       'entity',
       EntityDecoder(),
     );
+    subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
     subscriptionManager.cache.registerDecoder<Folder>(
       'folder',
       FolderDecoder(),
     );
-    subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
     subscriptionManager.cache.registerDecoder<TaggedItem>(
       'tagged_item',
       TaggedItemDecoder(),

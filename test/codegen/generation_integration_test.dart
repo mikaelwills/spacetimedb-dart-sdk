@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/schema_extractor.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/dart_generator.dart';
+import 'package:spacetimedb_sdk/src/codegen/schema_extractor.dart';
+import 'package:spacetimedb_sdk/src/codegen/dart_generator.dart';
 import 'test_helpers.dart';
 
 void main() {
@@ -119,15 +119,15 @@ void main() {
       // Verify all files have proper imports
       expect(
         noteContent,
-        contains("import 'package:spacetimedb_dart_sdk/codegen.dart';"),
+        contains("import 'package:spacetimedb_sdk/codegen.dart';"),
       );
       expect(
         reducersContent,
-        contains("import 'package:spacetimedb_dart_sdk/codegen.dart';"),
+        contains("import 'package:spacetimedb_sdk/codegen.dart';"),
       );
       expect(
         clientContent,
-        contains("import 'package:spacetimedb_dart_sdk/codegen.dart';"),
+        contains("import 'package:spacetimedb_sdk/codegen.dart';"),
       );
       expect(clientContent, contains("import 'reducers.dart';"));
       expect(clientContent, contains("import 'note.dart';"));
@@ -225,7 +225,7 @@ environment:
   sdk: ^3.5.4
 
 dependencies:
-  spacetimedb_dart_sdk:
+  spacetimedb_sdk:
     path: $sdkPath
 ''';
         await File(

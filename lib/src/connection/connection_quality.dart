@@ -1,4 +1,4 @@
-import 'package:spacetimedb_dart_sdk/src/connection/connection_state.dart';
+import 'package:spacetimedb_sdk/src/connection/connection_state.dart';
 
 class ConnectionQuality {
   final ConnectionState status;

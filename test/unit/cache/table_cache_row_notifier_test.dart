@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/codegen.dart';
-import 'package:spacetimedb_dart_sdk/protocol.dart';
+import 'package:spacetimedb_sdk/codegen.dart';
+import 'package:spacetimedb_sdk/protocol.dart';
 
 import '../../generated/note.dart';
 import '../../generated/note_status.dart';

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/protocol.dart';
+import 'package:spacetimedb_sdk/protocol.dart';
 import '../helpers/integration_test_helper.dart';
 
 void main() {

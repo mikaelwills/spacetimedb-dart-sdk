@@ -1,7 +1,7 @@
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/models.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/reducer_generator.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/client_generator.dart';
+import 'package:spacetimedb_sdk/src/codegen/models.dart';
+import 'package:spacetimedb_sdk/src/codegen/reducer_generator.dart';
+import 'package:spacetimedb_sdk/src/codegen/client_generator.dart';
 
 void main() {
   group('Phase 5: Code Generation Updates', () {

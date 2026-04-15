@@ -63,7 +63,7 @@ Future<void> main() async {
   print('🔧 Generating test code from notesdb schema...');
   final generateResult = await Process.run('dart', [
     'run',
-    'spacetimedb_dart_sdk:generate',
+    'spacetimedb_sdk:generate',
     '-d',
     'notesdb',
     '-s',

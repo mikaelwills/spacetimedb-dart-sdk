@@ -2,7 +2,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
+import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 
 import '../test/helpers/integration_test_helper.dart';
 import '../test/generated/client.dart';

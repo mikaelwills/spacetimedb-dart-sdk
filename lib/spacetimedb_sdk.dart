@@ -1,4 +1,4 @@
-library spacetimedb_dart_sdk;
+library spacetimedb_sdk;
 
 export 'package:fixnum/fixnum.dart' show Int64;
 

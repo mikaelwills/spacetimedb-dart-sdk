@@ -1,6 +1,6 @@
 // GENERATED REDUCER ARGUMENT CLASSES AND DECODERS - DO NOT MODIFY BY HAND
 
-import 'package:spacetimedb_dart_sdk/codegen.dart';
+import 'package:spacetimedb_sdk/codegen.dart';
 
 class BulkInsertEntitiesArgs {
   BulkInsertEntitiesArgs({required this.count});
