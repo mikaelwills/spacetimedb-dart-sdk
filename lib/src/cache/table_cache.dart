@@ -24,6 +24,31 @@ class TableCache<T> {
   final ValueNotifier<TransactionBatch<T>?> lastBatch =
       ValueNotifier<TransactionBatch<T>?>(null);
 
+  final StreamController<TableInsertEvent<T>> _onInsertController =
+      StreamController<TableInsertEvent<T>>.broadcast(sync: true);
+  final StreamController<TableUpdateEvent<T>> _onUpdateController =
+      StreamController<TableUpdateEvent<T>>.broadcast(sync: true);
+  final StreamController<TableDeleteEvent<T>> _onDeleteController =
+      StreamController<TableDeleteEvent<T>>.broadcast(sync: true);
+
+  /// Fires when a row is inserted into this table. Broadcast — multiple
+  /// subscribers each receive every event. No replay: late subscribers do not
+  /// see past events. Fires synchronously during the transaction, before
+  /// [lastBatch] fires.
+  ///
+  /// ```dart
+  /// client.chat.onInsert.listen((e) => playDingSound());
+  /// ```
+  Stream<TableInsertEvent<T>> get onInsert => _onInsertController.stream;
+
+  /// Fires when a row is updated. `oldRow` and `newRow` are both provided on
+  /// the event. See [onInsert] for broadcast/ordering semantics.
+  Stream<TableUpdateEvent<T>> get onUpdate => _onUpdateController.stream;
+
+  /// Fires when a row is deleted from this table. See [onInsert] for
+  /// broadcast/ordering semantics.
+  Stream<TableDeleteEvent<T>> get onDelete => _onDeleteController.stream;
+
   final Completer<void> _subscribedCompleter = Completer<void>();
 
   /// Resolves when the server has delivered the initial subscription batch
@@ -200,6 +225,9 @@ class TableCache<T> {
     _rowNotifiers.clear();
     rows.dispose();
     lastBatch.dispose();
+    _onInsertController.close();
+    _onUpdateController.close();
+    _onDeleteController.close();
   }
 
   List<Map<String, dynamic>> toSerializable() {
@@ -335,6 +363,18 @@ class TableCache<T> {
           events.add(TableDeleteEvent<T>(context, spec.oldRow as T));
       }
     }
+
+    for (final event in events) {
+      switch (event) {
+        case TableInsertEvent<T>():
+          _onInsertController.add(event);
+        case TableUpdateEvent<T>():
+          _onUpdateController.add(event);
+        case TableDeleteEvent<T>():
+          _onDeleteController.add(event);
+      }
+    }
+
     lastBatch.value = TransactionBatch<T>(context, events);
   }
 
@@ -412,6 +452,17 @@ class TableCache<T> {
         if (pk != null) touchedKeys.add(pk);
       }
       _notifyRowListeners(touchedKeys);
+    }
+
+    for (final event in events) {
+      switch (event) {
+        case TableInsertEvent<T>():
+          _onInsertController.add(event);
+        case TableUpdateEvent<T>():
+          _onUpdateController.add(event);
+        case TableDeleteEvent<T>():
+          _onDeleteController.add(event);
+      }
     }
 
     if (events.isNotEmpty) {
