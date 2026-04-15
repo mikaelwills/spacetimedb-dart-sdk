@@ -123,6 +123,30 @@ entity.addListener(() {
 - Auto-disposes when the last listener detaches; a subsequent `rowNotifier(pk)` call returns a fresh instance.
 - Only valid on tables with a declared primary key.
 
+### Delta streams
+
+For consumers that react to one kind of change (insert OR update OR delete), every `TableCache<T>` exposes per-type streams. Cleaner than iterating `lastBatch.value.events` and type-checking each one.
+
+```dart
+client.chat.onInsert.listen((e) {
+  playDingSound();
+  showToast(e.row.text);
+});
+
+client.entity.onDelete.listen((e) => spawnDeathParticle(e.row.x, e.row.y));
+
+client.player.onUpdate.where((e) => e.newRow.health < e.oldRow.health).listen(
+  (e) => flashDamageOverlay(),
+);
+```
+
+**Semantics:**
+- Broadcast — multiple subscribers each receive every event.
+- Synchronous — fires during the transaction, before `lastBatch` fires. Inside an `onInsert` listener, `rows.value` already reflects the new state.
+- No replay — late subscribers don't see past events. If you need "the current state," use `rows` or `lastBatch`.
+
+**The primitive rule:** `ValueNotifier` for held state you can read anytime (`rows`, `lastBatch`, `rowNotifier(pk)`). `Stream` for transient events with no "current" to hold (`onInsert`, `onUpdate`, `onDelete`).
+
 ## Reducers
 
 A reducer call returns a `TransactionResult` on success and throws `SpacetimeDbReducerException` on server-side failure (`Failed` / `OutOfEnergy`). Fire-and-forget is fine — ignore the result if you don't need it.
