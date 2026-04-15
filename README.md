@@ -32,17 +32,17 @@ curl --proto '=https' --tlsv1.2 -sSf https://install.spacetimedb.com | sh
 
 ```yaml
 dependencies:
-  spacetimedb_dart_sdk: ^1.0.0
+  spacetimedb_sdk: ^1.0.0
 ```
 
 ### 3. Generate client code from your module
 
 ```bash
 # From a running server
-dart run spacetimedb_dart_sdk:generate -s http://localhost:3000 -d your_database -o lib/generated
+dart run spacetimedb_sdk:generate -s http://localhost:3000 -d your_database -o lib/generated
 
 # Or from a local Rust project
-dart run spacetimedb_dart_sdk:generate -p path/to/module -o lib/generated
+dart run spacetimedb_sdk:generate -p path/to/module -o lib/generated
 ```
 
 ### 4. Connect

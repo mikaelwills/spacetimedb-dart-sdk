@@ -1,6 +1,6 @@
 name: spacetimedb_sdk
 description: "Dart SDK for SpacetimeDB. Real-time typed tables, reactive primitives, optimistic updates, and opt-in offline storage for Flutter apps."
-version: 1.0.0
+version: 1.0.1
 homepage: https://github.com/mikaelwills/spacetimedb-dart-sdk
 repository: https://github.com/mikaelwills/spacetimedb-dart-sdk
 issue_tracker: https://github.com/mikaelwills/spacetimedb-dart-sdk/issues
