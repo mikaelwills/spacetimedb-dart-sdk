@@ -1,10 +1,10 @@
-import 'package:spacetimedb_dart_sdk/src/codegen/client_generator.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/reducer_generator.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/models.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/table_generator.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/generators/sum_type_generator.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/codegen_emitter.dart';
-import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
+import 'package:spacetimedb_sdk/src/codegen/client_generator.dart';
+import 'package:spacetimedb_sdk/src/codegen/reducer_generator.dart';
+import 'package:spacetimedb_sdk/src/codegen/models.dart';
+import 'package:spacetimedb_sdk/src/codegen/table_generator.dart';
+import 'package:spacetimedb_sdk/src/codegen/generators/sum_type_generator.dart';
+import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
+import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 import 'dart:io';
 
 class DartGenerator {

@@ -1,7 +1,7 @@
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/schema_extractor.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/view_generator.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/client_generator.dart';
+import 'package:spacetimedb_sdk/src/codegen/schema_extractor.dart';
+import 'package:spacetimedb_sdk/src/codegen/view_generator.dart';
+import 'package:spacetimedb_sdk/src/codegen/client_generator.dart';
 
 void main() {
   group('Views', () {

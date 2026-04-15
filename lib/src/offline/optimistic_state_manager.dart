@@ -1,7 +1,7 @@
-import 'package:spacetimedb_dart_sdk/src/cache/client_cache.dart';
-import 'package:spacetimedb_dart_sdk/src/events/event_context.dart';
-import 'package:spacetimedb_dart_sdk/src/events/transaction_batch.dart';
-import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
+import 'package:spacetimedb_sdk/src/cache/client_cache.dart';
+import 'package:spacetimedb_sdk/src/events/event_context.dart';
+import 'package:spacetimedb_sdk/src/events/transaction_batch.dart';
+import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 
 import 'optimistic_change.dart';
 

@@ -1,9 +1,9 @@
 import 'dart:typed_data';
 import 'package:fixnum/fixnum.dart';
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/src/codec/bsatn_decoder.dart';
-import 'package:spacetimedb_dart_sdk/src/codec/bsatn_encoder.dart';
-import 'package:spacetimedb_dart_sdk/src/exceptions.dart';
+import 'package:spacetimedb_sdk/src/codec/bsatn_decoder.dart';
+import 'package:spacetimedb_sdk/src/codec/bsatn_encoder.dart';
+import 'package:spacetimedb_sdk/src/exceptions.dart';
 
 void main() {
   group('BSATN Primitives', () {

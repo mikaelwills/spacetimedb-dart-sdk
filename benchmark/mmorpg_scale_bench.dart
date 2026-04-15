@@ -2,8 +2,8 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:spacetimedb_dart_sdk/codegen.dart';
-import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
+import 'package:spacetimedb_sdk/codegen.dart';
+import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 import 'package:test/test.dart';
 
 import '../test/helpers/integration_test_helper.dart';

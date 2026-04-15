@@ -1,8 +1,8 @@
 // ignore_for_file: avoid_print
 import 'dart:io';
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/schema_extractor.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/dart_generator.dart';
+import 'package:spacetimedb_sdk/src/codegen/schema_extractor.dart';
+import 'package:spacetimedb_sdk/src/codegen/dart_generator.dart';
 
 /// Integration test for generated client code
 ///

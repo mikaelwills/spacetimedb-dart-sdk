@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:spacetimedb_dart_sdk/src/codec/bsatn_decoder.dart';
-import 'package:spacetimedb_dart_sdk/src/messages/shared_types.dart';
+import 'package:spacetimedb_sdk/src/codec/bsatn_decoder.dart';
+import 'package:spacetimedb_sdk/src/messages/shared_types.dart';
 import 'package:test/test.dart';
 
 Uint8List _encodeEmptyQueryUpdateBody() {

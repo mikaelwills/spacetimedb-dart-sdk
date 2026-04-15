@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:fixnum/fixnum.dart';
-import 'package:spacetimedb_dart_sdk/src/auth/identity.dart';
+import 'package:spacetimedb_sdk/src/auth/identity.dart';
 
 /// Encodes Dart values into BSATN (Binary Spacetime Algebraic Type Notation) format
 ///

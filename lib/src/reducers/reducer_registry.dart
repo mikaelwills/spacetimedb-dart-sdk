@@ -1,8 +1,8 @@
 import 'dart:typed_data';
-import 'package:spacetimedb_dart_sdk/src/codec/bsatn_decoder.dart';
-import 'package:spacetimedb_dart_sdk/src/reducers/reducer_arg_decoder.dart';
-import 'package:spacetimedb_dart_sdk/src/reducers/reducer_def.dart';
-import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
+import 'package:spacetimedb_sdk/src/codec/bsatn_decoder.dart';
+import 'package:spacetimedb_sdk/src/reducers/reducer_arg_decoder.dart';
+import 'package:spacetimedb_sdk/src/reducers/reducer_def.dart';
+import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 
 class ReducerRegistry {
   final Map<String, ReducerArgDecoder> _decoders = {};

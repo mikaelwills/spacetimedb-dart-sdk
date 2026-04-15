@@ -2,7 +2,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/schema_extractor.dart';
+import 'package:spacetimedb_sdk/src/codegen/schema_extractor.dart';
 import 'test_helpers.dart';
 
 void main() {

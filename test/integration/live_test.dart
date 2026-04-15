@@ -1,7 +1,7 @@
 // ignore_for_file: avoid_print
 import 'dart:async';
 import 'dart:math';
-import 'package:spacetimedb_dart_sdk/codegen.dart';
+import 'package:spacetimedb_sdk/codegen.dart';
 import '../generated/note.dart';
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';

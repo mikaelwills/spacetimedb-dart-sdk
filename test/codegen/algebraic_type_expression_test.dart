@@ -1,4 +1,4 @@
-import 'package:spacetimedb_dart_sdk/src/codegen/ir/algebraic_type.dart';
+import 'package:spacetimedb_sdk/src/codegen/ir/algebraic_type.dart';
 import 'package:test/test.dart';
 
 void main() {

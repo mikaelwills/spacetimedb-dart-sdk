@@ -1,13 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:spacetimedb_dart_sdk/src/cache/row_decoder.dart';
-import 'package:spacetimedb_dart_sdk/src/codec/bsatn_decoder.dart';
-import 'package:spacetimedb_dart_sdk/src/messages/shared_types.dart';
-import 'package:spacetimedb_dart_sdk/src/events/event_context.dart';
-import 'package:spacetimedb_dart_sdk/src/events/table_event.dart';
-import 'package:spacetimedb_dart_sdk/src/events/transaction_batch.dart';
-import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
+import 'package:spacetimedb_sdk/src/cache/row_decoder.dart';
+import 'package:spacetimedb_sdk/src/codec/bsatn_decoder.dart';
+import 'package:spacetimedb_sdk/src/messages/shared_types.dart';
+import 'package:spacetimedb_sdk/src/events/event_context.dart';
+import 'package:spacetimedb_sdk/src/events/table_event.dart';
+import 'package:spacetimedb_sdk/src/events/transaction_batch.dart';
+import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 
 class TableCache<T> {
   final String tableName;

@@ -1,8 +1,8 @@
 // ignore_for_file: avoid_print
 import 'dart:io';
 import 'package:args/args.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/schema_extractor.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/dart_generator.dart';
+import 'package:spacetimedb_sdk/src/codegen/schema_extractor.dart';
+import 'package:spacetimedb_sdk/src/codegen/dart_generator.dart';
 
 void main(List<String> arguments) async {
   final parser =
@@ -117,23 +117,23 @@ void main(List<String> arguments) async {
 
 void _printUsage(ArgParser parser) {
   print('SpacetimeDB Dart Code Generator\n');
-  print('Usage: dart run spacetimedb_dart_sdk:generate [options]\n');
+  print('Usage: dart run spacetimedb_sdk:generate [options]\n');
   print('Options:');
   print(parser.usage);
   print('\nExamples:');
   print('  # Generate from running database (network)');
-  print('  dart run spacetimedb_dart_sdk:generate \\');
+  print('  dart run spacetimedb_sdk:generate \\');
   print('    --server http://localhost:3000 \\');
   print('    --database notesdb \\');
   print('    --output lib/generated');
   print('');
   print('  # Generate from local Rust module project');
-  print('  dart run spacetimedb_dart_sdk:generate \\');
+  print('  dart run spacetimedb_sdk:generate \\');
   print('    --project-path ../my-spacetime-module \\');
   print('    --output lib/generated');
   print('');
   print('  # Generate from compiled WASM binary');
-  print('  dart run spacetimedb_dart_sdk:generate \\');
+  print('  dart run spacetimedb_sdk:generate \\');
   print(
     '    --bin-path ../my-module/target/wasm32-unknown-unknown/release/my_module.wasm \\',
   );

@@ -5,132 +5,80 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## 1.0.0 - 2026-04-15
 
-### Changed (Breaking)
+First public release on pub.dev.
 
-- Unified exception hierarchy under sealed `SpacetimeDbException` root.
-  Consumers can now write `on SpacetimeDbException catch (e)` once to cover
-  every SDK-originated runtime failure, and `switch` over the sealed root
-  for exhaustive analyzer coverage.
-- Renamed exceptions:
-  - `ReducerException` → `SpacetimeDbReducerException`
-  - `ConnectionException` → `SpacetimeDbConnectionException`
-  - `SchemaParseException` → `SpacetimeDbSchemaException`
-  - SDK-imposed reducer-call timeouts now throw `SpacetimeDbTimeoutException`
-    instead of `dart:async` `TimeoutException`. Note: this is a taxonomy
-    change — the new type does not extend `TimeoutException`. Existing
-    `on TimeoutException` catches around reducer calls must migrate.
-- `SpacetimeDbAuthException` now extends `SpacetimeDbConnectionException`
-  (auth failure is a connection-failure subtype).
-- `connect()` now wraps raw transport errors (`SocketException`,
-  `HandshakeException`, `WebSocketException`) into
-  `SpacetimeDbConnectionException` instead of rethrowing. Consumers no
-  longer need to import `dart:io` / `web_socket_channel` to catch
-  connect-time failures.
-- BSATN decoder now throws `SpacetimeDbProtocolException` for wire-protocol
-  decode failures (buffer underflow, invalid bool tag) instead of
-  `StateError` / `FormatException`.
+This version consolidates a multi-month pre-release development effort into the first stable, published API. Everything below was already in place before publication; the CHANGELOG entries exist as a reference for anyone who was tracking the SDK via git before 1.0.
 
-## [0.1.0] - 2024-11-21
+### Reactive primitives
 
-### Added
+- `TableCache<T>.rows` — `ValueNotifier<List<T>>` that fires on every transaction touching the table.
+- `TableCache<T>.lastBatch` — `ValueNotifier<TransactionBatch<T>?>` carrying every row change from the most recent transaction. Fires exactly once per transaction with a `List<TableEvent<T>>` (insert / update / delete subtypes).
+- `TableCache<T>.rowNotifier(primaryKey)` — per-row auto-disposing `ValueNotifier<T?>` that fires only when that specific row's value changes. Scales to thousands of concurrent row-watchers at `O(rows_touched)` cost per transaction, not `O(listeners × events)`.
+- `TableCache<T>.onInsert` / `onUpdate` / `onDelete` — broadcast `Stream<TableEvent<T>>` for consumers that react to one kind of change (no iteration or type-ladder needed). Fire synchronously in the same transaction as `lastBatch`.
+- `TableCache<T>.subscribed` — `Future<void>` that resolves when the server delivers the initial batch for this table (including empty tables).
 
-#### Core Features
-- WebSocket connection management with automatic reconnection
-- Connection state tracking and quality metrics
-- SSL/TLS support with configurable certificates
-- Brotli compression support for messages
+### Typed client
 
-#### BSATN Codec
-- Complete BSATN binary encoding/decoding implementation
-- Support for all SpacetimeDB types (integers, floats, strings, arrays, maps)
-- Type-safe encoding with bounds checking
+- Code generation from Rust module: tables, reducers, sum types (Rust enums → Dart sealed classes with exhaustive matching), views (`Vec<T>`, `Option<T>`, single-row).
+- Reducers become typed async Dart methods returning `TransactionResult` (energy cost, server timestamp, queued/dropped status).
+- Views exposed as direct accessors (`client.activeUsers`, `client.currentAdmin`).
 
-#### Table Cache
-- Client-side table caching with automatic synchronization
-- Row decoder system for typed table access
-- Streaming updates for table changes (inserts, updates, deletes)
+### Optimistic updates
 
-#### Reducers
-- Type-safe reducer calling system
-- Event-driven reducer responses
-- Transaction support with commit tracking
+- `OptimisticChange.insertRow(tableCache, row)` / `updateRow` / `deleteRow` — typed helpers that extract the table name and serialize via the decoder.
+- `nextOptimisticIntId()` — utility for client-side temporary primary keys.
+- Pass `optimisticChanges: [...]` on any reducer call; the SDK applies the writes locally, keeps them on server-ack, or rolls them back on rejection.
+- Multi-table reducer support: stage one `OptimisticChange` per table write.
 
-#### Code Generation
-- CLI tool for generating Dart client code from SpacetimeDB schemas
-- Table class generation with typed fields
-- Reducer method generation
-- Sum type (Rust enum) support with sealed Dart classes
-- View support (Vec, Option, single-row)
+### Offline storage
 
-#### Authentication
-- Identity and token management
-- OIDC authentication support
-- Pluggable token storage (in-memory and persistent)
+- `OfflineStorage` abstract class: `saveTableSnapshot` / `loadTableSnapshot`, mutation queue, per-table last-sync timestamps.
+- `JsonFileStorage` — durable file-based implementation.
+- `InMemoryOfflineStorage` — for tests.
+- Cached reads work without a connection; writes queue while disconnected and replay in order on reconnect.
+- `client.onSyncStateChanged` + `client.onMutationSyncResult` streams for sync-state UI.
 
-#### Events
-- Event stream system for real-time updates
-- Transaction events with energy tracking
-- Error event handling
+### Exception handling
 
-### Infrastructure
-- Comprehensive test suite (170+ tests)
-- Unit and integration test separation
-- Automated test environment setup
+Sealed `SpacetimeDbException` root with seven typed subtypes (`Reducer`, `Connection`, `Auth`, `Timeout`, `Schema`, `Protocol`, `Subscription`). `on SpacetimeDbException catch (e)` covers every SDK runtime failure.
 
-## [1.0.0] - 2026-04-09
+- `connect()` wraps raw `SocketException` / `HandshakeException` / `WebSocketException` into `SpacetimeDbConnectionException`.
+- BSATN decode errors throw `SpacetimeDbProtocolException`.
+- `SpacetimeDbAuthException` extends `SpacetimeDbConnectionException`.
 
-### Breaking Changes
+### Connection
 
-#### Replaced Stream API with ValueNotifier reactive primitives
-- Removed all 8 `StreamController`s and their public stream getters from `TableCache`: `insertStream`, `deleteStream`, `updateStream`, `changeStream`, `insertEventStream`, `updateEventStream`, `deleteEventStream`, `eventStream`
-- Removed convenience filter streams: `insertsFromReducers`, `myInserts`, `eventsFromReducers`, `myEvents`
-- Removed `TableUpdate<T>`, `TableChange<T>`, and `ChangeType` types
-- Added `ValueNotifier<List<T>> rows` — synchronous reactive row list, notifies on any insert/update/delete
-- Added `ValueNotifier<TableEvent<T>?> lastEvent` — synchronous event detail with full `EventContext`
-- All notifications are synchronous (same microtask), replacing the async Stream dispatch
+- Sealed `ConnectionState` (`Connecting` / `Connected` / `Reconnecting` / `Disconnected` / `AuthError` / `FatalError`) — `switch` exhaustively.
+- `client.connection.onStateChanged` — `Stream<ConnectionState>`.
+- Automatic reconnection with exponential backoff.
 
-#### Migration guide
-- `table.insertStream.listen(cb)` → `table.lastEvent.addListener(() { if (table.lastEvent.value is TableInsertEvent<T>) cb(...) })`
-- `table.rows.addListener(cb)` for "anything changed" (replaces subscribing to all 3 streams)
-- `stream.firstWhere(condition)` → `Completer` + `lastEvent.addListener` pattern
-- `TableUpdate` → use `TableUpdateEvent` from `lastEvent.value`
-- Framework adapters (Riverpod, Bloc) can consume `ValueNotifier` natively
+### Extensions
 
-## [Unreleased]
+`ValueListenable<T>` extensions for common async patterns:
+- `firstNonNull()` — resolve with first non-null value (current or future).
+- `firstWhere(predicate)` — resolve when predicate first holds.
+- `next` — resolve on next change, ignore current.
+- `toStream()` — bridge to `Stream<T>` for `StreamBuilder` / rxdart interop.
 
-### Breaking Changes
+### Migration from pre-1.0 consumers
 
-#### Replaced per-row `lastEvent` with transaction-aware `lastBatch`
-- Removed `ValueNotifier<TableEvent<T>?> lastEvent` from `TableCache`
-- Removed per-row emit methods: `emitInsert`, `emitUpdate`, `emitDelete`
-- Added `ValueNotifier<TransactionBatch<T>?> lastBatch` — fires exactly once per transaction with all row changes from that transaction as a `List<TableEvent<T>>`
-- Added `TransactionBatch<T>` type with `events`, `inserts`, `updates`, `deletes` accessors and the shared `EventContext`
-- Added `TableEventKind` enum + `TableEventSpec` data type for building batches across type-erased boundaries
-- Added `TableCache.emitBatch(List<TableEventSpec>, EventContext)` — the cache constructs typed `TableEvent<T>` internally from untyped specs
-- Events inside a batch are ordered: inserts, then deletes, then updates
-- `_emitChanges` now collects all row changes, refreshes `rows`, then fires `lastBatch` exactly once (was: wrote `lastEvent.value` up to N times per transaction)
-- `OptimisticStateManager` now flushes one `lastBatch` per affected table per apply, not one per row
+The pre-1.0 package name was `spacetimedb_dart_sdk`. On publication to pub.dev the package is now `spacetimedb_sdk`. Consumers pinned to a git SHA must update their `pubspec.yaml`:
 
-#### Migration guide
-- `table.lastEvent.addListener(cb)` → `table.lastBatch.addListener(cb)`
-- Inside the listener: iterate `batch.events` instead of inspecting a single event:
-  ```dart
-  table.lastBatch.addListener(() {
-    final batch = table.lastBatch.value;
-    if (batch == null) return;
-    for (final event in batch.events) {
-      switch (event) {
-        case TableInsertEvent(:final row): ...
-        case TableUpdateEvent(:final oldRow, :final newRow): ...
-        case TableDeleteEvent(:final row): ...
-      }
-    }
-  });
-  ```
-- `table.rows` is unchanged — still fires once per transaction, same semantics
+```yaml
+dependencies:
+  spacetimedb_sdk: ^1.0.0  # was: spacetimedb_dart_sdk (git)
+```
 
-### Why
-The server delivers transactions as atomic units. `lastEvent` fired once per row, causing N Flutter rebuilds for an N-row transaction and quietly lying about the unit of delivery. `lastBatch` reflects the server's delivery model: one transaction, one notification, full row change list.
+And every import:
 
+```dart
+// before
+import 'package:spacetimedb_dart_sdk/codegen.dart';
+
+// after
+import 'package:spacetimedb_sdk/codegen.dart';
+```
+
+Any code generated against the old package also needs regenerating via `dart run spacetimedb_sdk:generate`.

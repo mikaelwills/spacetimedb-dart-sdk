@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:path/path.dart' as path;
-import 'package:spacetimedb_dart_sdk/src/codegen/models.dart';
-import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
+import 'package:spacetimedb_sdk/src/codegen/models.dart';
+import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 
 /// Extracts database schema from various sources
 ///

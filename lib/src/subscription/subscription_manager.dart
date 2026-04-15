@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
-import 'package:spacetimedb_dart_sdk/src/cache/client_cache.dart';
-import 'package:spacetimedb_dart_sdk/src/utils/sdk_logger.dart';
+import 'package:spacetimedb_sdk/src/cache/client_cache.dart';
+import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 
 import '../connection/spacetimedb_connection.dart';
 import '../connection/connection_state.dart';

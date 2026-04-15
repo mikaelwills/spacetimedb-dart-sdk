@@ -1,0 +1,30 @@
+# Files that exist in the repo but should not ship in the published tarball.
+
+# Internal dev docs
+CLAUDE.md
+system_protocol.md
+test_writing_protocol.md
+CONTRIBUTING.md
+
+# Benchmarks — consumers don't run these
+benchmark/
+
+# Test artifacts
+test/
+dart_test.yaml
+spacetime_test_module/
+
+# Build / cache
+.dart_tool/
+.packages
+pubspec.lock
+build/
+
+# Dev tooling
+tool/
+show_failed_tests.dart
+
+# IDE / editor
+*.iml
+.idea/
+.vscode/

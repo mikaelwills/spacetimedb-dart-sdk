@@ -3,8 +3,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/src/offline/impl/json_file_storage.dart';
-import 'package:spacetimedb_dart_sdk/src/offline/pending_mutation.dart';
+import 'package:spacetimedb_sdk/src/offline/impl/json_file_storage.dart';
+import 'package:spacetimedb_sdk/src/offline/pending_mutation.dart';
 
 const _timeout = Duration(seconds: 5);
 

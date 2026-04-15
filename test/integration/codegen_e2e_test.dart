@@ -1,8 +1,8 @@
 // ignore_for_file: avoid_print
 import 'dart:io';
 import 'package:test/test.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/schema_extractor.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/dart_generator.dart';
+import 'package:spacetimedb_sdk/src/codegen/schema_extractor.dart';
+import 'package:spacetimedb_sdk/src/codegen/dart_generator.dart';
 import 'package:path/path.dart' as path;
 
 import '../test_helpers.dart';
@@ -46,7 +46,7 @@ void main() {
         const userAppScript = """
 import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:spacetimedb_dart_sdk/codegen.dart';
+import 'package:spacetimedb_sdk/codegen.dart';
 import 'client.dart';
 import 'note.dart';
 import 'note_status.dart';
@@ -153,7 +153,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  spacetimedb_dart_sdk:
+  spacetimedb_sdk:
     path: $sdkPath
 dev_dependencies:
   flutter_test:

@@ -1,6 +1,6 @@
-library spacetimedb_dart_sdk.protocol;
+library spacetimedb_sdk.protocol;
 
-export 'spacetimedb_dart_sdk.dart';
+export 'spacetimedb_sdk.dart';
 
 // Messages
 export 'src/messages/server_messages.dart';

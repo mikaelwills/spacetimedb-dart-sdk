@@ -1,6 +1,6 @@
 import 'package:code_builder/code_builder.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/models.dart';
-import 'package:spacetimedb_dart_sdk/src/codegen/codegen_emitter.dart';
+import 'package:spacetimedb_sdk/src/codegen/models.dart';
+import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
 
 class TableGenerator {
   final DatabaseSchema schema;
@@ -17,7 +17,7 @@ class TableGenerator {
     final className = toPascalCase(table.name);
     final imports = <Directive>[];
 
-    imports.add(Directive.import('package:spacetimedb_dart_sdk/codegen.dart'));
+    imports.add(Directive.import('package:spacetimedb_sdk/codegen.dart'));
 
     for (final element in productType.elements) {
       if (element.type.isRef) {

@@ -1,6 +1,6 @@
-library spacetimedb_dart_sdk.codegen;
+library spacetimedb_sdk.codegen;
 
-export 'spacetimedb_dart_sdk.dart';
+export 'spacetimedb_sdk.dart';
 
 // BSATN encoding/decoding
 export 'src/codec/bsatn_encoder.dart';

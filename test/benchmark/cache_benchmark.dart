@@ -1,7 +1,7 @@
 // ignore_for_file: avoid_print
 import 'dart:async';
-import 'package:spacetimedb_dart_sdk/src/connection/spacetimedb_connection.dart';
-import 'package:spacetimedb_dart_sdk/src/subscription/subscription_manager.dart';
+import 'package:spacetimedb_sdk/src/connection/spacetimedb_connection.dart';
+import 'package:spacetimedb_sdk/src/subscription/subscription_manager.dart';
 import '../generated/note.dart';
 
 void main() async {

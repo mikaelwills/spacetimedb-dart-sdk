@@ -1,5 +1,5 @@
-import 'package:spacetimedb_dart_sdk/src/connection/connection_state.dart';
-import 'package:spacetimedb_dart_sdk/src/reducers/transaction_result.dart';
+import 'package:spacetimedb_sdk/src/connection/connection_state.dart';
+import 'package:spacetimedb_sdk/src/reducers/transaction_result.dart';
 
 sealed class SpacetimeDbException implements Exception {
   final String message;
