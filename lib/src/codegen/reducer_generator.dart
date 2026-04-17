@@ -263,11 +263,9 @@ class ReducerGenerator {
     final decodeBody = StringBuffer();
     for (final param in reducer.params.elements) {
       final paramName = toCamelCase(param.name ?? 'unknown');
-      if (param.type is ArrayType) {
-        decodeBody.writeln(
-          'final $paramName = ${param.type.decodeExpression()};',
-        );
-      } else if (param.type.isPrimitive) {
+      if (param.type is ArrayType ||
+          param.type is OptionType ||
+          param.type.isPrimitive) {
         decodeBody.writeln(
           'final $paramName = ${param.type.decodeExpression()};',
         );

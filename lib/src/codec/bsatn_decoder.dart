@@ -216,11 +216,12 @@ class BsatnDecoder {
   /// }
   /// ```
   T? readOption<T>(T Function() readValue) {
-    final hasValue = readBool();
-    if (!hasValue) {
-      return null;
-    }
-    return readValue();
+    final tag = readU8();
+    if (tag == 0) return readValue();
+    if (tag == 1) return null;
+    throw SpacetimeDbProtocolException(
+      'Invalid Option tag: $tag (expected 0=some or 1=none)',
+    );
   }
 
   /// Decodes an array with length prefix

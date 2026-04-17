@@ -376,17 +376,16 @@ class SubscriptionErrorMessage implements ServerMessage {
 
   static SubscriptionErrorMessage decode(BsatnDecoder decoder) {
     final duration = decoder.readU64();
-    decoder.readOption(() => decoder.readU32());
-    final requestId = decoder.readU32();
-    decoder.readOption(() => decoder.readU32());
-    final queryId = decoder.readU32();
-    final error = decoder.readOption(() => decoder.readString()) ?? '';
+    final requestId = decoder.readOption(() => decoder.readU32()) ?? 0;
+    final queryId = decoder.readOption(() => decoder.readU32()) ?? 0;
+    final tableId = decoder.readOption(() => decoder.readU32()) ?? 0;
+    final error = decoder.readString();
 
     return SubscriptionErrorMessage(
       totalHostExecutionDurationMicros: duration,
       requestId: requestId,
       queryId: queryId,
-      tableId: 0,
+      tableId: tableId,
       error: error,
     );
   }

@@ -100,6 +100,47 @@ void main() {
       );
     });
 
+    test('Option<u64> emits writeOption with inner writeU64 callback', () {
+      const t = OptionType(PrimitiveType(PrimitiveKind.u64));
+      expect(
+        t.encodeExpression('lastSeen'),
+        equals(
+          'encoder.writeOption<Int64>(lastSeen, (value) => encoder.writeU64(value))',
+        ),
+      );
+    });
+
+    test('Option<string> emits writeOption with inner writeString callback', () {
+      const t = OptionType(PrimitiveType(PrimitiveKind.string));
+      expect(
+        t.encodeExpression('nickname'),
+        equals(
+          'encoder.writeOption<String>(nickname, (value) => encoder.writeString(value))',
+        ),
+      );
+    });
+
+    test('Option<Timestamp> emits writeOption with inner writeI64 callback', () {
+      const t = OptionType(TimestampType());
+      expect(
+        t.encodeExpression('resolvedAt'),
+        equals(
+          'encoder.writeOption<Int64>(resolvedAt, (value) => encoder.writeI64(value))',
+        ),
+      );
+    });
+
+    test('Option<Array<u64>> emits nested writeOption + writeArray', () {
+      const t = OptionType(ArrayType(PrimitiveType(PrimitiveKind.u64)));
+      expect(
+        t.encodeExpression('maybeTags'),
+        equals(
+          'encoder.writeOption<List<Int64>>(maybeTags, (value) => '
+          'encoder.writeArray<Int64>(value, (item) => encoder.writeU64(item)))',
+        ),
+      );
+    });
+
     test('IrProductType throws StateError', () {
       const t = IrProductType(elements: []);
       expect(() => t.encodeExpression('value'), throwsA(isA<StateError>()));
@@ -154,6 +195,33 @@ void main() {
       );
     });
 
+    test('Option<u64> emits readOption with inner readU64 callback', () {
+      const t = OptionType(PrimitiveType(PrimitiveKind.u64));
+      expect(
+        t.decodeExpression(),
+        equals('decoder.readOption<Int64>(() => decoder.readU64())'),
+      );
+    });
+
+    test('Option<string> emits readOption with inner readString callback', () {
+      const t = OptionType(PrimitiveType(PrimitiveKind.string));
+      expect(
+        t.decodeExpression(),
+        equals('decoder.readOption<String>(() => decoder.readString())'),
+      );
+    });
+
+    test('Option<Array<u64>> emits nested readOption + readArray', () {
+      const t = OptionType(ArrayType(PrimitiveType(PrimitiveKind.u64)));
+      expect(
+        t.decodeExpression(),
+        equals(
+          'decoder.readOption<List<Int64>>(() => '
+          'decoder.readArray<Int64>(() => decoder.readU64()))',
+        ),
+      );
+    });
+
     test('IrProductType throws StateError', () {
       const t = IrProductType(elements: []);
       expect(() => t.decodeExpression(), throwsA(isA<StateError>()));
@@ -162,6 +230,123 @@ void main() {
     test('IrSumType throws StateError', () {
       const t = IrSumType(variants: []);
       expect(() => t.decodeExpression(), throwsA(isA<StateError>()));
+    });
+  });
+
+  group('AlgebraicType.toDartTypeName for OptionType', () {
+    test('Option<string> emits String?', () {
+      const t = OptionType(PrimitiveType(PrimitiveKind.string));
+      expect(t.toDartTypeName(), equals('String?'));
+    });
+
+    test('Option<u64> emits Int64?', () {
+      const t = OptionType(PrimitiveType(PrimitiveKind.u64));
+      expect(t.toDartTypeName(), equals('Int64?'));
+    });
+
+    test('Option<Timestamp> emits Int64?', () {
+      const t = OptionType(TimestampType());
+      expect(t.toDartTypeName(), equals('Int64?'));
+    });
+  });
+
+  group('AlgebraicType.fromJson detects Option sum', () {
+    test('2-variant some/none sum collapses to OptionType', () {
+      final json = {
+        'Sum': {
+          'variants': [
+            {
+              'name': {'some': 'some'},
+              'algebraic_type': {'String': []},
+            },
+            {
+              'name': {'some': 'none'},
+              'algebraic_type': {
+                'Product': {'elements': []},
+              },
+            },
+          ],
+        },
+      };
+      final parsed = AlgebraicType.fromJson(json);
+      expect(parsed, isA<OptionType>());
+      expect(
+        (parsed as OptionType).element,
+        isA<PrimitiveType>().having(
+          (p) => p.kind,
+          'kind',
+          PrimitiveKind.string,
+        ),
+      );
+    });
+
+    test('non-option sum (3 variants) stays IrSumType', () {
+      final json = {
+        'Sum': {
+          'variants': [
+            {
+              'name': {'some': 'draft'},
+              'algebraic_type': {
+                'Product': {'elements': []},
+              },
+            },
+            {
+              'name': {'some': 'published'},
+              'algebraic_type': {
+                'Product': {'elements': []},
+              },
+            },
+            {
+              'name': {'some': 'archived'},
+              'algebraic_type': {
+                'Product': {'elements': []},
+              },
+            },
+          ],
+        },
+      };
+      final parsed = AlgebraicType.fromJson(json);
+      expect(parsed, isA<IrSumType>());
+    });
+
+    test('reverse-order [none, some] stays IrSumType (order matters)', () {
+      final json = {
+        'Sum': {
+          'variants': [
+            {
+              'name': {'some': 'none'},
+              'algebraic_type': {
+                'Product': {'elements': []},
+              },
+            },
+            {
+              'name': {'some': 'some'},
+              'algebraic_type': {'String': []},
+            },
+          ],
+        },
+      };
+      final parsed = AlgebraicType.fromJson(json);
+      expect(parsed, isA<IrSumType>());
+    });
+
+    test('2-variant sum without none stays IrSumType', () {
+      final json = {
+        'Sum': {
+          'variants': [
+            {
+              'name': {'some': 'left'},
+              'algebraic_type': {'String': []},
+            },
+            {
+              'name': {'some': 'right'},
+              'algebraic_type': {'U32': []},
+            },
+          ],
+        },
+      };
+      final parsed = AlgebraicType.fromJson(json);
+      expect(parsed, isA<IrSumType>());
     });
   });
 }

@@ -77,6 +77,42 @@ class CreateNotesBulkArgsDecoder
   }
 }
 
+class CreateOptionalItemArgs {
+  CreateOptionalItemArgs({
+    required this.id,
+    required this.nickname,
+    required this.score,
+    required this.resolvedAt,
+  });
+
+  final int id;
+
+  final String? nickname;
+
+  final Int64? score;
+
+  final Int64? resolvedAt;
+}
+
+class CreateOptionalItemArgsDecoder
+    implements ReducerArgDecoder<CreateOptionalItemArgs> {
+  const CreateOptionalItemArgsDecoder();
+
+  @override
+  CreateOptionalItemArgs decode(BsatnDecoder decoder) {
+    final id = decoder.readU32();
+    final nickname = decoder.readOption<String>(() => decoder.readString());
+    final score = decoder.readOption<Int64>(() => decoder.readU64());
+    final resolvedAt = decoder.readOption<Int64>(() => decoder.readU64());
+    return CreateOptionalItemArgs(
+      id: id,
+      nickname: nickname,
+      score: score,
+      resolvedAt: resolvedAt,
+    );
+  }
+}
+
 class CreateTaggedItemArgs {
   CreateTaggedItemArgs({
     required this.id,
@@ -314,6 +350,10 @@ const createNoteDef = ReducerDef<CreateNoteArgs>(
 const createNotesBulkDef = ReducerDef<CreateNotesBulkArgs>(
   'create_notes_bulk',
   CreateNotesBulkArgsDecoder(),
+);
+const createOptionalItemDef = ReducerDef<CreateOptionalItemArgs>(
+  'create_optional_item',
+  CreateOptionalItemArgsDecoder(),
 );
 const createTaggedItemDef = ReducerDef<CreateTaggedItemArgs>(
   'create_tagged_item',

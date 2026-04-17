@@ -164,13 +164,14 @@ class TableGenerator {
         typeSpace: schema.typeSpace,
         typeDefs: schema.types,
       );
+      final nullableType = dartType.endsWith('?') ? dartType : '$dartType?';
       params.add(
         Parameter(
           (p) =>
               p
                 ..name = fieldName
                 ..named = true
-                ..type = refer('$dartType?'),
+                ..type = refer(nullableType),
         ),
       );
       args.writeln('$fieldName: $fieldName ?? this.$fieldName,');
@@ -439,6 +440,20 @@ class TableGenerator {
           fieldName,
           inner,
         ),
+        OptionType(element: final inner) => _getOptionToJsonExpression(
+          fieldName,
+          inner,
+        ),
+        _ => fieldName,
+      };
+
+  String _getOptionToJsonExpression(String fieldName, AlgebraicType inner) =>
+      switch (inner) {
+        IdentityType() => '$fieldName?.toJson()',
+        TimestampType() => '$fieldName?.toInt()',
+        PrimitiveType(kind: PrimitiveKind.u64 || PrimitiveKind.i64) =>
+          '$fieldName?.toInt()',
+        RefType() => '$fieldName?.toJson()',
         _ => fieldName,
       };
 
@@ -467,11 +482,33 @@ class TableGenerator {
         fieldName,
         inner,
       ),
+      OptionType(element: final inner) => _getOptionFromJsonExpression(
+        fieldName,
+        inner,
+      ),
       PrimitiveType(kind: PrimitiveKind.string) => "json['$fieldName'] ?? ''",
       PrimitiveType(kind: PrimitiveKind.bool_) => "json['$fieldName'] ?? false",
       PrimitiveType(kind: PrimitiveKind.f32 || PrimitiveKind.f64) =>
         "(json['$fieldName'] ?? 0.0).toDouble()",
       PrimitiveType() when type.isInt => "json['$fieldName'] ?? 0",
+      _ => "json['$fieldName']",
+    };
+  }
+
+  String _getOptionFromJsonExpression(String fieldName, AlgebraicType inner) {
+    final innerDartType = inner.toDartTypeName(
+      typeSpace: schema.typeSpace,
+      typeDefs: schema.types,
+    );
+    return switch (inner) {
+      IdentityType() =>
+        "json['$fieldName'] == null ? null : Identity.fromJson(json['$fieldName'])",
+      TimestampType() =>
+        "json['$fieldName'] == null ? null : Int64(json['$fieldName'])",
+      PrimitiveType(kind: PrimitiveKind.u64 || PrimitiveKind.i64) =>
+        "json['$fieldName'] == null ? null : Int64(json['$fieldName'])",
+      RefType() =>
+        "json['$fieldName'] == null ? null : $innerDartType.fromJson(Map<String, dynamic>.from(json['$fieldName']))",
       _ => "json['$fieldName']",
     };
   }

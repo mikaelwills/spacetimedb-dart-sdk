@@ -12,6 +12,7 @@ class ViewGenerator {
   ViewReturnType getViewReturnPattern(ViewSchema view) => switch (view
       .returnType) {
     ArrayType() => ViewReturnType.array,
+    OptionType() => ViewReturnType.option,
     IrSumType(variants: final variants)
         when variants.any((v) => v.name == 'none') =>
       ViewReturnType.option,
@@ -67,6 +68,9 @@ class ViewGenerator {
   }
 
   String? _rowTypeFromOption(AlgebraicType rt) {
+    if (rt is OptionType) {
+      return _rowTypeFromAlgebraic(rt.element);
+    }
     if (rt is! IrSumType) return null;
     for (final variant in rt.variants) {
       if (variant.name == 'some') {
@@ -82,6 +86,10 @@ class ViewGenerator {
   }
 
   int? _refFromOption(AlgebraicType rt) {
+    if (rt is OptionType) {
+      final inner = rt.element;
+      return inner is RefType ? inner.index : null;
+    }
     if (rt is! IrSumType) return null;
     for (final variant in rt.variants) {
       if (variant.name == 'some' && variant.type is RefType) {

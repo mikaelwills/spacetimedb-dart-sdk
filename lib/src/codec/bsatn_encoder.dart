@@ -207,7 +207,12 @@ class BsatnEncoder {
 
   /// Encodes an optional value
   ///
-  /// Format: bool discriminant (false = None, true = Some) + value if Some
+  /// Format: u8 sum-variant tag + value if Some.
+  ///
+  /// Matches SpacetimeDB's canonical Option encoding: `some` is variant
+  /// index 0 (tag byte 0x00) and carries the inner payload; `none` is
+  /// variant index 1 (tag byte 0x01) with no payload. See
+  /// `crates/sats/src/ser/impls.rs` in the upstream repo.
   ///
   /// Example:
   /// ```dart
@@ -219,9 +224,9 @@ class BsatnEncoder {
   /// ```
   void writeOption<T>(T? value, void Function(T) writeValue) {
     if (value == null) {
-      writeBool(false);
+      writeU8(1);
     } else {
-      writeBool(true);
+      writeU8(0);
       writeValue(value);
     }
   }

@@ -105,6 +105,37 @@ class Reducers {
     );
   }
 
+  /// Calls the `create_optional_item` reducer.
+  ///
+  /// Returns a [TransactionResult] on success. Throws
+  /// [SpacetimeDbReducerException] if the reducer returns `Failed` or
+  /// `OutOfEnergy`. The returned status is one of `Committed`,
+  /// `Pending` (queued to offline storage), or `Dropped` (skipped via
+  /// `dropIfOffline: true` while offline).
+  Future<TransactionResult> createOptionalItem({
+    required int id,
+    required String? nickname,
+    required Int64? score,
+    required Int64? resolvedAt,
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    encoder.writeU32(id);
+    encoder.writeOption<String>(
+      nickname,
+      (value) => encoder.writeString(value),
+    );
+    encoder.writeOption<Int64>(score, (value) => encoder.writeU64(value));
+    encoder.writeOption<Int64>(resolvedAt, (value) => encoder.writeU64(value));
+    return await _reducerCaller.call(
+      createOptionalItemDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
   /// Calls the `create_tagged_item` reducer.
   ///
   /// Returns a [TransactionResult] on success. Throws
@@ -402,6 +433,25 @@ class Reducers {
       final args = event.reducerArgs;
       if (args is! CreateNotesBulkArgs) return;
       callback(ctx, args.count, args.titlePrefix);
+    });
+  }
+
+  StreamSubscription<void> onCreateOptionalItem(
+    void Function(
+      EventContext ctx,
+      int id,
+      String? nickname,
+      Int64? score,
+      Int64? resolvedAt,
+    )
+    callback,
+  ) {
+    return _reducerEmitter.on(createOptionalItemDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! CreateOptionalItemArgs) return;
+      callback(ctx, args.id, args.nickname, args.score, args.resolvedAt);
     });
   }
 

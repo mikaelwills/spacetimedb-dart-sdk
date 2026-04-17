@@ -258,6 +258,32 @@ pub fn create_tagged_item(
     });
 }
 
+/// Table exercising `Option<T>` columns for codegen-option-support round-trip.
+#[table(accessor = optional_item, public)]
+pub struct OptionalItem {
+    #[primary_key]
+    pub id: u32,
+    pub nickname: Option<String>,
+    pub score: Option<u64>,
+    pub resolved_at: Option<u64>,
+}
+
+#[reducer]
+pub fn create_optional_item(
+    ctx: &ReducerContext,
+    id: u32,
+    nickname: Option<String>,
+    score: Option<u64>,
+    resolved_at: Option<u64>,
+) {
+    ctx.db.optional_item().insert(OptionalItem {
+        id,
+        nickname,
+        score,
+        resolved_at,
+    });
+}
+
 #[table(accessor = entity, public)]
 pub struct Entity {
     #[primary_key]

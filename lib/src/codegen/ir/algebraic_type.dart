@@ -87,6 +87,10 @@ sealed class AlgebraicType {
                   .map(IrSumVariant.fromJson)
                   .toList()
               : <IrSumVariant>[];
+      final optionInner = _detectOptionInner(variants);
+      if (optionInner != null) {
+        return OptionType(optionInner);
+      }
       return IrSumType(variants: variants);
     }
 
@@ -126,6 +130,8 @@ sealed class AlgebraicType {
     ByteArrayType() => 'List<int>',
     ArrayType(element: final inner) =>
       'List<${inner.toDartTypeName(typeSpace: typeSpace, typeDefs: typeDefs)}>',
+    OptionType(element: final inner) =>
+      '${inner.toDartTypeName(typeSpace: typeSpace, typeDefs: typeDefs)}?',
     RefType(index: final i) => _resolveRefTypeName(i, typeSpace, typeDefs),
     IrProductType() => 'dynamic',
     IrSumType() => 'dynamic',
@@ -190,6 +196,18 @@ sealed class AlgebraicType {
       );
       return 'encoder.writeArray<$innerDart>($valueName, (item) => $innerExpr)';
     }(),
+    OptionType(element: final inner) => () {
+      final innerDart = inner.toDartTypeName(
+        typeSpace: typeSpace,
+        typeDefs: typeDefs,
+      );
+      final innerExpr = inner.encodeExpression(
+        'value',
+        typeSpace: typeSpace,
+        typeDefs: typeDefs,
+      );
+      return 'encoder.writeOption<$innerDart>($valueName, (value) => $innerExpr)';
+    }(),
     RefType() => '$valueName.encode(encoder)',
     IrProductType() =>
       throw StateError(
@@ -219,6 +237,17 @@ sealed class AlgebraicType {
             typeDefs: typeDefs,
           );
           return 'decoder.readArray<$innerDart>(() => $innerExpr)';
+        }(),
+        OptionType(element: final inner) => () {
+          final innerDart = inner.toDartTypeName(
+            typeSpace: typeSpace,
+            typeDefs: typeDefs,
+          );
+          final innerExpr = inner.decodeExpression(
+            typeSpace: typeSpace,
+            typeDefs: typeDefs,
+          );
+          return 'decoder.readOption<$innerDart>(() => $innerExpr)';
         }(),
         RefType() => () {
           final name = toDartTypeName(typeSpace: typeSpace, typeDefs: typeDefs);
@@ -277,6 +306,20 @@ sealed class AlgebraicType {
     _ => null,
   };
 
+  /// Detect the canonical structural Option sum: `[some(T), none]` in that
+  /// order, variant names lowercase, with `none` carrying a unit payload
+  /// (empty product). Matches `SumType::as_option` in the upstream Rust
+  /// crate (`crates/sats/src/sum_type.rs`).
+  static AlgebraicType? _detectOptionInner(List<IrSumVariant> variants) {
+    if (variants.length != 2) return null;
+    final first = variants[0];
+    final second = variants[1];
+    if (first.name != 'some' || second.name != 'none') return null;
+    if (second.type is! IrProductType) return null;
+    if ((second.type as IrProductType).elements.isNotEmpty) return null;
+    return first.type;
+  }
+
   static String _resolveRefTypeName(
     int index,
     TypeSpace? typeSpace,
@@ -317,6 +360,11 @@ class ByteArrayType extends AlgebraicType {
 class ArrayType extends AlgebraicType {
   final AlgebraicType element;
   const ArrayType(this.element);
+}
+
+class OptionType extends AlgebraicType {
+  final AlgebraicType element;
+  const OptionType(this.element);
 }
 
 class RefType extends AlgebraicType {

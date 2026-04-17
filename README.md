@@ -3,6 +3,26 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Dart](https://img.shields.io/badge/Dart-%3E%3D3.5.4-blue.svg)](https://dart.dev)
 
+> **Heads up — not to be confused with [`spacetimedb`](https://pub.dev/packages/spacetimedb) on pub.dev.**
+>
+>This is a much earlier fork of this SDK that was prematurely published as 1.0.0, that release contains bugs and is simply not fully complete. **This package — `spacetimedb_sdk` — is the actively maintained SDK.**
+>
+> Areas where this SDK has moved ahead of the fork:
+>
+> - Reactive primitives
+> - Exception handling
+> - Connection
+> - Optimistic updates
+> - Reducer layer
+> - Events
+> - Offline storage
+> - Codegen
+> - Extensions
+> - Views
+> - Export surface
+> - Packaging
+> - Test coverage
+
 [SpacetimeDB](https://spacetimedb.com) is a database that replaces your backend — you write Rust reducers instead of API endpoints, and every client gets a live, synced view of the data. This SDK makes that data feel native to Flutter: every table is a `ValueNotifier`, reducers are typed function calls, and opt-in offline storage keeps the whole cache on disk with optimistic writes that queue and sync when you reconnect.
 
 Built for collaborative editors, real-time games, multi-device sync, presence, chat.
