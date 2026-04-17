@@ -21,12 +21,8 @@ class Failed extends UpdateStatus {
 }
 
 class OutOfEnergy extends UpdateStatus {
-  final String budgetInfo;
-
-  OutOfEnergy(this.budgetInfo);
-
   @override
-  String toString() => 'OutOfEnergy(budgetInfo: $budgetInfo)';
+  String toString() => 'OutOfEnergy()';
 }
 
 class Pending extends UpdateStatus {

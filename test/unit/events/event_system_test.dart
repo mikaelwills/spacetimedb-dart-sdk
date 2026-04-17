@@ -74,11 +74,8 @@ void main() {
     });
 
     test('OutOfEnergy has correct toString', () {
-      final status = OutOfEnergy('Budget: 1000/500');
-      expect(
-        status.toString(),
-        equals('OutOfEnergy(budgetInfo: Budget: 1000/500)'),
-      );
+      final status = OutOfEnergy();
+      expect(status.toString(), equals('OutOfEnergy()'));
     });
 
     test('pattern matching works on UpdateStatus', () {
@@ -86,7 +83,7 @@ void main() {
         return switch (status) {
           Committed() => 'success',
           Failed(:final message) => 'failed: $message',
-          OutOfEnergy(:final budgetInfo) => 'out of energy: $budgetInfo',
+          OutOfEnergy() => 'out of energy',
           Pending() => 'pending',
           Dropped() => 'dropped',
         };
@@ -95,10 +92,7 @@ void main() {
       expect(handleStatus(Committed()), equals('success'));
       expect(handleStatus(Failed('error')), equals('failed: error'));
       expect(handleStatus(Pending()), equals('pending'));
-      expect(
-        handleStatus(OutOfEnergy('budget')),
-        equals('out of energy: budget'),
-      );
+      expect(handleStatus(OutOfEnergy()), equals('out of energy'));
     });
   });
 

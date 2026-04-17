@@ -364,29 +364,26 @@ void main() {
         }
       });
 
-      test(
-        'OutOfEnergy throws SpacetimeDbReducerException with budget info',
-        () async {
-          final future = reducerCaller.call('expensive_reducer', Uint8List(0));
-          final requestId = mockConnection.getLastSentRequestId();
+      test('OutOfEnergy throws SpacetimeDbReducerException', () async {
+        final future = reducerCaller.call('expensive_reducer', Uint8List(0));
+        final requestId = mockConnection.getLastSentRequestId();
 
-          final oomResponse = _createTransactionUpdate(
-            requestId: requestId,
-            status: OutOfEnergy('Budget: 1000, Used: 1200'),
-            reducerName: 'expensive_reducer',
-          );
-          mockConnection.simulateIncoming(oomResponse);
+        final oomResponse = _createTransactionUpdate(
+          requestId: requestId,
+          status: OutOfEnergy(),
+          reducerName: 'expensive_reducer',
+        );
+        mockConnection.simulateIncoming(oomResponse);
 
-          try {
-            await future;
-            fail('Should have thrown SpacetimeDbReducerException');
-          } on SpacetimeDbReducerException catch (e) {
-            expect(e.reducerName, equals('expensive_reducer'));
-            expect(e.message, contains('Budget'));
-            expect(e.result.isOutOfEnergy, isTrue);
-          }
-        },
-      );
+        try {
+          await future;
+          fail('Should have thrown SpacetimeDbReducerException');
+        } on SpacetimeDbReducerException catch (e) {
+          expect(e.reducerName, equals('expensive_reducer'));
+          expect(e.message, contains('Out of energy'));
+          expect(e.result.isOutOfEnergy, isTrue);
+        }
+      });
     });
 
     group('Test G: Race Condition Safety', () {
@@ -457,8 +454,7 @@ Uint8List _createTransactionUpdate({
     encoder.writeString(status.message);
     // No table updates list for Failed
   } else if (status is OutOfEnergy) {
-    encoder.writeU8(2); // OutOfEnergy discriminant
-    encoder.writeString(status.budgetInfo);
+    encoder.writeU8(2); // OutOfEnergy discriminant — unit variant, no payload
     // No table updates list for OutOfEnergy
   }
 

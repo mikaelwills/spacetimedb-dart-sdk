@@ -112,9 +112,8 @@ class TransactionUpdateMessage implements ServerMessage {
       status = Failed(errorMessage);
       tableUpdates = [];
     } else if (statusTag == 2) {
-      // OutOfEnergy
-      final budgetInfo = decoder.readString();
-      status = OutOfEnergy(budgetInfo);
+      // OutOfEnergy — unit variant, no payload
+      status = OutOfEnergy();
       tableUpdates = [];
     } else {
       throw ArgumentError('Unknown UpdateStatus tag: $statusTag');

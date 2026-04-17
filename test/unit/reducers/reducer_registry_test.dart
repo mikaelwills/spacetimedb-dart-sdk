@@ -192,17 +192,14 @@ void main() {
     });
 
     test('OutOfEnergy toString', () {
-      final status = OutOfEnergy('Budget exceeded: 1000/500');
-      expect(
-        status.toString(),
-        equals('OutOfEnergy(budgetInfo: Budget exceeded: 1000/500)'),
-      );
+      final status = OutOfEnergy();
+      expect(status.toString(), equals('OutOfEnergy()'));
     });
 
     test('sealed class hierarchy', () {
       final UpdateStatus committed = Committed();
       final UpdateStatus failed = Failed('error');
-      final UpdateStatus outOfEnergy = OutOfEnergy('budget');
+      final UpdateStatus outOfEnergy = OutOfEnergy();
       final UpdateStatus pending = Pending();
 
       // Can use switch with exhaustive matching
@@ -210,7 +207,7 @@ void main() {
         return switch (status) {
           Committed() => 'success',
           Failed(message: final msg) => 'failed: $msg',
-          OutOfEnergy(budgetInfo: final info) => 'out of energy: $info',
+          OutOfEnergy() => 'out of energy',
           Pending() => 'pending',
           Dropped() => 'dropped',
         };
@@ -218,7 +215,7 @@ void main() {
 
       expect(describe(committed), equals('success'));
       expect(describe(failed), equals('failed: error'));
-      expect(describe(outOfEnergy), equals('out of energy: budget'));
+      expect(describe(outOfEnergy), equals('out of energy'));
       expect(describe(pending), equals('pending'));
     });
   });

@@ -146,7 +146,7 @@ class TransactionResult {
       return s.message;
     }
     if (s is OutOfEnergy) {
-      return 'Out of energy: ${s.budgetInfo}';
+      return 'Out of energy';
     }
     return null;
   }

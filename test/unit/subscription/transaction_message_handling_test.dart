@@ -67,7 +67,7 @@ void main() {
         transactionOffset: 1,
         timestamp: Int64(123456),
         tableUpdates: [],
-        status: OutOfEnergy('Budget exceeded: 1000/500'),
+        status: OutOfEnergy(),
         reducerCall: ReducerInfo(
           reducerName: 'expensive_reducer',
           reducerId: 99,
@@ -81,11 +81,6 @@ void main() {
       );
 
       expect(message.status, isA<OutOfEnergy>());
-      final status = message.status;
-      if (status is! OutOfEnergy) {
-        fail('Expected OutOfEnergy status but got ${status.runtimeType}');
-      }
-      expect(status.budgetInfo, equals('Budget exceeded: 1000/500'));
     });
   });
 
