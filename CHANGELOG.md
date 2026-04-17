@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.1.0 - 2026-04-17
+
+### Added
+
+- **`Option<T>` codegen support.** Rust tables, reducer args, and views that use `Option<T>` now generate clean nullable Dart fields (`T?`) with `writeOption` / `readOption` round-trips. Previously, any module using `Option<T>` failed codegen with "inline sum types are not supported." Matches the first-class Option handling in the Rust and TypeScript SDKs.
+  - New `OptionType` IR variant. `AlgebraicType.fromJson` detects the canonical `[some(T), none]` sum shape (order-strict, lowercase names, `none` carries a unit payload) per upstream `SumType::as_option`.
+  - Option-returning views detected as `ViewReturnType.option` via the new IR variant.
+  - `copyWith` correctly emits `T?` (no more `String??` double-nullable) for Option fields.
+
+### Fixed
+
+- **`writeOption` / `readOption` BSATN wire format.** The previous implementation used a `bool` discriminant with reversed semantics (Some=1, None=0), but BSATN's canonical Option encoding uses sum-variant indices (Some=0, None=1) per `crates/sats/src/ser/impls.rs`. As a result, any server-sent `Option<T>` field decoded via `readOption` silently returned `null` for Some values. Now writes and reads u8 tags that match the wire spec; throws `SpacetimeDbProtocolException` on invalid tag.
+- **`SubscriptionErrorMessage.decode` wire alignment.** Was structured around the broken `readOption` semantic and misread the `SubscriptionError` message: skipped `table_id` entirely and treated `error` as optional. Reordered to match the canonical layout (`u64 duration; Option<u32> request_id; Option<u32> query_id; Option<u32> table_id; String error`).
+- **`OutOfEnergy` decode reads phantom payload.** `TransactionUpdateMessage.decode` was reading a phantom `readString()` after the OutOfEnergy status tag, misaligning subsequent fields. Per the wire definition (`crates/client-api-messages/src/websocket/v1.rs`), OutOfEnergy is a unit variant with no payload. Fixed.
+
+### Changed (breaking — but phantom data only)
+
+- `OutOfEnergy` (in `update_status.dart`) no longer has a `budgetInfo: String` field or a string constructor. The field only ever carried garbled bytes from the misaligned decoder — it was never a real value. Consumers constructing `OutOfEnergy('...')` must now use `OutOfEnergy()`. `TransactionResult.errorMessage` returns `'Out of energy'` instead of `'Out of energy: <info>'`. This is technically a breaking change but nobody could have written working code against the old field, so it's ordinarily listed under a minor bump rather than a major.
+
 ## 1.0.1 - 2026-04-15
 
 Docs only. README's Quick Start install snippet and codegen command lines still referenced the pre-rename package name (`spacetimedb_dart_sdk`). Fixed to the published name (`spacetimedb_sdk`).
