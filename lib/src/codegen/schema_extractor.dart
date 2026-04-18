@@ -314,7 +314,7 @@ class SchemaExtractor {
     }).toList();
   }
 
-  /// Recursively cast all Maps to Map<String, dynamic>
+  /// Recursively cast all Maps to `Map<String, dynamic>`.
   static dynamic _deepCast(dynamic value) {
     if (value is Map) {
       return Map<String, dynamic>.fromEntries(
