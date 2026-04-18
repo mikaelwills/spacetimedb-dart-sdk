@@ -51,7 +51,7 @@ void main() {
 
       final channel = IOWebSocketChannel.connect(
         uri,
-        protocols: ['v1.bsatn.spacetimedb'],
+        protocols: ['v2.bsatn.spacetimedb'],
       );
 
       final completer = Completer<void>();
@@ -95,7 +95,7 @@ void main() {
 
         final channel = IOWebSocketChannel.connect(
           uri,
-          protocols: ['v1.bsatn.spacetimedb'],
+          protocols: ['v2.bsatn.spacetimedb'],
           headers: {'Authorization': 'Bearer invalid_garbage_token_12345'},
         );
 
@@ -119,7 +119,7 @@ void main() {
 
       final channel = IOWebSocketChannel.connect(
         uri,
-        protocols: ['v1.bsatn.spacetimedb'],
+        protocols: ['v2.bsatn.spacetimedb'],
         headers: {'Authorization': 'NotBearer malformed'},
       );
 
@@ -144,7 +144,7 @@ void main() {
 
       final channel = IOWebSocketChannel.connect(
         uri,
-        protocols: ['v1.bsatn.spacetimedb'],
+        protocols: ['v2.bsatn.spacetimedb'],
       );
 
       Object? caughtError;
@@ -192,7 +192,7 @@ void main() {
       try {
         final channel = IOWebSocketChannel.connect(
           uri,
-          protocols: ['v1.bsatn.spacetimedb'],
+          protocols: ['v2.bsatn.spacetimedb'],
           connectTimeout: const Duration(seconds: 3),
         );
 

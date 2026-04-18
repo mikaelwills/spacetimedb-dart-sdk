@@ -7,20 +7,17 @@ import 'shared_types.dart';
 import 'reducer_info.dart';
 import 'update_status.dart';
 
-/// Server message type tags (Server -> Client)
-/// Based on websocket.rs ServerMessage enum order
+/// Server message type tags (Server -> Client).
+/// Based on v2 websocket.rs ServerMessage enum order (v2.rs:175-196).
 enum ServerMessageType {
-  initialSubscription(0),
-  transactionUpdate(1),
-  transactionUpdateLight(2),
-  identityToken(3),
-  oneOffQueryResponse(4),
-  subscribeApplied(5),
-  unsubscribeApplied(6),
-  subscriptionError(7),
-  subscribeMultiApplied(8),
-  unsubscribeMultiApplied(9),
-  procedureResult(10);
+  initialConnection(0),
+  subscribeApplied(1),
+  unsubscribeApplied(2),
+  subscriptionError(3),
+  transactionUpdate(4),
+  oneOffQueryResult(5),
+  reducerResult(6),
+  procedureResult(7);
 
   final int tag;
   const ServerMessageType(this.tag);
@@ -50,7 +47,7 @@ class InitialSubscriptionMessage implements ServerMessage {
   });
 
   @override
-  ServerMessageType get messageType => ServerMessageType.initialSubscription;
+  ServerMessageType get messageType => ServerMessageType.subscribeApplied;
 
   static InitialSubscriptionMessage decode(BsatnDecoder decoder) {
     final tableUpdates = decoder.readList(() => TableUpdate.decode(decoder));
@@ -169,7 +166,7 @@ class TransactionUpdateLightMessage implements ServerMessage {
   });
 
   @override
-  ServerMessageType get messageType => ServerMessageType.transactionUpdateLight;
+  ServerMessageType get messageType => ServerMessageType.transactionUpdate;
 
   static TransactionUpdateLightMessage decode(BsatnDecoder decoder) {
     final requestId = decoder.readU32();
@@ -182,29 +179,29 @@ class TransactionUpdateLightMessage implements ServerMessage {
   }
 }
 
-class IdentityTokenMessage implements ServerMessage {
+class InitialConnectionMessage implements ServerMessage {
   final Uint8List identity;
-  final String token;
   final Uint8List connectionId;
+  final String token;
 
-  IdentityTokenMessage({
+  InitialConnectionMessage({
     required this.identity,
-    required this.token,
     required this.connectionId,
+    required this.token,
   });
 
   @override
-  ServerMessageType get messageType => ServerMessageType.identityToken;
+  ServerMessageType get messageType => ServerMessageType.initialConnection;
 
-  static IdentityTokenMessage decode(BsatnDecoder decoder) {
+  static InitialConnectionMessage decode(BsatnDecoder decoder) {
     final identity = decoder.readBytes(32);
-    final token = decoder.readString();
     final connectionId = decoder.readBytes(16);
+    final token = decoder.readString();
 
-    return IdentityTokenMessage(
+    return InitialConnectionMessage(
       identity: identity,
-      token: token,
       connectionId: connectionId,
+      token: token,
     );
   }
 }
@@ -226,7 +223,7 @@ class OneOffQueryResponse implements ServerMessage {
   });
 
   @override
-  ServerMessageType get messageType => ServerMessageType.oneOffQueryResponse;
+  ServerMessageType get messageType => ServerMessageType.oneOffQueryResult;
 
   static OneOffQueryResponse decode(BsatnDecoder decoder) {
     final messageIdLength = decoder.readU32();
@@ -405,7 +402,7 @@ class SubscribeMultiApplied implements ServerMessage {
   });
 
   @override
-  ServerMessageType get messageType => ServerMessageType.subscribeMultiApplied;
+  ServerMessageType get messageType => ServerMessageType.subscribeApplied;
 
   static SubscribeMultiApplied decode(BsatnDecoder decoder) {
     final requestId = decoder.readU32();
@@ -438,8 +435,7 @@ class UnsubscribeMultiApplied implements ServerMessage {
   });
 
   @override
-  ServerMessageType get messageType =>
-      ServerMessageType.unsubscribeMultiApplied;
+  ServerMessageType get messageType => ServerMessageType.unsubscribeApplied;
 
   static UnsubscribeMultiApplied decode(BsatnDecoder decoder) {
     final requestId = decoder.readU32();

@@ -120,7 +120,7 @@ class SpacetimeDbConnection {
 
       _channel = _socketFactory(
         uri,
-        ['v1.bsatn.spacetimedb'],
+        ['v2.bsatn.spacetimedb'],
         headers,
         connectTimeout: config.connectTimeout,
       );

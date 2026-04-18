@@ -49,8 +49,8 @@ class SubscriptionManager {
       StreamController<TransactionUpdateMessage>.broadcast();
   final _transactionUpdateLightController =
       StreamController<TransactionUpdateLightMessage>.broadcast();
-  final _identityTokenController =
-      StreamController<IdentityTokenMessage>.broadcast();
+  final _initialConnectionController =
+      StreamController<InitialConnectionMessage>.broadcast();
   final _oneOffQueryResponseController =
       StreamController<OneOffQueryResponse>.broadcast();
   final _subscribeAppliedController =
@@ -113,8 +113,8 @@ class SubscriptionManager {
       _transactionUpdateController.stream;
   Stream<TransactionUpdateLightMessage> get onTransactionUpdateLight =>
       _transactionUpdateLightController.stream;
-  Stream<IdentityTokenMessage> get onIdentityToken =>
-      _identityTokenController.stream;
+  Stream<InitialConnectionMessage> get onInitialConnection =>
+      _initialConnectionController.stream;
   Stream<OneOffQueryResponse> get onOneOffQueryResponse =>
       _oneOffQueryResponseController.stream;
   Stream<SubscribeApplied> get onSubscribeApplied =>
@@ -229,7 +229,7 @@ class SubscriptionManager {
     _initialSubscriptionController.close();
     _transactionUpdateController.close();
     _transactionUpdateLightController.close();
-    _identityTokenController.close();
+    _initialConnectionController.close();
     _oneOffQueryResponseController.close();
     _subscribeAppliedController.close();
     _unsubscribeAppliedController.close();
@@ -315,14 +315,14 @@ class SubscriptionManager {
   void _routeMessage(ServerMessage message) {
     if (_disposed) return;
     switch (message) {
-      case IdentityTokenMessage():
+      case InitialConnectionMessage():
         _identity = Identity(message.identity);
         _connectionId = message.connectionId;
         _address =
             message.connectionId
                 .map((b) => b.toRadixString(16).padLeft(2, '0'))
                 .join();
-        _identityTokenController.add(message);
+        _initialConnectionController.add(message);
       case InitialSubscriptionMessage():
         _handleInitialSubscription(message).then((_) {
           if (_disposed) return;

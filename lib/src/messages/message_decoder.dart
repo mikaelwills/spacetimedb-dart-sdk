@@ -52,15 +52,7 @@ class MessageDecoder {
     final messageType = ServerMessageType.fromTag(tag);
 
     return switch (messageType) {
-      ServerMessageType.identityToken => IdentityTokenMessage.decode(decoder),
-      ServerMessageType.initialSubscription =>
-        InitialSubscriptionMessage.decode(decoder),
-      ServerMessageType.transactionUpdate => TransactionUpdateMessage.decode(
-        decoder,
-      ),
-      ServerMessageType.transactionUpdateLight =>
-        TransactionUpdateLightMessage.decode(decoder),
-      ServerMessageType.oneOffQueryResponse => OneOffQueryResponse.decode(
+      ServerMessageType.initialConnection => InitialConnectionMessage.decode(
         decoder,
       ),
       ServerMessageType.subscribeApplied => SubscribeApplied.decode(decoder),
@@ -70,11 +62,14 @@ class MessageDecoder {
       ServerMessageType.subscriptionError => SubscriptionErrorMessage.decode(
         decoder,
       ),
-      ServerMessageType.subscribeMultiApplied => SubscribeMultiApplied.decode(
+      ServerMessageType.transactionUpdate => TransactionUpdateMessage.decode(
         decoder,
       ),
-      ServerMessageType.unsubscribeMultiApplied =>
-        UnsubscribeMultiApplied.decode(decoder),
+      ServerMessageType.oneOffQueryResult => OneOffQueryResponse.decode(
+        decoder,
+      ),
+      ServerMessageType.reducerResult =>
+        throw UnimplementedError('ReducerResult decoder lands in slice 4'),
       ServerMessageType.procedureResult => ProcedureResultMessage.decode(
         decoder,
       ),

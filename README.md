@@ -27,7 +27,7 @@
 
 ## Compatibility
 
-Works with SpacetimeDB 2.x servers. Uses the modern `SubscribeMulti` subscription protocol, server-defined views, BSATN binary wire format, and the `v1.bsatn.spacetimedb` WebSocket subprotocol (accepted by all 2.x servers).
+Works with SpacetimeDB 2.x servers. Speaks the `v2.bsatn.spacetimedb` WebSocket subprotocol — client-assigned `QuerySetId` subscriptions, typed reducer return values, server-defined views, BSATN binary wire format. If you need to connect to a v1-only server, use `spacetimedb_sdk 1.x`.
 
 Built for collaborative editors, real-time games, multi-device sync, presence, chat.
 
