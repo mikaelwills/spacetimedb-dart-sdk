@@ -27,8 +27,8 @@ class ReducerInfo {
     required this.requestId,
   });
 
-  /// Decode ReducerCallInfo from BSATN bytes
-  /// Rust struct order: reducer_name, reducer_id, args (Vec<u8>), request_id
+  /// Decode ReducerCallInfo from BSATN bytes.
+  /// Rust struct order: reducer_name, reducer_id, args (`Vec<u8>`), request_id.
   static ReducerInfo decode(BsatnDecoder decoder) {
     final reducerName = decoder.readString();
     final reducerId = decoder.readU32();

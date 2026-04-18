@@ -25,6 +25,10 @@
 
 [SpacetimeDB](https://spacetimedb.com) is a database that replaces your backend — you write Rust reducers instead of API endpoints, and every client gets a live, synced view of the data. This SDK makes that data feel native to Flutter: every table is a `ValueNotifier`, reducers are typed function calls, and opt-in offline storage keeps the whole cache on disk with optimistic writes that queue and sync when you reconnect.
 
+## Compatibility
+
+Works with SpacetimeDB 2.x servers. Uses the modern `SubscribeMulti` subscription protocol, server-defined views, BSATN binary wire format, and the `v1.bsatn.spacetimedb` WebSocket subprotocol (accepted by all 2.x servers).
+
 Built for collaborative editors, real-time games, multi-device sync, presence, chat.
 
 ## What you get
@@ -273,14 +277,17 @@ client.reducers.onCreateUser((ctx, name, email) {
 
 ## Subscriptions
 
+Uses the modern `SubscribeMulti` protocol — multiple queries batch into a single subscription set, delivered atomically.
+
 ```dart
 // Subscribe to more queries after connect
 await client.subscriptions.subscribe([
   'SELECT * FROM messages WHERE room_id = 123',
+  'SELECT * FROM presence WHERE room_id = 123',
 ]);
 ```
 
-The client will immediately receive the initial batch plus every subsequent transaction matching the query. Use `await client.messages.subscribed` to wait for that initial batch.
+The client will immediately receive the initial batch plus every subsequent transaction matching the queries. Use `await client.messages.subscribed` to wait for that initial batch.
 
 ## Views
 
