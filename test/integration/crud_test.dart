@@ -18,7 +18,7 @@ void main() {
       await env.connection.connect();
 
       env.subManager.subscribe(['SELECT * FROM note']);
-      await env.subManager.onInitialSubscription.first;
+      await env.subManager.onSubscribeApplied.first;
 
       final noteTable = env.noteTable;
       print('✅ Connected & Subscribed. Current count: ${noteTable.count()}');

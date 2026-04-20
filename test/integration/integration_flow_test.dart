@@ -387,7 +387,7 @@ class FailingMockConnection extends MockConnection {
     final requestId = _extractRequestId(data);
     if (requestId != null) {
       Future.microtask(() {
-        final failedResponse = _createFailedTransactionUpdate(
+        final failedResponse = _createFailedReducerResult(
           requestId: requestId,
           errorMessage: 'Simulated Logic Error: Permission Denied',
         );
@@ -396,41 +396,32 @@ class FailingMockConnection extends MockConnection {
     }
   }
 
+  /// v2 CallReducer field order: `tag(u8) + requestId(u32) + flags(u8) + reducer(str) + args(Bytes)`.
   int? _extractRequestId(Uint8List data) {
     try {
       final decoder = BsatnDecoder(data);
-      decoder.readU8();
-      decoder.readString();
-      final argsLen = decoder.readU32();
-      decoder.readBytes(argsLen);
-      return decoder.readU32();
+      decoder.readU8(); // client message tag
+      return decoder.readU32(); // requestId is the first payload field
     } catch (_) {
       return null;
     }
   }
 
-  Uint8List _createFailedTransactionUpdate({
+  /// v2 ReducerResult with `Err(Bytes)` outcome — tag 6 at the ServerMessage
+  /// level, then `requestId(u32) + timestamp(u64) + outcome tag + Err bytes`.
+  Uint8List _createFailedReducerResult({
     required int requestId,
     required String errorMessage,
   }) {
     final encoder = BsatnEncoder();
-
-    encoder.writeU8(0);
-    encoder.writeU8(1);
-    encoder.writeU8(1);
-    encoder.writeString(errorMessage);
-    encoder.writeU64(
-      Int64(DateTime.now().microsecondsSinceEpoch) * Int64(1000),
-    );
-    encoder.writeBytes(Uint8List(32));
-    encoder.writeBytes(Uint8List(16));
-    encoder.writeString('create_note');
-    encoder.writeU32(0);
-    encoder.writeU32(0);
+    encoder.writeU8(0); // compression: none
+    encoder.writeU8(6); // ServerMessageType.reducerResult (v2.rs:175-196)
     encoder.writeU32(requestId);
-    encoder.writeBytes(Uint8List(16));
-    encoder.writeU64(Int64(0));
-
+    encoder.writeU64(Int64(DateTime.now().microsecondsSinceEpoch));
+    encoder.writeU8(2); // ReducerOutcome::Err(Bytes)
+    final bytes = Uint8List.fromList(errorMessage.codeUnits);
+    encoder.writeU32(bytes.length);
+    encoder.writeBytes(bytes);
     return encoder.toBytes();
   }
 }

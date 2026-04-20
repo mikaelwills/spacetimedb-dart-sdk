@@ -20,10 +20,10 @@ void main() {
 
       print('📡 Connecting...');
       await env.connection.connect();
-      await env.subManager.onIdentityToken.first;
+      await env.subManager.onInitialConnection.first;
 
       env.subManager.subscribe(['SELECT * FROM folder']);
-      await env.subManager.onInitialSubscription.first;
+      await env.subManager.onSubscribeApplied.first;
 
       final folderTable = env.folderTable;
       final initialCount = folderTable.count();

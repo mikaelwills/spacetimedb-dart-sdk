@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
@@ -14,7 +15,7 @@ void main() {
     env = await createTestEnv();
 
     await env.connection.connect();
-    await env.subManager.onIdentityToken.first.timeout(
+    await env.subManager.onInitialConnection.first.timeout(
       const Duration(seconds: 5),
     );
   });
@@ -53,23 +54,17 @@ void main() {
     });
 
     test('Invalid SQL query returns SubscriptionError', () async {
-      const requestId = 1002;
-      const queryId = 9999;
+      final errorFuture = env.subManager.onSubscriptionError.first;
 
-      final errorFuture = env.subManager.onSubscriptionError.firstWhere(
-        (err) => err.requestId == requestId,
-      );
-
-      env.subManager.subscribeSingle(
-        'SELECT * FROM non_existent_table',
-        requestId: requestId,
-        queryId: queryId,
+      unawaited(
+        env.subManager
+            .subscribe(['SELECT * FROM non_existent_table'])
+            .catchError((_) => 0),
       );
 
       final error = await errorFuture.timeout(const Duration(seconds: 2));
 
-      expect(error.requestId, equals(requestId));
-      expect(error.queryId, equals(queryId));
+      expect(error.querySetId, isA<int>());
       expect(error.error, isNotEmpty);
 
       final errorMsg = error.error.toLowerCase();
@@ -83,18 +78,18 @@ void main() {
 
     test('Unsubscribe non-existent subscription returns error', () async {
       const requestId = 1003;
-      const queryId = 88888;
+      const fakeQuerySetId = 88888;
 
       final errorFuture = env.subManager.onSubscriptionError.firstWhere(
         (err) => err.requestId == requestId,
       );
 
-      env.subManager.unsubscribe(queryId, requestId: requestId);
+      env.subManager.unsubscribe(fakeQuerySetId, requestId: requestId);
 
       final error = await errorFuture.timeout(const Duration(seconds: 2));
 
       expect(error.requestId, equals(requestId));
-      expect(error.queryId, equals(queryId));
+      expect(error.querySetId, equals(fakeQuerySetId));
       expect(error.error, isNotEmpty);
 
       final errorMsg = error.error.toLowerCase();
@@ -105,18 +100,34 @@ void main() {
       );
     });
 
-    test('Invalid reducer arguments are handled', () async {
-      final encoder = BsatnEncoder();
-      final future = env.subManager.reducers.call(
-        'create_note',
-        encoder.toBytes(),
-        timeout: const Duration(milliseconds: 200),
-      );
+    test(
+      'Invalid reducer arguments surface as SpacetimeDbReducerException',
+      () async {
+        // Under v2, the server sends `ReducerResult` with `InternalError(...)`
+        // carrying the caller's request_id, so the pending future is resolved
+        // to an exception rather than timing out. (Under v1 the protocol-level
+        // failure used request_id=0 and the call sat until the client-side
+        // timeout.)
+        final encoder = BsatnEncoder();
+        final future = env.subManager.reducers.call(
+          'create_note',
+          encoder.toBytes(),
+        );
 
-      await expectLater(future, throwsA(isA<SpacetimeDbTimeoutException>()));
+        await expectLater(
+          future,
+          throwsA(
+            isA<SpacetimeDbReducerException>().having(
+              (e) => e.message,
+              'message',
+              contains('invalid arguments'),
+            ),
+          ),
+        );
 
-      expect(env.connection.isConnected, isTrue);
-    });
+        expect(env.connection.isConnected, isTrue);
+      },
+    );
 
     test('Procedure with wrong argument types', () async {
       const requestId = 1005;

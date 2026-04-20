@@ -6,6 +6,7 @@ WebSocketChannel connectWebSocket(
   Iterable<String>? protocols,
   Map<String, dynamic>? headers, {
   Duration connectTimeout = const Duration(seconds: 10),
+  Duration? pingInterval,
 }) {
   throw UnsupportedError('No WebSocket implementation for this platform');
 }

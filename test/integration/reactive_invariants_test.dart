@@ -31,11 +31,11 @@ void main() {
   Future<TestEnv> bootEnv({bool registerFolder = false}) async {
     final env = await createTestEnv(registerFolder: registerFolder);
     await env.connection.connect();
-    await env.subManager.onIdentityToken.first;
+    await env.subManager.onInitialConnection.first;
     final tables = <String>['SELECT * FROM note'];
     if (registerFolder) tables.add('SELECT * FROM folder');
     env.subManager.subscribe(tables);
-    await env.subManager.onInitialSubscription.first;
+    await env.subManager.onSubscribeApplied.first;
 
     if (env.noteTable.count() > 0) {
       await env.reducers.deleteAllNotes();

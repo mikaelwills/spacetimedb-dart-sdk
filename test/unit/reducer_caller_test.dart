@@ -18,64 +18,49 @@ void main() {
       reducerCaller = subscriptionManager.reducers;
     });
 
+    tearDown(() async {
+      await subscriptionManager.dispose();
+    });
+
     group('Test A: ID Correlation Lock', () {
       test('Completes future only when matching request_id returns', () async {
-        // 1. Start the call
         final future = reducerCaller.call('my_reducer', Uint8List(0));
 
-        // 2. Verify Request ID in outgoing message
         expect(mockConnection.sentMessages.length, 1);
         final requestId = mockConnection.getLastSentRequestId();
-        expect(requestId, isNotNull, reason: 'Must generate a request ID');
-        expect(requestId, greaterThan(0), reason: 'ID should be positive');
+        expect(requestId, isNotNull);
+        expect(requestId, greaterThan(0));
 
-        // 3. Simulate a response with a WRONG ID (off by 999)
-        final wrongIdResponse = _createTransactionUpdate(
-          requestId: requestId + 999, // Wrong ID
-          status: Committed(),
-          reducerName: 'my_reducer',
+        final wrongIdResponse = _createReducerResult(
+          requestId: requestId + 999,
+          outcome: _ReducerOutcome.okEmpty,
         );
-
-        // This should NOT crash the SubscriptionManager - just be ignored
         expect(
           () => mockConnection.simulateIncoming(wrongIdResponse),
           returnsNormally,
-          reason: 'SubscriptionManager should handle mismatched IDs gracefully',
         );
 
-        // 4. Verify Future is STILL pending (no false positive)
         bool completed = false;
         unawaited(future.then((_) => completed = true));
         await Future.delayed(const Duration(milliseconds: 50));
-        expect(
-          completed,
-          isFalse,
-          reason: 'Should ignore mismatched request_id',
-        );
+        expect(completed, isFalse);
 
-        // 5. Simulate response with CORRECT ID
-        final correctIdResponse = _createTransactionUpdate(
-          requestId: requestId, // Correct ID
-          status: Committed(),
-          reducerName: 'my_reducer',
+        final correctIdResponse = _createReducerResult(
+          requestId: requestId,
+          outcome: _ReducerOutcome.okEmpty,
         );
         mockConnection.simulateIncoming(correctIdResponse);
 
-        // 6. Verify Completion with correct result
         final result = await future;
         expect(result.isSuccess, isTrue);
         expect(result.reducerName, equals('my_reducer'));
       });
 
       test('Ignores server-initiated reducers (unknown request_id)', () async {
-        // Server sends a TransactionUpdate for a reducer we didn't call
-        final serverInitiated = _createTransactionUpdate(
-          requestId: 99999, // ID we never sent
-          status: Committed(),
-          reducerName: 'scheduled_cleanup',
+        final serverInitiated = _createReducerResult(
+          requestId: 99999,
+          outcome: _ReducerOutcome.okEmpty,
         );
-
-        // Should not throw - just ignore silently
         expect(
           () => mockConnection.simulateIncoming(serverInitiated),
           returnsNormally,
@@ -83,53 +68,45 @@ void main() {
       });
     });
 
-    group('Test B: True Concurrency (Map Logic)', () {
+    group('Test B: True Concurrency', () {
       test('Handles concurrent requests out of order', () async {
-        // 1. Fire two requests in quick succession
         final futureSlow = reducerCaller.call('slow_reducer', Uint8List(0));
         final futureFast = reducerCaller.call('fast_reducer', Uint8List(0));
 
         expect(mockConnection.sentMessages.length, 2);
-
         final idSlow = mockConnection.getSentRequestId(0);
         final idFast = mockConnection.getSentRequestId(1);
+        expect(idSlow, isNot(equals(idFast)));
 
-        expect(idSlow, isNot(equals(idFast)), reason: 'IDs must be unique');
-
-        // 2. Complete FAST one first (simulating server reordering)
-        final fastResponse = _createTransactionUpdate(
-          requestId: idFast,
-          status: Committed(),
-          reducerName: 'fast_reducer',
+        mockConnection.simulateIncoming(
+          _createReducerResult(
+            requestId: idFast,
+            outcome: _ReducerOutcome.okEmpty,
+          ),
         );
-        mockConnection.simulateIncoming(fastResponse);
 
-        // 3. Verify Fast is done, Slow is still pending
         final fastResult = await futureFast;
         expect(fastResult.reducerName, equals('fast_reducer'));
 
-        // Check Slow is still waiting
         bool slowDone = false;
         unawaited(futureSlow.then((_) => slowDone = true));
         await Future.delayed(const Duration(milliseconds: 10));
-        expect(slowDone, isFalse, reason: 'Slow should still be pending');
+        expect(slowDone, isFalse);
 
-        // 4. Complete SLOW one later
-        final slowResponse = _createTransactionUpdate(
-          requestId: idSlow,
-          status: Committed(),
-          reducerName: 'slow_reducer',
+        mockConnection.simulateIncoming(
+          _createReducerResult(
+            requestId: idSlow,
+            outcome: _ReducerOutcome.okEmpty,
+          ),
         );
-        mockConnection.simulateIncoming(slowResponse);
 
         final slowResult = await futureSlow;
         expect(slowResult.reducerName, equals('slow_reducer'));
       });
 
       test(
-        'Handles 10 concurrent requests with random completion order',
+        'Handles 10 concurrent requests with reverse completion order',
         () async {
-          // Fire 10 requests
           final futures = <Future<TransactionResult>>[];
           final expectedIds = <int>[];
 
@@ -138,17 +115,15 @@ void main() {
             expectedIds.add(mockConnection.getSentRequestId(i));
           }
 
-          // Complete them in reverse order (worst case for FIFO)
           for (int i = 9; i >= 0; i--) {
-            final response = _createTransactionUpdate(
-              requestId: expectedIds[i],
-              status: Committed(),
-              reducerName: 'reducer_$i',
+            mockConnection.simulateIncoming(
+              _createReducerResult(
+                requestId: expectedIds[i],
+                outcome: _ReducerOutcome.okEmpty,
+              ),
             );
-            mockConnection.simulateIncoming(response);
           }
 
-          // All should complete successfully
           final results = await Future.wait(futures);
           expect(results.length, 10);
           for (int i = 0; i < 10; i++) {
@@ -158,83 +133,61 @@ void main() {
       );
     });
 
-    group('Test C: Light Update Handling', () {
-      test('Handles TransactionUpdateLight correctly', () async {
-        final future = reducerCaller.call('test_reducer', Uint8List(0));
+    group('Test C: retValue plumbing', () {
+      test('Ok(ret_value) surfaces retValue on TransactionResult', () async {
+        final future = reducerCaller.call('with_return', Uint8List(0));
         final requestId = mockConnection.getLastSentRequestId();
 
-        // Simulate LIGHT update (minimal data, no reducer metadata)
-        final lightResponse = _createTransactionUpdateLight(
-          requestId: requestId,
-        );
-        mockConnection.simulateIncoming(lightResponse);
-
-        final result = await future;
-
-        // Verify light update characteristics
-        expect(result.isSuccess, isTrue, reason: 'Light = Committed');
-        expect(result.isLightUpdate, isTrue);
-
-        // KEY CHECK: Nullable fields must be null (not 0 or empty)
-        expect(
-          result.energyConsumed,
-          isNull,
-          reason: 'Light updates do not provide energy data',
-        );
-        expect(
-          result.executionDuration,
-          isNull,
-          reason: 'Light updates do not provide duration data',
-        );
-        expect(
-          result.reducerName,
-          isNull,
-          reason: 'Light updates do not provide reducer metadata',
-        );
-        expect(result.reducerId, isNull);
-
-        // Timestamp should still be present (approximated client-side)
-        expect(result.timestamp, isNotNull);
-      });
-
-      test('Mixes full and light updates for different requests', () async {
-        final future1 = reducerCaller.call('full_reducer', Uint8List(0));
-        final future2 = reducerCaller.call('light_reducer', Uint8List(0));
-
-        final id1 = mockConnection.getSentRequestId(0);
-        final id2 = mockConnection.getSentRequestId(1);
-
-        // Respond with LIGHT for first, FULL for second
+        final payload = Uint8List.fromList([0xDE, 0xAD, 0xBE, 0xEF]);
         mockConnection.simulateIncoming(
-          _createTransactionUpdateLight(requestId: id1),
-        );
-        mockConnection.simulateIncoming(
-          _createTransactionUpdate(
-            requestId: id2,
-            status: Committed(),
-            reducerName: 'light_reducer',
-            energyConsumed: 42,
-            executionDurationMicros: 1500,
+          _createReducerResult(
+            requestId: requestId,
+            outcome: _ReducerOutcome.okWithReturn,
+            retValue: payload,
           ),
         );
 
-        final result1 = await future1;
-        final result2 = await future2;
+        final result = await future;
+        expect(result.isSuccess, isTrue);
+        expect(result.retValue, equals(payload));
+      });
 
-        // Result1 (light): null fields
-        expect(result1.isLightUpdate, isTrue);
-        expect(result1.energyConsumed, isNull);
+      test('OkEmpty collapses to null retValue', () async {
+        final future = reducerCaller.call('unit_return', Uint8List(0));
+        final requestId = mockConnection.getLastSentRequestId();
 
-        // Result2 (full): populated fields
-        expect(result2.isLightUpdate, isFalse);
-        expect(result2.energyConsumed, equals(42));
-        expect(result2.executionDuration?.inMicroseconds, equals(1500));
+        mockConnection.simulateIncoming(
+          _createReducerResult(
+            requestId: requestId,
+            outcome: _ReducerOutcome.okEmpty,
+          ),
+        );
+
+        final result = await future;
+        expect(result.isSuccess, isTrue);
+        expect(result.retValue, isNull);
+      });
+
+      test('Ok with zero-length ret_value collapses to null', () async {
+        final future = reducerCaller.call('empty_return', Uint8List(0));
+        final requestId = mockConnection.getLastSentRequestId();
+
+        mockConnection.simulateIncoming(
+          _createReducerResult(
+            requestId: requestId,
+            outcome: _ReducerOutcome.okWithReturn,
+            retValue: Uint8List(0),
+          ),
+        );
+
+        final result = await future;
+        expect(result.isSuccess, isTrue);
+        expect(result.retValue, isNull);
       });
     });
 
     group('Test D: Timeout & Memory Leak Prevention', () {
       test('Times out and cleans up memory', () async {
-        // 1. Call with short timeout
         final future = reducerCaller.call(
           'timeout_test',
           Uint8List(0),
@@ -243,24 +196,16 @@ void main() {
 
         final requestId = mockConnection.getLastSentRequestId();
 
-        // 2. Wait for timeout to fire
         await expectLater(future, throwsA(isA<SpacetimeDbTimeoutException>()));
 
-        // 3. MEMORY CHECK: Send response AFTER timeout
-        // If map wasn't cleaned up, this could cause a StateError (double-complete)
-        final lateResponse = _createTransactionUpdate(
+        final lateResponse = _createReducerResult(
           requestId: requestId,
-          status: Committed(),
-          reducerName: 'timeout_test',
+          outcome: _ReducerOutcome.okEmpty,
         );
-
-        // Should not throw - request was already removed from map
         expect(
           () => mockConnection.simulateIncoming(lateResponse),
           returnsNormally,
         );
-
-        // Give time for any potential async errors
         await Future.delayed(const Duration(milliseconds: 50));
       });
 
@@ -270,7 +215,6 @@ void main() {
           Uint8List(0),
           timeout: const Duration(milliseconds: 50),
         );
-
         try {
           await future;
           fail('Should have thrown TimeoutException');
@@ -281,39 +225,30 @@ void main() {
       });
 
       test('Custom timeout overrides default', () async {
-        // Set a very long custom timeout (won't actually wait)
         final future = reducerCaller.call(
           'custom_timeout',
           Uint8List(0),
           timeout: const Duration(seconds: 999),
         );
-
         final requestId = mockConnection.getLastSentRequestId();
-
-        // Complete immediately (should not timeout)
-        final response = _createTransactionUpdate(
-          requestId: requestId,
-          status: Committed(),
-          reducerName: 'custom_timeout',
+        mockConnection.simulateIncoming(
+          _createReducerResult(
+            requestId: requestId,
+            outcome: _ReducerOutcome.okEmpty,
+          ),
         );
-        mockConnection.simulateIncoming(response);
-
-        // Should complete without timeout
         await expectLater(future, completes);
       });
     });
 
     group('Test E: Connection Loss', () {
       test('Fails all pending requests on connection loss', () async {
-        // Start 3 requests
         final future1 = reducerCaller.call('req1', Uint8List(0));
         final future2 = reducerCaller.call('req2', Uint8List(0));
         final future3 = reducerCaller.call('req3', Uint8List(0));
 
-        // Simulate connection loss before any responses
         reducerCaller.failAllPendingRequests('WebSocket closed unexpectedly');
 
-        // All should fail with SpacetimeDbConnectionException
         await expectLater(
           future1,
           throwsA(isA<SpacetimeDbConnectionException>()),
@@ -330,9 +265,7 @@ void main() {
 
       test('Connection loss includes reason in error', () async {
         final future = reducerCaller.call('test', Uint8List(0));
-
         reducerCaller.failAllPendingRequests('Server returned 502 Bad Gateway');
-
         try {
           await future;
           fail('Should have thrown SpacetimeDbConnectionException');
@@ -343,16 +276,19 @@ void main() {
     });
 
     group('Test F: Error Propagation', () {
-      test('Failed reducer throws SpacetimeDbReducerException', () async {
+      test('Err(Bytes) throws SpacetimeDbReducerException', () async {
         final future = reducerCaller.call('failing_reducer', Uint8List(0));
         final requestId = mockConnection.getLastSentRequestId();
 
-        final failedResponse = _createTransactionUpdate(
-          requestId: requestId,
-          status: Failed('Validation error: Title too short'),
-          reducerName: 'failing_reducer',
+        mockConnection.simulateIncoming(
+          _createReducerResult(
+            requestId: requestId,
+            outcome: _ReducerOutcome.err,
+            errBytes: Uint8List.fromList(
+              'Validation error: Title too short'.codeUnits,
+            ),
+          ),
         );
-        mockConnection.simulateIncoming(failedResponse);
 
         try {
           await future;
@@ -364,31 +300,31 @@ void main() {
         }
       });
 
-      test('OutOfEnergy throws SpacetimeDbReducerException', () async {
-        final future = reducerCaller.call('expensive_reducer', Uint8List(0));
+      test('InternalError throws SpacetimeDbReducerException', () async {
+        final future = reducerCaller.call('panicking_reducer', Uint8List(0));
         final requestId = mockConnection.getLastSentRequestId();
 
-        final oomResponse = _createTransactionUpdate(
-          requestId: requestId,
-          status: OutOfEnergy(),
-          reducerName: 'expensive_reducer',
+        mockConnection.simulateIncoming(
+          _createReducerResult(
+            requestId: requestId,
+            outcome: _ReducerOutcome.internalError,
+            errorMessage: 'db panic',
+          ),
         );
-        mockConnection.simulateIncoming(oomResponse);
 
         try {
           await future;
           fail('Should have thrown SpacetimeDbReducerException');
         } on SpacetimeDbReducerException catch (e) {
-          expect(e.reducerName, equals('expensive_reducer'));
-          expect(e.message, contains('Out of energy'));
-          expect(e.result.isOutOfEnergy, isTrue);
+          expect(e.reducerName, equals('panicking_reducer'));
+          expect(e.message, contains('db panic'));
+          expect(e.result.isInternalError, isTrue);
         }
       });
     });
 
     group('Test G: Race Condition Safety', () {
       test('Timeout and response arriving simultaneously', () async {
-        // This tests the atomic remove() safety documented in code
         final future = reducerCaller.call(
           'race_test',
           Uint8List(0),
@@ -397,113 +333,62 @@ void main() {
 
         final requestId = mockConnection.getLastSentRequestId();
 
-        // Wait until just before timeout
         await Future.delayed(const Duration(milliseconds: 95));
 
-        // Fire response at almost the same moment as timeout
-        final response = _createTransactionUpdate(
-          requestId: requestId,
-          status: Committed(),
-          reducerName: 'race_test',
+        mockConnection.simulateIncoming(
+          _createReducerResult(
+            requestId: requestId,
+            outcome: _ReducerOutcome.okEmpty,
+          ),
         );
-        mockConnection.simulateIncoming(response);
 
-        // One of two outcomes should occur:
-        // 1. Response wins: future completes successfully
-        // 2. Timeout wins: future throws TimeoutException
-        // Both are valid - the key is NO double-completion crash
         try {
           final result = await future;
-          expect(result.isSuccess, isTrue); // Response won
+          expect(result.isSuccess, isTrue);
         } on SpacetimeDbTimeoutException {
-          // Timeout won - also valid
+          // Timeout won — also valid
         }
-
-        // No StateError = race condition handled correctly
       });
     });
   });
 }
 
-// ============================================================================
-// Helper Functions to Create Test Messages
-// ============================================================================
+enum _ReducerOutcome { okWithReturn, okEmpty, err, internalError }
 
-/// Create a binary-encoded TransactionUpdate message
-Uint8List _createTransactionUpdate({
+/// Encode a v2 `ReducerResult` frame: compression(0) + server tag(6) +
+/// requestId(u32) + timestamp(u64) + outcome tag + payload.
+Uint8List _createReducerResult({
   required int requestId,
-  required UpdateStatus status,
-  required String reducerName,
-  int? energyConsumed,
-  int? executionDurationMicros,
+  required _ReducerOutcome outcome,
+  Uint8List? retValue,
+  Uint8List? errBytes,
+  String? errorMessage,
 }) {
   final encoder = BsatnEncoder();
 
-  // Compression tag (0 = none)
-  encoder.writeU8(0);
+  encoder.writeU8(0); // compression: none
+  encoder.writeU8(6); // ServerMessageType.reducerResult (v2.rs:175-196)
+  encoder.writeU32(requestId);
+  encoder.writeU64(Int64(DateTime.now().microsecondsSinceEpoch));
 
-  // ServerMessage discriminant for TransactionUpdate (1)
-  encoder.writeU8(1);
-
-  // UpdateStatus
-  if (status is Committed) {
-    encoder.writeU8(0); // Committed discriminant
-    encoder.writeU32(0); // Empty table updates list (only Committed has this)
-  } else if (status is Failed) {
-    encoder.writeU8(1); // Failed discriminant
-    encoder.writeString(status.message);
-    // No table updates list for Failed
-  } else if (status is OutOfEnergy) {
-    encoder.writeU8(2); // OutOfEnergy discriminant — unit variant, no payload
-    // No table updates list for OutOfEnergy
+  switch (outcome) {
+    case _ReducerOutcome.okWithReturn:
+      encoder.writeU8(0); // Ok(ReducerOk)
+      final bytes = retValue ?? Uint8List(0);
+      encoder.writeU32(bytes.length);
+      encoder.writeBytes(bytes);
+      encoder.writeU32(0); // empty query_sets
+    case _ReducerOutcome.okEmpty:
+      encoder.writeU8(1); // OkEmpty (unit)
+    case _ReducerOutcome.err:
+      encoder.writeU8(2); // Err(Bytes)
+      final bytes = errBytes ?? Uint8List(0);
+      encoder.writeU32(bytes.length);
+      encoder.writeBytes(bytes);
+    case _ReducerOutcome.internalError:
+      encoder.writeU8(3); // InternalError(Box<str>)
+      encoder.writeString(errorMessage ?? 'internal');
   }
-
-  // Timestamp (nanoseconds since epoch)
-  encoder.writeU64(Int64(DateTime.now().microsecondsSinceEpoch) * Int64(1000));
-
-  // Caller identity (32 bytes, all zeros for test)
-  encoder.writeBytes(Uint8List(32));
-
-  // Caller connection ID (16 bytes, all zeros for test)
-  encoder.writeBytes(Uint8List(16));
-
-  // ReducerCallInfo
-  encoder.writeString(reducerName);
-  encoder.writeU32(0); // reducer_id
-  encoder.writeU32(0); // args length
-  encoder.writeU32(requestId);
-
-  // Energy quanta used (u128 = 16 bytes, little-endian)
-  final energyBytes = Uint8List(16);
-  final energy = energyConsumed ?? 0;
-  energyBytes[0] = energy & 0xFF;
-  energyBytes[1] = (energy >> 8) & 0xFF;
-  energyBytes[2] = (energy >> 16) & 0xFF;
-  energyBytes[3] = (energy >> 24) & 0xFF;
-  // Rest of bytes stay 0 for reasonable energy values
-  encoder.writeBytes(energyBytes);
-
-  // Execution duration (i64 microseconds, serialized as u64)
-  encoder.writeU64(Int64(executionDurationMicros ?? 0));
-
-  return encoder.toBytes();
-}
-
-/// Create a binary-encoded TransactionUpdateLight message
-Uint8List _createTransactionUpdateLight({required int requestId}) {
-  final encoder = BsatnEncoder();
-
-  // Compression tag (0 = none)
-  encoder.writeU8(0);
-
-  // ServerMessage discriminant for TransactionUpdateLight (2)
-  encoder.writeU8(2);
-
-  // request_id
-  encoder.writeU32(requestId);
-
-  // Empty table updates list
-  encoder.writeU32(0);
 
   return encoder.toBytes();
 }

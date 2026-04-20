@@ -139,46 +139,9 @@ void main() {
     });
   });
 
-  group('ReducerInfo', () {
-    test('decodes correctly', () {
-      final encoder = BsatnEncoder();
-      encoder.writeString('create_note'); // reducerName
-      encoder.writeU32(42); // reducerId
-      encoder.writeU32(10); // args length
-      encoder.writeBytes(
-        Uint8List.fromList([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
-      ); // args
-      encoder.writeU32(123); // requestId
-
-      final decoder = BsatnDecoder(encoder.toBytes());
-      final info = ReducerInfo.decode(decoder);
-
-      expect(info.reducerName, equals('create_note'));
-      expect(info.reducerId, equals(42));
-      expect(info.args.length, equals(10));
-      expect(
-        info.args,
-        equals(Uint8List.fromList([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])),
-      );
-      expect(info.requestId, equals(123));
-    });
-
-    test('handles empty args', () {
-      final encoder = BsatnEncoder();
-      encoder.writeString('ping'); // reducerName
-      encoder.writeU32(1); // reducerId
-      encoder.writeU32(0); // no args
-      encoder.writeU32(456); // requestId
-
-      final decoder = BsatnDecoder(encoder.toBytes());
-      final info = ReducerInfo.decode(decoder);
-
-      expect(info.reducerName, equals('ping'));
-      expect(info.reducerId, equals(1));
-      expect(info.args.length, equals(0));
-      expect(info.requestId, equals(456));
-    });
-  });
+  // ReducerInfo group deleted: v1 `ReducerCallInfo` has no v2 counterpart on
+  // the wire. Caller-side metadata is tracked locally in ReducerCaller's
+  // _pendingRequests under v2 — see reducer_caller_test.dart.
 
   group('UpdateStatus', () {
     test('Committed toString', () {
@@ -186,28 +149,28 @@ void main() {
       expect(status.toString(), equals('Committed()'));
     });
 
-    test('Failed toString', () {
-      final status = Failed('Database error');
+    test('Failed carries decodable UTF-8 bytes', () {
+      final status = Failed(Uint8List.fromList('Database error'.codeUnits));
+      expect(status.errorMessage, equals('Database error'));
       expect(status.toString(), equals('Failed(message: Database error)'));
     });
 
-    test('OutOfEnergy toString', () {
-      final status = OutOfEnergy();
-      expect(status.toString(), equals('OutOfEnergy()'));
+    test('InternalError toString', () {
+      final status = InternalError('db panic');
+      expect(status.toString(), equals('InternalError(message: db panic)'));
     });
 
-    test('sealed class hierarchy', () {
+    test('sealed class hierarchy with v2 variants', () {
       final UpdateStatus committed = Committed();
-      final UpdateStatus failed = Failed('error');
-      final UpdateStatus outOfEnergy = OutOfEnergy();
+      final UpdateStatus failed = Failed(Uint8List.fromList('error'.codeUnits));
+      final UpdateStatus internalError = InternalError('panic');
       final UpdateStatus pending = Pending();
 
-      // Can use switch with exhaustive matching
       String describe(UpdateStatus status) {
         return switch (status) {
           Committed() => 'success',
-          Failed(message: final msg) => 'failed: $msg',
-          OutOfEnergy() => 'out of energy',
+          Failed(errorMessage: final msg) => 'failed: $msg',
+          InternalError(message: final msg) => 'internal: $msg',
           Pending() => 'pending',
           Dropped() => 'dropped',
         };
@@ -215,7 +178,7 @@ void main() {
 
       expect(describe(committed), equals('success'));
       expect(describe(failed), equals('failed: error'));
-      expect(describe(outOfEnergy), equals('out of energy'));
+      expect(describe(internalError), equals('internal: panic'));
       expect(describe(pending), equals('pending'));
     });
   });

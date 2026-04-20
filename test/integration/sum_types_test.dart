@@ -22,7 +22,9 @@ void main() {
     subManager = env.subManager;
 
     await env.connection.connect();
-    await subManager.onIdentityToken.first.timeout(const Duration(seconds: 5));
+    await subManager.onInitialConnection.first.timeout(
+      const Duration(seconds: 5),
+    );
   });
 
   tearDown(() async {
@@ -182,7 +184,7 @@ void main() {
     test('Table integration: Ref field is strongly typed', () async {
       // Subscribe to notes table
       subManager.subscribe(['SELECT * FROM note']);
-      await subManager.onInitialSubscription.first.timeout(
+      await subManager.onSubscribeApplied.first.timeout(
         const Duration(seconds: 5),
       );
 

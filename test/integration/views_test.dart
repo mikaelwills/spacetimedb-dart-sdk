@@ -17,7 +17,7 @@ void main() {
   Future<TestEnv> connectAndRegister() async {
     final env = await createTestEnv(registerViews: true);
     await env.connection.connect();
-    await env.subManager.onIdentityToken.first;
+    await env.subManager.onInitialConnection.first;
     return env;
   }
 
@@ -29,7 +29,7 @@ void main() {
     final errorSub = subManager.onSubscriptionError.listen(errors.add);
     try {
       subManager.subscribe(queries);
-      await subManager.onInitialSubscription.first.timeout(
+      await subManager.onSubscribeApplied.first.timeout(
         const Duration(seconds: 5),
         onTimeout: () {
           if (errors.isNotEmpty) {

@@ -1,16 +1,13 @@
 import 'dart:typed_data';
 import '../codec/bsatn_encoder.dart';
 
-/// Client message type tags (Client -> Server)
+/// v2 `ClientMessage` tag order (v2.rs:18-29).
 enum ClientMessageType {
-  callReducer(0),
-  subscribe(1),
+  subscribe(0),
+  unsubscribe(1),
   oneOffQuery(2),
-  subscribeSingle(3),
-  subscribeMulti(4),
-  unsubscribe(5),
-  unsubscribeMulti(6),
-  callProcedure(7);
+  callReducer(3),
+  callProcedure(4);
 
   final int tag;
   const ClientMessageType(this.tag);
@@ -19,16 +16,30 @@ enum ClientMessageType {
 sealed class ClientMessage {
   ClientMessageType get messageType;
 
-  /// Encode this message to BSATN bytes (including tag)
   Uint8List encode();
 }
 
-/// Client message to subscribe to tables via SQL queries
+/// Flags on `Unsubscribe`. Wire: `v2.rs:86-93`.
+enum UnsubscribeFlags {
+  defaultFlag(0),
+  sendDroppedRows(1);
+
+  final int value;
+  const UnsubscribeFlags(this.value);
+}
+
+/// v2 `Subscribe`. Wire: `v2.rs:53-67`.
+/// `{ request_id: u32, query_set_id: u32, query_strings: Box<[Box<str>]> }`.
 class SubscribeMessage implements ClientMessage {
   final List<String> queries;
   final int requestId;
+  final int querySetId;
 
-  SubscribeMessage(this.queries, {this.requestId = 0});
+  SubscribeMessage(
+    this.queries, {
+    required this.querySetId,
+    this.requestId = 0,
+  });
 
   @override
   ClientMessageType get messageType => ClientMessageType.subscribe;
@@ -37,79 +48,66 @@ class SubscribeMessage implements ClientMessage {
   Uint8List encode() {
     final encoder = BsatnEncoder();
     encoder.writeU8(messageType.tag);
-    encoder.writeList(queries, (query) => encoder.writeString(query));
     encoder.writeU32(requestId);
-    return encoder.toBytes();
-  }
-}
-
-/// Subscribe to a single query (newer API, returns SubscribeApplied)
-class SubscribeSingleMessage implements ClientMessage {
-  final String query;
-  final int requestId;
-  final int queryId;
-
-  SubscribeSingleMessage(this.query, {this.requestId = 0, this.queryId = 0});
-
-  @override
-  ClientMessageType get messageType => ClientMessageType.subscribeSingle;
-
-  @override
-  Uint8List encode() {
-    final encoder = BsatnEncoder();
-    encoder.writeU8(messageType.tag);
-    encoder.writeString(query);
-    encoder.writeU32(requestId);
-    encoder.writeU32(queryId);
-    return encoder.toBytes();
-  }
-}
-
-/// Client message for subscribing to multiple queries at once
-class SubscribeMultiMessage implements ClientMessage {
-  final List<String> queries;
-  final int requestId;
-  final int queryId;
-
-  SubscribeMultiMessage(this.queries, {this.requestId = 0, this.queryId = 0});
-
-  @override
-  ClientMessageType get messageType => ClientMessageType.subscribeMulti;
-
-  @override
-  Uint8List encode() {
-    final encoder = BsatnEncoder();
-    encoder.writeU8(messageType.tag);
+    encoder.writeU32(querySetId);
     encoder.writeU32(queries.length);
     for (final query in queries) {
       encoder.writeString(query);
     }
-    encoder.writeU32(requestId);
-    encoder.writeU32(queryId);
     return encoder.toBytes();
   }
 }
 
-/// Client message for unsubscribing from multiple queries
-class UnsubscribeMultiMessage implements ClientMessage {
+/// v2 `Unsubscribe`. Wire: `v2.rs:74-93`.
+/// `{ request_id: u32, query_set_id: u32, flags: UnsubscribeFlags(u8) }`.
+class UnsubscribeMessage implements ClientMessage {
+  final int querySetId;
   final int requestId;
-  final int queryId;
+  final UnsubscribeFlags flags;
 
-  UnsubscribeMultiMessage({required this.queryId, this.requestId = 0});
+  UnsubscribeMessage({
+    required this.querySetId,
+    this.requestId = 0,
+    this.flags = UnsubscribeFlags.defaultFlag,
+  });
 
   @override
-  ClientMessageType get messageType => ClientMessageType.unsubscribeMulti;
+  ClientMessageType get messageType => ClientMessageType.unsubscribe;
 
   @override
   Uint8List encode() {
     final encoder = BsatnEncoder();
     encoder.writeU8(messageType.tag);
     encoder.writeU32(requestId);
-    encoder.writeU32(queryId);
+    encoder.writeU32(querySetId);
+    encoder.writeU8(flags.value);
     return encoder.toBytes();
   }
 }
 
+/// v2 `OneOffQuery`. Wire: `v2.rs:101-109`.
+/// `{ request_id: u32, query_string: Box<str> }`.
+class OneOffQueryMessage implements ClientMessage {
+  final String queryString;
+  final int requestId;
+
+  OneOffQueryMessage({required this.queryString, this.requestId = 0});
+
+  @override
+  ClientMessageType get messageType => ClientMessageType.oneOffQuery;
+
+  @override
+  Uint8List encode() {
+    final encoder = BsatnEncoder();
+    encoder.writeU8(messageType.tag);
+    encoder.writeU32(requestId);
+    encoder.writeString(queryString);
+    return encoder.toBytes();
+  }
+}
+
+/// v2 `CallReducer`. Wire: `v2.rs:115-131`.
+/// `{ request_id: u32, flags: CallReducerFlags(u8), reducer: Box<str>, args: Bytes }`.
 class CallReducerMessage implements ClientMessage {
   final String reducerName;
   final Uint8List args;
@@ -128,17 +126,17 @@ class CallReducerMessage implements ClientMessage {
   Uint8List encode() {
     final encoder = BsatnEncoder();
     encoder.writeU8(messageType.tag);
+    encoder.writeU32(requestId);
+    encoder.writeU8(0); // CallReducerFlags::Default
     encoder.writeString(reducerName);
-    // Args field is of type Bytes in the product type, needs length prefix
     encoder.writeU32(args.length);
     encoder.writeBytes(args);
-    encoder.writeU32(requestId);
-    encoder.writeU8(0); // CallReducerFlags::FullUpdate
     return encoder.toBytes();
   }
 }
 
-/// Client message for calling a procedure
+/// v2 `CallProcedure`. Wire: `v2.rs:150-166`.
+/// `{ request_id: u32, flags: CallProcedureFlags(u8), procedure: Box<str>, args: Bytes }`.
 class CallProcedureMessage implements ClientMessage {
   final String procedureName;
   final Uint8List args;
@@ -157,53 +155,11 @@ class CallProcedureMessage implements ClientMessage {
   Uint8List encode() {
     final encoder = BsatnEncoder();
     encoder.writeU8(messageType.tag);
+    encoder.writeU32(requestId);
+    encoder.writeU8(0); // CallProcedureFlags::Default
     encoder.writeString(procedureName);
-    // Args field is of type Bytes in the product type, needs length prefix
     encoder.writeU32(args.length);
     encoder.writeBytes(args);
-    encoder.writeU32(requestId);
-    encoder.writeU8(0); // CallReducerFlags::FullUpdate
-    return encoder.toBytes();
-  }
-}
-
-/// Client message for one-off SQL query
-class OneOffQueryMessage implements ClientMessage {
-  final Uint8List messageId;
-  final String queryString;
-
-  OneOffQueryMessage({required this.messageId, required this.queryString});
-
-  @override
-  ClientMessageType get messageType => ClientMessageType.oneOffQuery;
-
-  @override
-  Uint8List encode() {
-    final encoder = BsatnEncoder();
-    encoder.writeU8(messageType.tag);
-    encoder.writeU32(messageId.length);
-    encoder.writeBytes(messageId);
-    encoder.writeString(queryString);
-    return encoder.toBytes();
-  }
-}
-
-/// Client message to unsubscribe from a query
-class UnsubscribeMessage implements ClientMessage {
-  final int queryId;
-  final int requestId;
-
-  UnsubscribeMessage({required this.queryId, this.requestId = 0});
-
-  @override
-  ClientMessageType get messageType => ClientMessageType.unsubscribe;
-
-  @override
-  Uint8List encode() {
-    final encoder = BsatnEncoder();
-    encoder.writeU8(messageType.tag);
-    encoder.writeU32(requestId);
-    encoder.writeU32(queryId);
     return encoder.toBytes();
   }
 }

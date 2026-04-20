@@ -17,7 +17,7 @@ void main() {
       final env = await createTestEnv();
       await env.connection.connect();
       env.subManager.subscribe(['SELECT * FROM note']);
-      await env.subManager.onInitialSubscription.first;
+      await env.subManager.onSubscribeApplied.first;
 
       final noteTable = env.noteTable;
       final title = 'delta-${DateTime.now().millisecondsSinceEpoch}';

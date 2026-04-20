@@ -1,7 +1,6 @@
 import 'dart:typed_data';
-import 'dart:io';
-import 'package:brotli/brotli.dart';
 import '../codec/bsatn_decoder.dart';
+import 'decompress.dart';
 import 'server_messages.dart';
 
 /// Compression tags used by SpacetimeDB
@@ -22,25 +21,20 @@ enum CompressionTag {
 }
 
 class MessageDecoder {
-  static ServerMessage decode(Uint8List bytes) {
+  /// Async entry — strips the compression tag, decompresses with the
+  /// platform-appropriate implementation (pure-Dart on VM, native
+  /// DecompressionStream on web), then hands the uncompressed BSATN to the
+  /// sync decoder.
+  static Future<ServerMessage> decode(Uint8List bytes) async {
     final decoder = BsatnDecoder(bytes);
+    final compressionTag = CompressionTag.fromValue(decoder.readU8());
+    final payload = decoder.readBytes(decoder.remaining);
 
-    final compressionTagValue = decoder.readU8();
-    final compressionTag = CompressionTag.fromValue(compressionTagValue);
-
-    Uint8List messageBytes;
-    switch (compressionTag) {
-      case CompressionTag.none:
-        messageBytes = decoder.readBytes(decoder.remaining);
-
-      case CompressionTag.brotli:
-        final compressedData = decoder.readBytes(decoder.remaining);
-        messageBytes = Uint8List.fromList(brotli.decode(compressedData));
-
-      case CompressionTag.gzip:
-        final compressedData = decoder.readBytes(decoder.remaining);
-        messageBytes = Uint8List.fromList(gzip.decode(compressedData));
-    }
+    final messageBytes = switch (compressionTag) {
+      CompressionTag.none => payload,
+      CompressionTag.brotli => await decompressBrotli(payload),
+      CompressionTag.gzip => await decompressGzip(payload),
+    };
 
     return _decodeServerMessage(messageBytes);
   }
@@ -65,11 +59,8 @@ class MessageDecoder {
       ServerMessageType.transactionUpdate => TransactionUpdateMessage.decode(
         decoder,
       ),
-      ServerMessageType.oneOffQueryResult => OneOffQueryResponse.decode(
-        decoder,
-      ),
-      ServerMessageType.reducerResult =>
-        throw UnimplementedError('ReducerResult decoder lands in slice 4'),
+      ServerMessageType.oneOffQueryResult => OneOffQueryResult.decode(decoder),
+      ServerMessageType.reducerResult => ReducerResultMessage.decode(decoder),
       ServerMessageType.procedureResult => ProcedureResultMessage.decode(
         decoder,
       ),

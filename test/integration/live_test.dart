@@ -41,8 +41,8 @@ void main() async {
   var identityReceived = Completer<void>();
   var initialDataReceived = Completer<void>();
 
-  subscriptionManager.onIdentityToken.listen((message) {
-    print('✅ Identity Token received!');
+  subscriptionManager.onInitialConnection.listen((message) {
+    print('✅ Initial Connection received!');
     print(
       '   Identity: ${message.identity.sublist(0, 8)}... (${message.identity.length} bytes)',
     );
@@ -55,45 +55,26 @@ void main() async {
     identityReceived.complete();
   });
 
-  subscriptionManager.onInitialSubscription.listen((message) {
-    print('✅ Initial Subscription received!');
+  subscriptionManager.onSubscribeApplied.listen((message) {
+    print('✅ SubscribeApplied received!');
     print('   Request ID: ${message.requestId}');
-    print('   Execution time: ${message.totalHostExecutionDurationMicros}μs');
-    print('   Tables: ${message.tableUpdates.length}\n');
+    print('   QuerySet ID: ${message.querySetId}');
+    print('   Tables: ${message.rows.tables.length}\n');
 
-    for (final tableUpdate in message.tableUpdates) {
-      print('   📊 Table: ${tableUpdate.tableName}');
-      print('      Table ID: ${tableUpdate.tableId}');
-      print('      Num rows: ${tableUpdate.numRows}');
-      print('      Updates: ${tableUpdate.updates.length}');
-
-      for (final update in tableUpdate.updates) {
-        print(
-          '         - Inserts: ${update.update.inserts.rowsData.length} bytes',
-        );
-        print(
-          '         - Deletes: ${update.update.deletes.rowsData.length} bytes',
-        );
-      }
-      print('');
+    for (final single in message.rows.tables) {
+      print('   📊 Table: ${single.tableName}');
+      print('      Rows: ${single.rows.rowsData.length} bytes');
     }
 
-    initialDataReceived.complete();
+    if (!initialDataReceived.isCompleted) initialDataReceived.complete();
   });
 
   subscriptionManager.onTransactionUpdate.listen((message) {
-    print('🔄 Transaction Update received!');
-    print('   Timestamp: ${message.timestamp}');
-    print('   Transaction offset: ${message.transactionOffset}');
-
-    for (final tableUpdate in message.tableUpdates) {
-      print('   Table ${tableUpdate.tableName} changed:');
-      for (final update in tableUpdate.updates) {
+    print('🔄 TransactionUpdate: ${message.querySets.length} querySets');
+    for (final qs in message.querySets) {
+      for (final tableUpdate in qs.tables) {
         print(
-          '      - Inserts: ${update.update.inserts.rowsData.length} bytes',
-        );
-        print(
-          '      - Deletes: ${update.update.deletes.rowsData.length} bytes',
+          '   Table ${tableUpdate.tableName}: ${tableUpdate.rows.length} row-groups',
         );
       }
     }

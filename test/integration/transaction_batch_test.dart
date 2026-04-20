@@ -18,9 +18,9 @@ void main() {
       final env = await createTestEnv();
 
       await env.connection.connect();
-      await env.subManager.onIdentityToken.first;
+      await env.subManager.onInitialConnection.first;
       env.subManager.subscribe(['SELECT * FROM note']);
-      await env.subManager.onInitialSubscription.first;
+      await env.subManager.onSubscribeApplied.first;
 
       final noteTable = env.noteTable;
       if (noteTable.count() > 0) {
@@ -93,9 +93,9 @@ void main() {
       final env = await createTestEnv();
 
       await env.connection.connect();
-      await env.subManager.onIdentityToken.first;
+      await env.subManager.onInitialConnection.first;
       env.subManager.subscribe(['SELECT * FROM note']);
-      await env.subManager.onInitialSubscription.first;
+      await env.subManager.onSubscribeApplied.first;
 
       final noteTable = env.noteTable;
       if (noteTable.count() > 0) {

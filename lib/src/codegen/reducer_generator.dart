@@ -123,7 +123,7 @@ class ReducerGenerator {
           '///',
           '/// Returns a [TransactionResult] on success. Throws',
           '/// [SpacetimeDbReducerException] if the reducer returns `Failed` or',
-          '/// `OutOfEnergy`. The returned status is one of `Committed`,',
+          '/// `InternalError`. The returned status is one of `Committed`,',
           '/// `Pending` (queued to offline storage), or `Dropped` (skipped via',
           '/// `dropIfOffline: true` while offline).',
         ]);

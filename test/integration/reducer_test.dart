@@ -15,13 +15,11 @@ void main() {
     env = await createTestEnv();
 
     await env.connection.connect();
-    await env.subManager.onIdentityToken.first.timeout(
+    await env.subManager.onInitialConnection.first.timeout(
       const Duration(seconds: 5),
     );
 
-    env.subManager.subscribe(['SELECT * FROM note']);
-    await env.subManager.onInitialSubscription.first;
-
+    await env.subManager.subscribe(['SELECT * FROM note']);
     noteTable = env.noteTable;
   });
 
@@ -30,24 +28,19 @@ void main() {
     await env.disconnect();
   });
 
-  group('Reducer Tests', () {
+  group('Reducer Tests (v2 caller-awaited)', () {
     test('create_note reducer creates a new note', () async {
       final noteCountBefore = noteTable.count();
 
-      final txUpdateFuture =
-          env.subManager.onTransactionUpdate
-              .where((tx) => tx.reducerCall.reducerName == 'create_note')
-              .first;
+      final result = await env.reducers
+          .createNote(
+            title: 'Dart SDK Test',
+            content: 'Created via Dart SDK reducer call!',
+          )
+          .timeout(const Duration(seconds: 5));
 
-      await env.reducers.createNote(
-        title: 'Dart SDK Test',
-        content: 'Created via Dart SDK reducer call!',
-      );
-
-      final txUpdate = await txUpdateFuture.timeout(const Duration(seconds: 2));
-
-      expect(txUpdate.status, isA<Committed>());
-      expect(txUpdate.reducerCall.reducerName, equals('create_note'));
+      expect(result.status, isA<Committed>());
+      expect(result.reducerName, equals('create_note'));
 
       final noteCountAfter = noteTable.count();
       expect(noteCountAfter, equals(noteCountBefore + 1));
@@ -64,15 +57,9 @@ void main() {
     });
 
     test('update_note reducer updates an existing note', () async {
-      final createTxFuture =
-          env.subManager.onTransactionUpdate
-              .where((tx) => tx.reducerCall.reducerName == 'create_note')
-              .first;
-      await env.reducers.createNote(
-        title: 'Original Title',
-        content: 'Original Content',
-      );
-      await createTxFuture.timeout(const Duration(seconds: 2));
+      await env.reducers
+          .createNote(title: 'Original Title', content: 'Original Content')
+          .timeout(const Duration(seconds: 5));
 
       int? noteId;
       for (final note in noteTable.iter()) {
@@ -83,21 +70,16 @@ void main() {
       }
       expect(noteId, isNotNull);
 
-      final txUpdateFuture =
-          env.subManager.onTransactionUpdate
-              .where((tx) => tx.reducerCall.reducerName == 'update_note')
-              .first;
+      final result = await env.reducers
+          .updateNote(
+            noteId: noteId!,
+            title: 'Updated Title',
+            content: 'Updated Content',
+          )
+          .timeout(const Duration(seconds: 5));
 
-      await env.reducers.updateNote(
-        noteId: noteId!,
-        title: 'Updated Title',
-        content: 'Updated Content',
-      );
-
-      final txUpdate = await txUpdateFuture.timeout(const Duration(seconds: 2));
-
-      expect(txUpdate.status, isA<Committed>());
-      expect(txUpdate.reducerCall.reducerName, equals('update_note'));
+      expect(result.status, isA<Committed>());
+      expect(result.reducerName, equals('update_note'));
 
       bool foundUpdated = false;
       for (final note in noteTable.iter()) {
@@ -112,15 +94,9 @@ void main() {
     });
 
     test('delete_note reducer deletes a note', () async {
-      final createTxFuture =
-          env.subManager.onTransactionUpdate
-              .where((tx) => tx.reducerCall.reducerName == 'create_note')
-              .first;
-      await env.reducers.createNote(
-        title: 'To Delete',
-        content: 'This will be deleted',
-      );
-      await createTxFuture.timeout(const Duration(seconds: 2));
+      await env.reducers
+          .createNote(title: 'To Delete', content: 'This will be deleted')
+          .timeout(const Duration(seconds: 5));
 
       int? noteId;
       for (final note in noteTable.iter()) {
@@ -133,17 +109,12 @@ void main() {
 
       final noteCountBefore = noteTable.count();
 
-      final txUpdateFuture =
-          env.subManager.onTransactionUpdate
-              .where((tx) => tx.reducerCall.reducerName == 'delete_note')
-              .first;
+      final result = await env.reducers
+          .deleteNote(noteId: noteId!)
+          .timeout(const Duration(seconds: 5));
 
-      await env.reducers.deleteNote(noteId: noteId!);
-
-      final txUpdate = await txUpdateFuture.timeout(const Duration(seconds: 2));
-
-      expect(txUpdate.status, isA<Committed>());
-      expect(txUpdate.reducerCall.reducerName, equals('delete_note'));
+      expect(result.status, isA<Committed>());
+      expect(result.reducerName, equals('delete_note'));
 
       final noteCountAfter = noteTable.count();
       expect(noteCountAfter, equals(noteCountBefore - 1));
@@ -212,15 +183,10 @@ void main() {
     });
 
     test('Table delete notifies on deleted notes', () async {
-      final createTxFuture =
-          env.subManager.onTransactionUpdate
-              .where((tx) => tx.reducerCall.reducerName == 'create_note')
-              .first;
       await env.reducers.createNote(
         title: 'Delete Stream Test',
         content: 'Will be deleted',
       );
-      await createTxFuture.timeout(const Duration(seconds: 2));
 
       int? noteId;
       for (final note in noteTable.iter()) {

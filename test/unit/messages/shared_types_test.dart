@@ -1,93 +1,81 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:spacetimedb_sdk/src/codec/bsatn_decoder.dart';
+import 'package:spacetimedb_sdk/src/codec/bsatn_encoder.dart';
 import 'package:spacetimedb_sdk/src/messages/shared_types.dart';
 import 'package:test/test.dart';
 
-Uint8List _encodeEmptyQueryUpdateBody() {
-  final bb = BytesBuilder();
-  bb.addByte(0);
-  bb.add([0, 0]);
-  bb.add([0, 0, 0, 0]);
-  bb.addByte(0);
-  bb.add([0, 0]);
-  bb.add([0, 0, 0, 0]);
-  return bb.toBytes();
-}
-
-Uint8List _frameInner(int tag, List<int> compressed) {
-  final bb = BytesBuilder();
-  bb.addByte(tag);
-  final len = compressed.length;
-  bb.add([
-    len & 0xff,
-    (len >> 8) & 0xff,
-    (len >> 16) & 0xff,
-    (len >> 24) & 0xff,
-  ]);
-  bb.add(compressed);
-  return bb.toBytes();
+Uint8List _emptyBsatnRowListBytes() {
+  final enc = BsatnEncoder();
+  enc.writeU8(0); // RowSizeHint tag 0 = FixedSize
+  enc.writeU16(0); // row size 0
+  enc.writeU32(0); // rows_data length 0
+  return enc.toBytes();
 }
 
 void main() {
-  group('CompressableQueryUpdate', () {
-    test('decodes Uncompressed variant (tag 0)', () {
-      final body = _encodeEmptyQueryUpdateBody();
-      final bb = BytesBuilder();
-      bb.addByte(0);
-      bb.add(body);
-
-      final result = CompressableQueryUpdate.decode(BsatnDecoder(bb.toBytes()));
-
-      expect(result.update.deletes.rowsData, isEmpty);
-      expect(result.update.inserts.rowsData, isEmpty);
+  group('BsatnRowList', () {
+    test('decodes fixed-size empty list', () {
+      final bytes = _emptyBsatnRowListBytes();
+      final list = BsatnRowList.decode(BsatnDecoder(bytes));
+      expect(list.rowsData, isEmpty);
+      expect(list.getRows(), isEmpty);
     });
 
-    test('decodes Gzip variant (tag 2)', () {
-      final body = _encodeEmptyQueryUpdateBody();
-      final compressed = gzip.encode(body);
-      final frame = _frameInner(2, compressed);
+    test('empty() factory returns a zero-row list', () {
+      final empty = BsatnRowList.empty();
+      expect(empty.rowsData, isEmpty);
+      expect(empty.getRows(), isEmpty);
+    });
+  });
 
-      final result = CompressableQueryUpdate.decode(BsatnDecoder(frame));
+  group('TableUpdateRows (v2 sealed)', () {
+    test('decodes PersistentTable variant (tag 0)', () {
+      final enc = BsatnEncoder();
+      enc.writeU8(0); // TableUpdateRows tag 0 = PersistentTable
+      // inserts
+      enc.writeU8(0);
+      enc.writeU16(0);
+      enc.writeU32(0);
+      // deletes
+      enc.writeU8(0);
+      enc.writeU16(0);
+      enc.writeU32(0);
 
-      expect(result.update.deletes.rowsData, isEmpty);
-      expect(result.update.inserts.rowsData, isEmpty);
+      final row = TableUpdateRows.decode(BsatnDecoder(enc.toBytes()));
+      expect(row, isA<PersistentTableRows>());
     });
 
-    test('decodes Brotli variant (tag 1)', () {
-      // Brotli-compressed bytes for a 14-byte empty QueryUpdate body
-      // (two empty BsatnRowLists: [hint=0][rowSize=0][len=0] x2).
-      // Generated once with: `brotli -c -q 11 <body>`. Regenerate if
-      // QueryUpdate wire format changes. The Dart brotli package is
-      // decode-only so encoding happens out-of-process.
-      final compressed = Uint8List.fromList([
-        0xa1,
-        0x68,
-        0x00,
-        0xc0,
-        0x3f,
-        0x01,
-        0x10,
-        0x2f,
-        0x04,
-        0x00,
-      ]);
-      final frame = _frameInner(1, compressed);
+    test('decodes EventTable variant (tag 1)', () {
+      final enc = BsatnEncoder();
+      enc.writeU8(1); // tag 1 = EventTable
+      // events
+      enc.writeU8(0);
+      enc.writeU16(0);
+      enc.writeU32(0);
 
-      final result = CompressableQueryUpdate.decode(BsatnDecoder(frame));
-
-      expect(result.update.deletes.rowsData, isEmpty);
-      expect(result.update.inserts.rowsData, isEmpty);
+      final row = TableUpdateRows.decode(BsatnDecoder(enc.toBytes()));
+      expect(row, isA<EventTableRows>());
     });
 
-    test('throws on unknown compression tag', () {
+    test('throws on unknown tag', () {
       final frame = Uint8List.fromList([99]);
-
       expect(
-        () => CompressableQueryUpdate.decode(BsatnDecoder(frame)),
+        () => TableUpdateRows.decode(BsatnDecoder(frame)),
         throwsA(isA<ArgumentError>()),
       );
+    });
+  });
+
+  group('QuerySetUpdate', () {
+    test('decodes empty tables list', () {
+      final enc = BsatnEncoder();
+      enc.writeU32(7); // query_set_id
+      enc.writeU32(0); // tables length
+
+      final qsu = QuerySetUpdate.decode(BsatnDecoder(enc.toBytes()));
+      expect(qsu.querySetId, equals(7));
+      expect(qsu.tables, isEmpty);
     });
   });
 }

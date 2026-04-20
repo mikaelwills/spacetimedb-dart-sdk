@@ -1,8 +1,4 @@
-import 'dart:io';
 import 'dart:typed_data';
-
-import 'package:brotli/brotli.dart';
-import 'package:fixnum/fixnum.dart';
 
 import '../codec/bsatn_decoder.dart';
 
@@ -13,7 +9,6 @@ class BsatnRowList {
 
   BsatnRowList({required this.sizeHint, required this.rowsData});
 
-  /// Create an empty BsatnRowList with no rows
   static BsatnRowList empty() {
     return BsatnRowList(
       sizeHint: RowSizeHint.fixedSize(0),
@@ -22,16 +17,13 @@ class BsatnRowList {
   }
 
   static BsatnRowList decode(BsatnDecoder decoder) {
-    // Read RowSizeHint (enum)
     final hintTag = decoder.readU8();
     final RowSizeHint sizeHint;
 
     if (hintTag == 0) {
-      // FixedSize variant - read row size (u16!)
       final rowSize = decoder.readU16();
       sizeHint = RowSizeHint.fixedSize(rowSize);
     } else if (hintTag == 1) {
-      // RowOffsets variant - read offset list
       final numOffsets = decoder.readU32();
       final offsets = List<int>.generate(
         numOffsets,
@@ -42,88 +34,105 @@ class BsatnRowList {
       throw ArgumentError('Unknown RowSizeHint tag: $hintTag');
     }
 
-    // Read rows_data bytes (Bytes type is encoded as Vec<u8>)
     final length = decoder.readU32();
     final rowsData = decoder.readBytes(length);
 
     return BsatnRowList(sizeHint: sizeHint, rowsData: rowsData);
   }
 
-  /// Get individual row data chunks
   List<Uint8List> getRows() => sizeHint.splitRows(rowsData);
 }
 
-/// Query update with deletes and inserts
-class QueryUpdate {
-  final BsatnRowList deletes;
-  final BsatnRowList inserts;
+/// Rows of a `TableUpdate`, separated by table kind (persistent vs event).
+/// Wire: `v2.rs` `TableUpdateRows` sum — tag 0 `PersistentTable`, tag 1 `EventTable`.
+sealed class TableUpdateRows {
+  const TableUpdateRows();
 
-  QueryUpdate({required this.deletes, required this.inserts});
-
-  static QueryUpdate decode(BsatnDecoder decoder) {
-    final deletes = BsatnRowList.decode(decoder);
-    final inserts = BsatnRowList.decode(decoder);
-    return QueryUpdate(deletes: deletes, inserts: inserts);
-  }
-}
-
-/// Compressable query update (enum with compression options)
-class CompressableQueryUpdate {
-  final QueryUpdate update;
-
-  CompressableQueryUpdate(this.update);
-
-  static CompressableQueryUpdate decode(BsatnDecoder decoder) {
+  static TableUpdateRows decode(BsatnDecoder decoder) {
     final tag = decoder.readU8();
-
-    if (tag == 0) {
-      return CompressableQueryUpdate(QueryUpdate.decode(decoder));
-    } else if (tag == 1) {
-      final compressed = decoder.readByteArray();
-      final decompressed = Uint8List.fromList(brotli.decode(compressed));
-      return CompressableQueryUpdate(
-        QueryUpdate.decode(BsatnDecoder(decompressed)),
-      );
-    } else if (tag == 2) {
-      final compressed = decoder.readByteArray();
-      final decompressed = Uint8List.fromList(gzip.decode(compressed));
-      return CompressableQueryUpdate(
-        QueryUpdate.decode(BsatnDecoder(decompressed)),
-      );
-    }
-
-    throw ArgumentError('Unknown CompressableQueryUpdate tag: $tag');
+    if (tag == 0) return PersistentTableRows.decode(decoder);
+    if (tag == 1) return EventTableRows.decode(decoder);
+    throw ArgumentError('Unknown TableUpdateRows tag: $tag');
   }
 }
 
-/// Table update matching the actual protocol structure
-class TableUpdate {
-  final int tableId;
-  final String tableName;
-  final Int64 numRows;
-  final List<CompressableQueryUpdate> updates;
+class PersistentTableRows extends TableUpdateRows {
+  final BsatnRowList inserts;
+  final BsatnRowList deletes;
 
-  TableUpdate({
-    required this.tableId,
-    required this.tableName,
-    required this.numRows,
-    required this.updates,
-  });
+  const PersistentTableRows({required this.inserts, required this.deletes});
+
+  static PersistentTableRows decode(BsatnDecoder decoder) {
+    final inserts = BsatnRowList.decode(decoder);
+    final deletes = BsatnRowList.decode(decoder);
+    return PersistentTableRows(inserts: inserts, deletes: deletes);
+  }
+}
+
+class EventTableRows extends TableUpdateRows {
+  final BsatnRowList events;
+
+  const EventTableRows({required this.events});
+
+  static EventTableRows decode(BsatnDecoder decoder) {
+    final events = BsatnRowList.decode(decoder);
+    return EventTableRows(events: events);
+  }
+}
+
+/// Table update — v2 wire shape per `v2.rs:316-321`.
+/// `{ table_name: RawIdentifier, rows: Box<[TableUpdateRows]> }`
+class TableUpdate {
+  final String tableName;
+  final List<TableUpdateRows> rows;
+
+  TableUpdate({required this.tableName, required this.rows});
 
   static TableUpdate decode(BsatnDecoder decoder) {
-    final tableId = decoder.readU32();
     final tableName = decoder.readString();
-    final numRows = decoder.readU64();
-    final updates = decoder.readList(
-      () => CompressableQueryUpdate.decode(decoder),
-    );
+    final rows = decoder.readList(() => TableUpdateRows.decode(decoder));
+    return TableUpdate(tableName: tableName, rows: rows);
+  }
+}
 
-    return TableUpdate(
-      tableId: tableId,
-      tableName: tableName,
-      numRows: numRows,
-      updates: updates,
-    );
+/// A set of `TableUpdate`s scoped to a client-assigned `QuerySetId`.
+/// Wire: `v2.rs:308-314`.
+class QuerySetUpdate {
+  final int querySetId;
+  final List<TableUpdate> tables;
+
+  QuerySetUpdate({required this.querySetId, required this.tables});
+
+  static QuerySetUpdate decode(BsatnDecoder decoder) {
+    final querySetId = decoder.readU32();
+    final tables = decoder.readList(() => TableUpdate.decode(decoder));
+    return QuerySetUpdate(querySetId: querySetId, tables: tables);
+  }
+}
+
+/// Flat rows-per-table container used by `SubscribeApplied` / `UnsubscribeApplied`
+/// / `OneOffQueryResult`. Wire: `v2.rs:223-237`.
+class QueryRows {
+  final List<SingleTableRows> tables;
+
+  QueryRows({required this.tables});
+
+  static QueryRows decode(BsatnDecoder decoder) {
+    final tables = decoder.readList(() => SingleTableRows.decode(decoder));
+    return QueryRows(tables: tables);
+  }
+}
+
+class SingleTableRows {
+  final String tableName;
+  final BsatnRowList rows;
+
+  SingleTableRows({required this.tableName, required this.rows});
+
+  static SingleTableRows decode(BsatnDecoder decoder) {
+    final tableName = decoder.readString();
+    final rows = BsatnRowList.decode(decoder);
+    return SingleTableRows(tableName: tableName, rows: rows);
   }
 }
 

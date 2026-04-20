@@ -45,30 +45,23 @@ void main() {
           capturedError = event.error;
           print(
             '  [onSubscriptionError] "${event.error}" '
-            '(requestId=${event.requestId}, queryId=${event.queryId})',
+            '(requestId=${event.requestId}, querySetId=${event.querySetId})',
           );
-        }),
-        env.subManager.onSubscribeMultiApplied.listen((event) {
-          print('  [onSubscribeMultiApplied] $event');
         }),
         env.subManager.onSubscribeApplied.listen((event) {
-          print('  [onSubscribeApplied] $event');
-        }),
-        env.subManager.onInitialSubscription.listen((event) {
-          print(
-            '  [onInitialSubscription] '
-            '${event.tableUpdates.length} tables',
-          );
+          print('  [onSubscribeApplied] querySetId=${event.querySetId}');
         }),
         env.subManager.onTransactionUpdate.listen((event) {
-          print('  [onTransactionUpdate] $event');
+          print('  [onTransactionUpdate] ${event.querySets.length} querySets');
         }),
       ];
 
-      env.subManager.subscribeMulti(
-        ['SELECT * FROM table_that_definitely_does_not_exist_xyz123'],
-        requestId: 1,
-        queryId: 1,
+      unawaited(
+        env.subManager
+            .subscribe([
+              'SELECT * FROM table_that_definitely_does_not_exist_xyz123',
+            ])
+            .catchError((_) => 0),
       );
 
       // Poll up to 10s for the error to arrive.
