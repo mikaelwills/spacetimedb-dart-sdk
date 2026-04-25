@@ -9,8 +9,9 @@ import '../connection/spacetimedb_connection.dart';
 import '../connection/connection_state.dart';
 import '../messages/message_decoder.dart';
 import '../messages/server_messages.dart';
-import '../messages/shared_types.dart' show TableUpdate;
+import '../messages/shared_types.dart';
 import '../messages/client_messages.dart';
+import '../messages/update_status.dart';
 import '../reducers/reducer_caller.dart';
 import '../reducers/reducer_registry.dart';
 import '../reducers/reducer_emitter.dart';
@@ -24,7 +25,6 @@ import '../offline/sync_state.dart';
 import '../offline/pending_mutation.dart';
 import '../offline/optimistic_state_manager.dart';
 import '../offline/mutation_syncer.dart';
-import '../messages/update_status.dart';
 
 class SubscriptionManager {
   final SpacetimeDbConnection _connection;
@@ -37,32 +37,29 @@ class SubscriptionManager {
   String? _address;
   Uint8List? _connectionId;
 
-  final Set<String> _activeSubscriptionQueries = {};
+  /// Tracks active subscriptions by client-assigned `QuerySetId` so we can
+  /// re-subscribe on reconnect and route `SubscribeApplied`/`UnsubscribeApplied`.
+  final Map<int, List<String>> _subscriptionsByQuerySetId = {};
+  int _nextQuerySetId = 1;
 
   late final OptimisticStateManager _optimisticState;
   MutationSyncer? _mutationSyncer;
   bool _disposed = false;
 
-  final _initialSubscriptionController =
-      StreamController<InitialSubscriptionMessage>.broadcast();
   final _transactionUpdateController =
       StreamController<TransactionUpdateMessage>.broadcast();
-  final _transactionUpdateLightController =
-      StreamController<TransactionUpdateLightMessage>.broadcast();
-  final _identityTokenController =
-      StreamController<IdentityTokenMessage>.broadcast();
-  final _oneOffQueryResponseController =
-      StreamController<OneOffQueryResponse>.broadcast();
+  final _initialConnectionController =
+      StreamController<InitialConnectionMessage>.broadcast();
+  final _oneOffQueryResultController =
+      StreamController<OneOffQueryResult>.broadcast();
   final _subscribeAppliedController =
       StreamController<SubscribeApplied>.broadcast();
   final _unsubscribeAppliedController =
       StreamController<UnsubscribeApplied>.broadcast();
   final _subscriptionErrorController =
       StreamController<SubscriptionErrorMessage>.broadcast();
-  final _subscribeMultiAppliedController =
-      StreamController<SubscribeMultiApplied>.broadcast();
-  final _unsubscribeMultiAppliedController =
-      StreamController<UnsubscribeMultiApplied>.broadcast();
+  final _reducerResultController =
+      StreamController<ReducerResultMessage>.broadcast();
   final _procedureResultController =
       StreamController<ProcedureResultMessage>.broadcast();
 
@@ -105,84 +102,116 @@ class SubscriptionManager {
   bool get hasOfflineStorage => _mutationSyncer != null;
 
   @visibleForTesting
-  Set<String> get activeSubscriptionQueries => _activeSubscriptionQueries;
+  Map<int, List<String>> get subscriptionsByQuerySetId =>
+      _subscriptionsByQuerySetId;
 
-  Stream<InitialSubscriptionMessage> get onInitialSubscription =>
-      _initialSubscriptionController.stream;
+  /// All currently-subscribed query strings across every active `QuerySetId`.
+  @visibleForTesting
+  Set<String> get activeSubscriptionQueries =>
+      _subscriptionsByQuerySetId.values.expand((q) => q).toSet();
+
   Stream<TransactionUpdateMessage> get onTransactionUpdate =>
       _transactionUpdateController.stream;
-  Stream<TransactionUpdateLightMessage> get onTransactionUpdateLight =>
-      _transactionUpdateLightController.stream;
-  Stream<IdentityTokenMessage> get onIdentityToken =>
-      _identityTokenController.stream;
-  Stream<OneOffQueryResponse> get onOneOffQueryResponse =>
-      _oneOffQueryResponseController.stream;
+  Stream<InitialConnectionMessage> get onInitialConnection =>
+      _initialConnectionController.stream;
+  Stream<OneOffQueryResult> get onOneOffQueryResult =>
+      _oneOffQueryResultController.stream;
   Stream<SubscribeApplied> get onSubscribeApplied =>
       _subscribeAppliedController.stream;
   Stream<UnsubscribeApplied> get onUnsubscribeApplied =>
       _unsubscribeAppliedController.stream;
   Stream<SubscriptionErrorMessage> get onSubscriptionError =>
       _subscriptionErrorController.stream;
-  Stream<SubscribeMultiApplied> get onSubscribeMultiApplied =>
-      _subscribeMultiAppliedController.stream;
-  Stream<UnsubscribeMultiApplied> get onUnsubscribeMultiApplied =>
-      _unsubscribeMultiAppliedController.stream;
+  Stream<ReducerResultMessage> get onReducerResult =>
+      _reducerResultController.stream;
   Stream<ProcedureResultMessage> get onProcedureResult =>
       _procedureResultController.stream;
 
   Identity? get identity => _identity;
   String? get address => _address;
 
-  Future<void> subscribe(List<String> queries) async {
-    _activeSubscriptionQueries.addAll(queries);
+  /// Subscribe a new query set. Returns the assigned `querySetId`.
+  /// Awaits the matching `SubscribeApplied` so initial rows are in the cache.
+  Future<int> subscribe(List<String> queries) async {
+    final querySetId = _nextQuerySetId++;
+    _subscriptionsByQuerySetId[querySetId] = List.of(queries);
 
-    final message = SubscribeMessage(queries);
+    final message = SubscribeMessage(queries, querySetId: querySetId);
     _connection.send(message.encode());
 
-    await onInitialSubscription.first;
+    await onSubscribeApplied.firstWhere((m) => m.querySetId == querySetId);
+    return querySetId;
   }
 
-  void subscribeSingle(String query, {int requestId = 0, int queryId = 0}) {
-    final message = SubscribeSingleMessage(
-      query,
-      requestId: requestId,
-      queryId: queryId,
-    );
-    _connection.send(message.encode());
-  }
-
-  void subscribeMulti(
-    List<String> queries, {
-    int requestId = 0,
-    int queryId = 0,
-  }) {
-    final message = SubscribeMultiMessage(
-      queries,
-      requestId: requestId,
-      queryId: queryId,
-    );
-    _connection.send(message.encode());
-  }
-
-  void oneOffQuery(Uint8List messageId, String query) {
+  void oneOffQuery(String query, {int requestId = 0}) {
     final message = OneOffQueryMessage(
-      messageId: messageId,
       queryString: query,
-    );
-    _connection.send(message.encode());
-  }
-
-  void unsubscribe(int queryId, {int requestId = 0}) {
-    final message = UnsubscribeMessage(queryId: queryId, requestId: requestId);
-    _connection.send(message.encode());
-  }
-
-  void unsubscribeMulti(int queryId, {int requestId = 0}) {
-    final message = UnsubscribeMultiMessage(
-      queryId: queryId,
       requestId: requestId,
     );
     _connection.send(message.encode());
+  }
+
+  int _healthCheckRequestId = 100000;
+
+  /// Probe whether the server is actually answering on this socket.
+  ///
+  /// Sends a trivial `OneOffQuery` and awaits the matching
+  /// `OneOffQueryResult` within [timeout]. Returns `true` if a response
+  /// arrives, `false` if the timeout elapses first OR if the connection
+  /// reports itself disconnected.
+  ///
+  /// Intended for app-resume flows on mobile, where the OS may have
+  /// silently killed the socket's read-half while the app was suspended.
+  /// The SDK's built-in `KeepAliveMonitor` will catch this eventually
+  /// (via its own idle-ping + pong-timeout), but its timers are paused
+  /// while the app is backgrounded, so on resume there's a window where
+  /// the client believes the connection is alive but server messages
+  /// never arrive. Callers should invoke `checkHealth()` on resume and
+  /// call [SpacetimeDbConnection.reconnect] when it returns `false`.
+  Future<bool> checkHealth({
+    Duration timeout = const Duration(seconds: 3),
+  }) async {
+    if (!_connection.isConnected) return false;
+
+    final requestId = _healthCheckRequestId++;
+    final completer = Completer<bool>();
+    late StreamSubscription<OneOffQueryResult> sub;
+
+    sub = onOneOffQueryResult.listen((result) {
+      if (result.requestId == requestId && !completer.isCompleted) {
+        completer.complete(true);
+      }
+    });
+
+    try {
+      oneOffQuery(
+        'SELECT * FROM __spacetime_dart_sdk_healthcheck__',
+        requestId: requestId,
+      );
+      return await completer.future.timeout(timeout, onTimeout: () => false);
+    } finally {
+      await sub.cancel();
+    }
+  }
+
+  /// Remove a subscription. Set `sendDroppedRows: true` to receive the
+  /// dropped-row payload on the resulting `UnsubscribeApplied` (slice 5 /
+  /// `v2.rs:86-93`). The default is `false` — server sends no dropped rows.
+  void unsubscribe(
+    int querySetId, {
+    int requestId = 0,
+    bool sendDroppedRows = false,
+  }) {
+    final message = UnsubscribeMessage(
+      querySetId: querySetId,
+      requestId: requestId,
+      flags:
+          sendDroppedRows
+              ? UnsubscribeFlags.sendDroppedRows
+              : UnsubscribeFlags.defaultFlag,
+    );
+    _connection.send(message.encode());
+    _subscriptionsByQuerySetId.remove(querySetId);
   }
 
   void callProcedure(
@@ -226,35 +255,31 @@ class SubscriptionManager {
     _disposed = true;
     _messageSubscription?.cancel();
     _connectionStatusSubscription?.cancel();
-    _initialSubscriptionController.close();
     _transactionUpdateController.close();
-    _transactionUpdateLightController.close();
-    _identityTokenController.close();
-    _oneOffQueryResponseController.close();
+    _initialConnectionController.close();
+    _oneOffQueryResultController.close();
     _subscribeAppliedController.close();
     _unsubscribeAppliedController.close();
     _subscriptionErrorController.close();
-    _subscribeMultiAppliedController.close();
-    _unsubscribeMultiAppliedController.close();
+    _reducerResultController.close();
     _procedureResultController.close();
     reducerEmitter.dispose();
     await _mutationSyncer?.dispose();
   }
 
   void _startConnectionMonitoring() {
-    bool wasReconnecting = false;
+    bool hasConnectedBefore = false;
 
     _connectionStatusSubscription = _connection.onStateChanged.listen((state) {
-      if (state is Reconnecting) {
-        wasReconnecting = true;
-      } else if (state is Connected && wasReconnecting) {
-        wasReconnecting = false;
-        _mutationSyncer?.resetRetryAttempts();
-        _onReconnected();
+      if (state is Connected) {
+        if (hasConnectedBefore) {
+          _mutationSyncer?.resetRetryAttempts();
+          _onReconnected();
+        }
+        hasConnectedBefore = true;
       } else if (state is Disconnected ||
           state is FatalError ||
           state is AuthError) {
-        wasReconnecting = false;
         _mutationSyncer?.cancelRetry();
         reducers.failAllPendingRequests(state.displayName);
       }
@@ -262,12 +287,14 @@ class SubscriptionManager {
   }
 
   Future<void> _onReconnected() async {
-    if (_activeSubscriptionQueries.isNotEmpty) {
+    if (_subscriptionsByQuerySetId.isNotEmpty) {
       SdkLogger.i(
-        'Re-subscribing to ${_activeSubscriptionQueries.length} queries...',
+        'Re-subscribing to ${_subscriptionsByQuerySetId.length} query sets...',
       );
-      final message = SubscribeMessage(_activeSubscriptionQueries.toList());
-      _connection.send(message.encode());
+      for (final entry in _subscriptionsByQuerySetId.entries) {
+        final message = SubscribeMessage(entry.value, querySetId: entry.key);
+        _connection.send(message.encode());
+      }
     } else if (_mutationSyncer != null) {
       SdkLogger.i(
         'No active subscriptions, syncing pending mutations directly...',
@@ -280,29 +307,12 @@ class SubscriptionManager {
     _messageSubscription = _connection.onMessage.listen(_handleMessage);
   }
 
-  void _handleMessage(Uint8List bytes) {
+  Future<void> _handleMessage(Uint8List bytes) async {
     if (_disposed) return;
     try {
-      final message = MessageDecoder.decode(bytes);
-      final reqId = switch (message) {
-        TransactionUpdateMessage() => message.reducerCall.requestId,
-        TransactionUpdateLightMessage() => message.requestId,
-        _ => null,
-      };
-      final reducerName = switch (message) {
-        TransactionUpdateMessage() => message.reducerCall.reducerName,
-        _ => null,
-      };
-      final status = switch (message) {
-        TransactionUpdateMessage() => message.status,
-        _ => null,
-      };
-      SdkLogger.d(
-        'RX_MSG: ${message.runtimeType}'
-        '${reqId != null ? ' requestId=$reqId' : ''}'
-        '${reducerName != null ? ' reducer=$reducerName' : ''}'
-        '${status != null ? ' status=$status' : ''}',
-      );
+      final message = await MessageDecoder.decode(bytes);
+      if (_disposed) return;
+      SdkLogger.d('RX_MSG: ${message.runtimeType}');
       _routeMessage(message);
     } catch (e, st) {
       SdkLogger.e(
@@ -315,42 +325,35 @@ class SubscriptionManager {
   void _routeMessage(ServerMessage message) {
     if (_disposed) return;
     switch (message) {
-      case IdentityTokenMessage():
+      case InitialConnectionMessage():
         _identity = Identity(message.identity);
         _connectionId = message.connectionId;
         _address =
             message.connectionId
                 .map((b) => b.toRadixString(16).padLeft(2, '0'))
                 .join();
-        _identityTokenController.add(message);
-      case InitialSubscriptionMessage():
-        _handleInitialSubscription(message).then((_) {
+        _initialConnectionController.add(message);
+      case SubscribeApplied():
+        _handleSubscribeApplied(message).then((_) {
           if (_disposed) return;
-          _initialSubscriptionController.add(message);
-          SdkLogger.i(
-            'Syncing pending mutations after initial subscription...',
-          );
+          _subscribeAppliedController.add(message);
+          SdkLogger.i('Syncing pending mutations after SubscribeApplied...');
           _mutationSyncer?.syncPendingMutations();
         });
       case TransactionUpdateMessage():
         _handleTransactionUpdate(message);
         _transactionUpdateController.add(message);
-      case TransactionUpdateLightMessage():
-        _handleTransactionUpdateLight(message);
-        _transactionUpdateLightController.add(message);
-      case OneOffQueryResponse():
-        _oneOffQueryResponseController.add(message);
-      case SubscribeApplied():
-        _subscribeAppliedController.add(message);
+      case OneOffQueryResult():
+        _oneOffQueryResultController.add(message);
       case UnsubscribeApplied():
+        _handleUnsubscribeApplied(message);
         _unsubscribeAppliedController.add(message);
       case SubscriptionErrorMessage():
         _handleSubscriptionError(message);
         _subscriptionErrorController.add(message);
-      case SubscribeMultiApplied():
-        _subscribeMultiAppliedController.add(message);
-      case UnsubscribeMultiApplied():
-        _unsubscribeMultiAppliedController.add(message);
+      case ReducerResultMessage():
+        _handleReducerResult(message);
+        _reducerResultController.add(message);
       case ProcedureResultMessage():
         _procedureResultController.add(message);
     }
@@ -366,7 +369,15 @@ class SubscriptionManager {
     }
 
     final badTable = tableNameMatch.group(1)!;
-    final badQuery = _activeSubscriptionQueries.firstWhere(
+    final queries = _subscriptionsByQuerySetId[message.querySetId];
+    if (queries == null) {
+      SdkLogger.e(
+        'Subscription error for unknown querySetId ${message.querySetId}: ${message.error}',
+      );
+      return;
+    }
+
+    final badQuery = queries.firstWhere(
       (q) => RegExp('FROM\\s+$badTable', caseSensitive: false).hasMatch(q),
       orElse: () => '',
     );
@@ -378,9 +389,9 @@ class SubscriptionManager {
       return;
     }
 
-    _activeSubscriptionQueries.remove(badQuery);
+    queries.remove(badQuery);
     SdkLogger.w(
-      'Subscription failed for table "$badTable", removed query. Resubscribing with ${_activeSubscriptionQueries.length} remaining queries...',
+      'Subscription failed for table "$badTable" in querySetId ${message.querySetId}, removed query. ${queries.length} queries left in the set.',
     );
 
     final badTableCache = cache.getTableByName(badTable);
@@ -388,55 +399,50 @@ class SubscriptionManager {
       SpacetimeDbSubscriptionException(message.error, tableName: badTable),
     );
 
-    if (_activeSubscriptionQueries.isNotEmpty) {
-      final resubscribe = SubscribeMessage(_activeSubscriptionQueries.toList());
+    if (queries.isEmpty) {
+      _subscriptionsByQuerySetId.remove(message.querySetId);
+    } else {
+      final resubscribe = SubscribeMessage(
+        List.of(queries),
+        querySetId: message.querySetId,
+      );
       _connection.send(resubscribe.encode());
     }
   }
 
-  Future<void> _handleInitialSubscription(
-    InitialSubscriptionMessage message,
-  ) async {
+  Future<void> _handleSubscribeApplied(SubscribeApplied message) async {
     SdkLogger.d(
-      'Handling InitialSubscription with ${message.tableUpdates.length} table updates',
+      'Handling SubscribeApplied querySetId=${message.querySetId}, ${message.rows.tables.length} tables',
     );
 
     final event = SubscribeAppliedEvent();
     final context = EventContext(myConnectionId: _connectionId, event: event);
 
     final serverTableNames =
-        message.tableUpdates.map((t) => t.tableName).toSet();
+        message.rows.tables.map((t) => t.tableName).toSet();
     for (final table in cache.allTables) {
       if (!serverTableNames.contains(table.tableName)) {
         _optimisticState.clearNonOptimisticRows(table.tableName);
       }
     }
 
-    for (final tableUpdate in message.tableUpdates) {
-      final table = cache.getTableByName(tableUpdate.tableName);
+    for (final single in message.rows.tables) {
+      final table = cache.getTableByName(single.tableName);
       if (table == null) continue;
 
-      SdkLogger.d(
-        '  Table "${tableUpdate.tableName}": ${tableUpdate.updates.length} updates',
-      );
-
-      _optimisticState.clearNonOptimisticRows(tableUpdate.tableName);
-
-      for (final update in tableUpdate.updates) {
-        final rows = update.update.inserts.getRows();
-        SdkLogger.d('    Inserting ${rows.length} rows');
-        table.applyInitialData(update.update.inserts, context);
-      }
-
+      SdkLogger.d('  Table "${single.tableName}": applying initial rows');
+      _optimisticState.clearNonOptimisticRows(single.tableName);
+      table.applyInitialData(single.rows, context);
       table.markSubscribed();
     }
 
-    // Server omits tables with zero matching rows from `tableUpdates`.
-    // Parse FROM <table> out of the active queries and mark those tables
-    // subscribed too, so `client.<table>.subscribed` resolves for empty
-    // initial results instead of hanging forever.
+    // Server omits tables with zero matching rows from `tables`. Parse
+    // FROM <table> out of the active queries in this set and mark those
+    // tables subscribed too, so `client.<table>.subscribed` resolves for
+    // empty initial results instead of hanging forever.
     final fromRegex = RegExp(r'FROM\s+(\w+)', caseSensitive: false);
-    for (final query in _activeSubscriptionQueries) {
+    final queries = _subscriptionsByQuerySetId[message.querySetId] ?? const [];
+    for (final query in queries) {
       for (final match in fromRegex.allMatches(query)) {
         final tableName = match.group(1)!;
         final table = cache.getTableByName(tableName);
@@ -447,170 +453,137 @@ class SubscriptionManager {
     await _mutationSyncer?.persistTableSnapshots();
   }
 
+  /// Apply the optional dropped-rows payload on `UnsubscribeApplied` as
+  /// deletes against the local cache (slice 5). When `rows` is null, the
+  /// server honoured `UnsubscribeFlags::Default` — no delete events fire.
+  void _handleUnsubscribeApplied(UnsubscribeApplied message) {
+    _subscriptionsByQuerySetId.remove(message.querySetId);
+
+    final rows = message.rows;
+    if (rows == null) return;
+
+    final context = EventContext(
+      myConnectionId: _connectionId,
+      event: UnknownTransactionEvent(),
+    );
+
+    for (final single in rows.tables) {
+      final table = cache.getTableByName(single.tableName);
+      if (table == null) continue;
+      table.applyTransactionUpdate(single.rows, BsatnRowList.empty(), context);
+    }
+  }
+
+  /// Non-caller `TransactionUpdate` — row broadcasts for remote writes.
+  /// Wire carries no reducer metadata (v2.rs:302-306); nothing to complete
+  /// on the caller side here. Caller completion runs in `_handleReducerResult`.
   void _handleTransactionUpdate(TransactionUpdateMessage message) {
-    final numericRequestId = message.reducerCall.requestId;
+    if (message.querySets.isEmpty) return;
 
-    final isEventOnly = message.tableUpdates.every(
-      (tu) => cache.isEventTable(tu.tableName),
-    );
-    if (isEventOnly) {
-      final result = TransactionResult.fromTransactionUpdate(message);
-      reducers.completeRequest(numericRequestId, result);
-      _applyEventOnlyUpdates(message.tableUpdates);
-      return;
-    }
-
-    SdkLogger.d(
-      'TXN_UPDATE: reducer=${message.reducerCall.reducerName}, tables=${message.tableUpdates.length}, status=${message.status}, requestId=$numericRequestId',
-    );
-    if (message.status is Failed) {
-      SdkLogger.w('TXN_FAILED: ${(message.status as Failed).message}');
-    }
-
-    Event event;
-    final reducerArgs = reducerRegistry.deserializeArgs(
-      message.reducerCall.reducerName,
-      message.reducerCall.args,
+    final context = EventContext(
+      myConnectionId: _connectionId,
+      event: UnknownTransactionEvent(),
     );
 
-    if (reducerArgs != null) {
-      event = ReducerEvent(
-        timestamp: message.timestamp,
-        status: message.status,
-        callerIdentity: message.callerIdentity,
-        callerConnectionId: message.callerConnectionId,
-        energyConsumed: message.energyQuantaUsed,
-        reducerName: message.reducerCall.reducerName,
-        reducerArgs: reducerArgs,
-      );
-    } else {
-      event = UnknownTransactionEvent();
-    }
+    final tableUpdates = message.querySets
+        .expand((qs) => qs.tables)
+        .toList(growable: false);
 
-    final context = EventContext(myConnectionId: _connectionId, event: event);
+    for (final tableUpdate in tableUpdates) {
+      final table = cache.getTableByName(tableUpdate.tableName);
+      if (table == null) continue;
 
-    if (event is ReducerEvent) {
-      reducerEmitter.emit(event.reducerName, context);
-    }
-
-    _processTransaction(
-      numericRequestId: numericRequestId,
-      tableUpdates: message.tableUpdates,
-      context: context,
-      isCommitted: message.status is Committed,
-      canRollbackOnFailure: true,
-    );
-
-    final result = TransactionResult.fromTransactionUpdate(message);
-    final matched = reducers.completeRequest(numericRequestId, result);
-
-    // Protocol-level failures (e.g. "no such reducer") come back with
-    // requestId=0 because the server never associates the failure with an
-    // outbound call. Without this fallback, the real pending request sits
-    // until the 10s client timeout fires. Only apply the fallback when
-    // status is Failed AND the requestId lookup missed AND we have a
-    // reducer name to key on.
-    if (!matched && message.status is Failed) {
-      final reducerName = message.reducerCall.reducerName;
-      if (reducerName.isNotEmpty) {
-        final fellBackTo = reducers.failOldestPendingByReducerName(
-          reducerName,
-          result,
-        );
-        if (fellBackTo) {
-          SdkLogger.w(
-            'TXN_FAILED_FALLBACK: no pending request for requestId=$numericRequestId, '
-            'failed oldest in-flight "$reducerName" by name. '
-            'Error: ${(message.status as Failed).message}',
+      for (final rowGroup in tableUpdate.rows) {
+        if (rowGroup is PersistentTableRows) {
+          table.applyTransactionUpdate(
+            rowGroup.deletes,
+            rowGroup.inserts,
+            context,
           );
-        } else {
-          SdkLogger.w(
-            'TXN_FAILED_DROPPED: no pending request for requestId=$numericRequestId '
-            'and no in-flight "$reducerName" by name to fall back on. '
-            'Error: ${(message.status as Failed).message}',
+        } else if (rowGroup is EventTableRows) {
+          table.applyTransactionUpdate(
+            BsatnRowList.empty(),
+            rowGroup.events,
+            context,
           );
         }
       }
     }
+
+    _mutationSyncer?.persistTableSnapshots(
+      onlyTables: tableUpdates.map((tu) => tu.tableName).toSet(),
+    );
   }
 
-  void _handleTransactionUpdateLight(TransactionUpdateLightMessage message) {
+  /// Caller's own reducer result (v2 `ReducerResult`).
+  ///
+  /// **Ordering invariant (skeptical I5):** the optimistic-state lookup by
+  /// numeric request id must run BEFORE `reducers.completeRequest(...)`, which
+  /// removes the entry from `_pendingRequests`. Flipping the order
+  /// double-applies optimistic inserts on commit and skips rollback on failure.
+  void _handleReducerResult(ReducerResultMessage message) {
     final numericRequestId = message.requestId;
-
-    final isEventOnly = message.tableUpdates.every(
-      (tu) => cache.isEventTable(tu.tableName),
-    );
-    if (isEventOnly) {
-      final result = TransactionResult.fromTransactionUpdateLight(message);
-      reducers.completeRequest(numericRequestId, result);
-      _applyEventOnlyUpdates(message.tableUpdates);
-      return;
-    }
-
-    SdkLogger.d(
-      'TXN_LIGHT: requestId=$numericRequestId, tables=${message.tableUpdates.length}',
-    );
-
-    final context = EventContext(
-      myConnectionId: _connectionId,
-      event: UnknownTransactionEvent(),
-    );
-
-    _processTransaction(
-      numericRequestId: numericRequestId,
-      tableUpdates: message.tableUpdates,
-      context: context,
-      isCommitted: true,
-      canRollbackOnFailure: false,
-    );
-
-    final result = TransactionResult.fromTransactionUpdateLight(message);
-    reducers.completeRequest(numericRequestId, result);
-  }
-
-  void _applyEventOnlyUpdates(List<TableUpdate> tableUpdates) {
-    final context = EventContext(
-      myConnectionId: _connectionId,
-      event: UnknownTransactionEvent(),
-    );
-    for (final tableUpdate in tableUpdates) {
-      final table = cache.getTableByName(tableUpdate.tableName);
-      if (table == null) continue;
-      for (final update in tableUpdate.updates) {
-        table.applyTransactionUpdate(
-          update.update.deletes,
-          update.update.inserts,
-          context,
-        );
-      }
-    }
-  }
-
-  void _processTransaction({
-    required int numericRequestId,
-    required List<TableUpdate> tableUpdates,
-    required EventContext context,
-    required bool isCommitted,
-    required bool canRollbackOnFailure,
-  }) {
+    final reducerName = reducers.pendingReducerName(numericRequestId) ?? '';
     final uuidRequestId = reducers.getUuidForRequest(numericRequestId);
+
+    final result = TransactionResult.fromReducerResult(
+      message,
+      reducerName: reducerName,
+    );
+
     final effectiveRequestId = uuidRequestId ?? numericRequestId.toString();
     final isOurTransaction = uuidRequestId != null;
     final hasOptimistic = _optimisticState.hasOptimisticChange(
       effectiveRequestId,
     );
+    final isCommitted = message.status is Committed;
 
     SdkLogger.d(
-      'TXN: requestId=$numericRequestId, uuid=$uuidRequestId, ours=$isOurTransaction, committed=$isCommitted, optimistic=$hasOptimistic',
+      'REDUCER_RESULT: reducer=$reducerName, requestId=$numericRequestId, '
+      'status=${message.status}, querySets=${message.querySets.length}, '
+      'isOurs=$isOurTransaction, hasOptimistic=$hasOptimistic',
     );
 
+    Event event = UnknownTransactionEvent();
+    if (reducerName.isNotEmpty) {
+      final argsBytes = reducers.pendingArgs(numericRequestId);
+      dynamic reducerArgs;
+      if (argsBytes != null) {
+        reducerArgs = reducerRegistry.deserializeArgs(reducerName, argsBytes);
+      }
+      event = ReducerEvent(
+        timestamp: message.timestamp,
+        status: message.status,
+        callerIdentity: _identity?.bytes ?? Uint8List(32),
+        callerConnectionId: _connectionId,
+        reducerName: reducerName,
+        reducerArgs: reducerArgs,
+      );
+    }
+    final context = EventContext(myConnectionId: _connectionId, event: event);
+
+    // Short-circuit for self-initiated commits with optimistic state in flight:
+    // confirm, persist only the touched tables, done.
     if (isOurTransaction && isCommitted && hasOptimistic) {
       _optimisticState.confirmOptimisticChange(effectiveRequestId);
       _mutationSyncer?.persistTableSnapshots(
-        onlyTables: tableUpdates.map((tu) => tu.tableName).toSet(),
+        onlyTables:
+            message.querySets
+                .expand((qs) => qs.tables)
+                .map((tu) => tu.tableName)
+                .toSet(),
       );
+      reducers.completeRequest(numericRequestId, result);
+      if (event is ReducerEvent) {
+        reducerEmitter.emit(event.reducerName, context);
+      }
       return;
     }
+
+    // Dispatch the nested TransactionUpdate tables to the cache.
+    final tableUpdates = message.querySets
+        .expand((qs) => qs.tables)
+        .toList(growable: false);
 
     final touchedKeysByTable = <String, Set<dynamic>>{};
     for (final tableUpdate in tableUpdates) {
@@ -618,13 +591,22 @@ class SubscriptionManager {
       if (table == null) continue;
 
       final touchedKeys = <dynamic>{};
-      for (final update in tableUpdate.updates) {
-        final keys = table.applyTransactionUpdateAndCollectKeys(
-          update.update.deletes,
-          update.update.inserts,
-          context,
-        );
-        touchedKeys.addAll(keys);
+      for (final rowGroup in tableUpdate.rows) {
+        if (rowGroup is PersistentTableRows) {
+          final keys = table.applyTransactionUpdateAndCollectKeys(
+            rowGroup.deletes,
+            rowGroup.inserts,
+            context,
+          );
+          touchedKeys.addAll(keys);
+        } else if (rowGroup is EventTableRows) {
+          final keys = table.applyTransactionUpdateAndCollectKeys(
+            BsatnRowList.empty(),
+            rowGroup.events,
+            context,
+          );
+          touchedKeys.addAll(keys);
+        }
       }
       touchedKeysByTable[tableUpdate.tableName] = touchedKeys;
     }
@@ -634,12 +616,18 @@ class SubscriptionManager {
         effectiveRequestId,
         touchedKeysByTable,
       );
-    } else if (canRollbackOnFailure) {
+    } else {
       _optimisticState.rollbackOptimisticChanges(effectiveRequestId);
     }
 
     _mutationSyncer?.persistTableSnapshots(
       onlyTables: tableUpdates.map((tu) => tu.tableName).toSet(),
     );
+
+    reducers.completeRequest(numericRequestId, result);
+
+    if (event is ReducerEvent) {
+      reducerEmitter.emit(event.reducerName, context);
+    }
   }
 }

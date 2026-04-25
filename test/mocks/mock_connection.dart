@@ -146,10 +146,8 @@ class MockConnection implements SpacetimeDbConnection {
 
   int _extractRequestId(Uint8List data) {
     final decoder = BsatnDecoder(data);
-    decoder.readU8();
-    decoder.readString();
-    final argsLen = decoder.readU32();
-    decoder.readBytes(argsLen);
-    return decoder.readU32();
+    decoder.readU8(); // client message tag
+    return decoder
+        .readU32(); // v2 CallReducer: request_id first (v2.rs:115-131)
   }
 }

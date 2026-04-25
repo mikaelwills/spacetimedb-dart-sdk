@@ -196,6 +196,22 @@ pub fn diag_insert_five(ctx: &ReducerContext) {
     }
 }
 
+/// Reducer that returns `Err(message)` — exercises the v2 `Failed(Bytes)`
+/// outcome on `ReducerResult`. The error message round-trips through
+/// `errorBytes` → `errorMessage` getter on the Dart side.
+#[reducer]
+pub fn reducer_returns_err(_ctx: &ReducerContext, message: String) -> Result<(), String> {
+    Err(message)
+}
+
+/// Reducer that panics at runtime — exercises the v2 `InternalError(str)`
+/// outcome on `ReducerResult`. Distinct from `Failed`: the server constructs
+/// the message text from the panic, not the reducer body.
+#[reducer]
+pub fn reducer_that_panics(_ctx: &ReducerContext) {
+    panic!("intentional reducer panic");
+}
+
 /// Procedure that adds two numbers. Used by message_types_test's ProcedureResult
 /// test to exercise the successful-return path of the procedure wire protocol.
 #[procedure]

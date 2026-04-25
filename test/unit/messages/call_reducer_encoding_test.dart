@@ -1,24 +1,15 @@
-// ignore_for_file: avoid_print
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/src/codec/bsatn_encoder.dart';
 import 'package:spacetimedb_sdk/src/codec/bsatn_decoder.dart';
 import 'package:spacetimedb_sdk/src/messages/client_messages.dart';
 
 void main() {
-  test('CallReducer message encoding structure', () {
-    print('\n🧪 Testing CallReducer Message Encoding\n');
-
-    // Encode the reducer arguments (title: String, content: String)
+  test('v2 CallReducer encodes { tag=3, requestId, flags, reducer, args }', () {
     final argsEncoder = BsatnEncoder();
     argsEncoder.writeString('first');
     argsEncoder.writeString('some text');
     final args = argsEncoder.toBytes();
 
-    print('Args bytes (${args.length}):');
-    final argsDecoder = BsatnDecoder(args);
-    print('  Hex: ${argsDecoder.hexDumpAll()}');
-
-    // Create the CallReducer message
     final message = CallReducerMessage(
       reducerName: 'create_note',
       args: args,
@@ -26,55 +17,30 @@ void main() {
     );
 
     final encoded = message.encode();
-    print('\nFull CallReducer message (${encoded.length} bytes):');
-    final fullDecoder = BsatnDecoder(encoded);
-    print('  Hex: ${fullDecoder.hexDumpAll()}\n');
-
-    // Decode step by step to verify structure
     final decoder = BsatnDecoder(encoded);
 
-    // 1. Message type tag
-    final tag = decoder.readU8();
-    print('1. Message type tag: $tag (expected 0 for CallReducer)');
-    expect(tag, 0);
+    // 1. Message tag — v2 CallReducer is tag 3 (v2.rs:18-29).
+    expect(decoder.readU8(), equals(3));
 
-    // 2. Reducer name (String = u32 length + bytes)
-    final reducerName = decoder.readString();
-    print('2. Reducer name: "$reducerName"');
-    expect(reducerName, 'create_note');
+    // 2. request_id (u32) — v2 order puts request_id BEFORE reducer name.
+    expect(decoder.readU32(), equals(0));
 
-    // 3. Args length (u32)
+    // 3. flags (u8) — CallReducerFlags::Default = 0.
+    expect(decoder.readU8(), equals(0));
+
+    // 4. reducer name (string).
+    expect(decoder.readString(), equals('create_note'));
+
+    // 5. args bytes (u32 length prefix + bytes).
     final argsLength = decoder.readU32();
-    print('3. Args length: $argsLength (expected ${args.length})');
-    expect(argsLength, args.length);
-
-    // 4. Args bytes
+    expect(argsLength, equals(args.length));
     final argsBytes = decoder.readBytes(argsLength);
-    print('4. Args bytes: ${argsBytes.length} bytes');
 
-    // Verify args can be decoded
     final argsVerifyDecoder = BsatnDecoder(argsBytes);
-    final title = argsVerifyDecoder.readString();
-    final content = argsVerifyDecoder.readString();
-    print('   - title: "$title"');
-    print('   - content: "$content"');
-    expect(title, 'first');
-    expect(content, 'some text');
+    expect(argsVerifyDecoder.readString(), equals('first'));
+    expect(argsVerifyDecoder.readString(), equals('some text'));
 
-    // 5. Request ID (u32)
-    final requestId = decoder.readU32();
-    print('5. Request ID: $requestId');
-    expect(requestId, 0);
-
-    // 6. Flags (u8)
-    final flags = decoder.readU8();
-    print('6. Flags: $flags (0 = FullUpdate, 1 = NoSuccessNotify)');
-    expect(flags, 0);
-
-    // Should have consumed all bytes
-    print('\nRemaining bytes: ${decoder.remaining} (should be 0)');
-    expect(decoder.remaining, 0);
-
-    print('\n✅ CallReducer message structure is correct!\n');
+    // Fully consumed.
+    expect(decoder.remaining, equals(0));
   });
 }

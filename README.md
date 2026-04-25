@@ -3,44 +3,26 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Dart](https://img.shields.io/badge/Dart-%3E%3D3.5.4-blue.svg)](https://dart.dev)
 
-> **Heads up — not to be confused with [`spacetimedb`](https://pub.dev/packages/spacetimedb) on pub.dev.**
->
->This is a much earlier fork of this SDK that was prematurely published as 1.0.0, that release contains bugs and is simply not fully complete. **This package — `spacetimedb_sdk` — is the actively maintained SDK.**
->
-> Areas where this SDK has moved ahead of the fork:
->
-> - Reactive primitives
-> - Exception handling
-> - Connection
-> - Optimistic updates
-> - Reducer layer
-> - Events
-> - Offline storage
-> - Codegen
-> - Extensions
-> - Views
-> - Export surface
-> - Packaging
-> - Test coverage
+> **Not to be confused with [`spacetimedb`](https://pub.dev/packages/spacetimedb) on pub.dev**, an early fork of this sdk that was published prematurely and this `spacetimedb_sdk` has significantly progressed since then.
 
-[SpacetimeDB](https://spacetimedb.com) is a database that replaces your backend — you write Rust reducers instead of API endpoints, and every client gets a live, synced view of the data. This SDK makes that data feel native to Flutter: every table is a `ValueNotifier`, reducers are typed function calls, and opt-in offline storage keeps the whole cache on disk with optimistic writes that queue and sync when you reconnect.
+[SpacetimeDB](https://spacetimedb.com) is a database that replaces your backend: you write Rust reducers instead of API endpoints, and every client gets a live, synced view of the data. This SDK makes that data feel native to Flutter: every table is a `ValueNotifier`, reducers are typed function calls, and opt-in offline storage keeps the whole cache on disk with optimistic writes that queue and sync when you reconnect.
 
 ## Compatibility
 
-Works with SpacetimeDB 2.x servers. Uses the modern `SubscribeMulti` subscription protocol, server-defined views, BSATN binary wire format, and the `v1.bsatn.spacetimedb` WebSocket subprotocol (accepted by all 2.x servers).
+Works with SpacetimeDB 2.x servers. Speaks the `v2.bsatn.spacetimedb` WebSocket subprotocol with client-assigned `QuerySetId` subscriptions, typed reducer return values, server-defined views, and BSATN binary wire format. If you need to connect to a v1-only server, use `spacetimedb_sdk 1.x`.
 
 Built for collaborative editors, real-time games, multi-device sync, presence, chat.
 
 ## What you get
 
-- **Your backend is a Rust function.** Write a reducer, call it from Dart like a typed async method. No REST layer, no GraphQL schema, no handler boilerplate. `await client.reducers.createOrder(itemId: 1)` — done.
+- **Your backend is a Rust function.** Write a reducer, call it from Dart like a typed async method. No REST layer, no GraphQL schema, no handler boilerplate. `await client.reducers.createOrder(itemId: 1)` and you're done.
 - **Every table updates itself.** No fetch-then-poll, no cache invalidation logic. Listen to `client.notes.rows` and your UI re-renders when *anyone on any client* makes a change. One WebSocket handles the whole app.
-- **UI that feels local, syncs like a server.** Optimistic writes apply to your cache instantly — list re-sorts, widget rebuilds, user sees it. When the server confirms, nothing happens. If it rejects, the SDK rolls back automatically.
+- **UI that feels local, syncs like a server.** Optimistic writes apply to your cache instantly: list re-sorts, widget rebuilds, user sees it. When the server confirms, nothing happens. If it rejects, the SDK rolls back automatically.
 - **Watch one row, not the whole table.** `rowNotifier(playerId)` fires only when *that* row changes. 1000 on-screen entities each watching their own row cost `O(rows_touched)` per transaction, not `O(listeners × events)`.
 - **Collaborative editing primitives built in.** `event.context.isMyTransaction` tells you whether you caused a change or someone else did. `isOptimistic` tells you if it's local-only or confirmed. Skip your own echoes, merge other users' writes, no CRDT library required.
 - **Reactive primitives that match intent.** `ValueNotifier` for held state (`rows`, `lastBatch`, `rowNotifier`), `Stream` for transient events (`onInsert`, `onUpdate`, `onDelete`). One catches "what's there now," the other catches "what just happened."
-- **Auto-reconnect that's part of the API, not an afterthought.** The SDK reconnects on drops, re-subscribes, re-queues. `client.connection.onStateChanged` is a sealed type — `Connecting` / `Reconnecting` / `FatalError` — so your banner logic is one switch statement.
-- **Offline-first when you want it.** Flip on `JsonFileStorage` and cached reads work airplane-mode, writes queue locally, replay on reconnect. No separate offline SDK, no conflict resolution — the optimistic model handles it.
+- **Auto-reconnect that's part of the API, not an afterthought.** The SDK reconnects on drops, re-subscribes, re-queues. `client.connection.onStateChanged` is a sealed type (`Connecting` / `Reconnecting` / `FatalError`) so your banner logic is one switch statement.
+- **Offline-first when you want it.** Flip on `JsonFileStorage` and cached reads work airplane-mode, writes queue locally, replay on reconnect. No separate offline SDK, no conflict resolution; the optimistic model handles it.
 - **One catch block for every SDK error.** `on SpacetimeDbException catch (e)` covers reducer failures, connection drops, timeouts, protocol errors, everything. Narrow to specific subtypes only when you need to.
 - **Types flow through the whole stack.** Rust `struct` becomes a Dart class. Rust `enum` becomes a sealed class with exhaustive `switch`. Rust `Vec<u64>` becomes `List<Int64>`. Refactor a column in Rust, Dart compiler points at every call site.
 
@@ -56,7 +38,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://install.spacetimedb.com | sh
 
 ```yaml
 dependencies:
-  spacetimedb_sdk: ^1.0.0
+  spacetimedb_sdk: ^2.0.0
 ```
 
 ### 3. Generate client code from your module
@@ -92,13 +74,13 @@ Before the API reference, a short tour of the pieces that matter.
 
 ### Client lifecycle: create, then connect
 
-`SpacetimeDbClient.create()` is synchronous-ish — it loads your offline cache from disk (if configured), wires up listeners, and returns immediately. **No network happens here.**
+`SpacetimeDbClient.create()` is synchronous-ish: it loads your offline cache from disk (if configured), wires up listeners, and returns immediately. **No network happens here.**
 
 `client.connect()` opens the WebSocket, authenticates, and requests your initial subscriptions. It can throw. Offline-first apps call `create`, render cached data, then call `connect` inside a try/catch and show an offline indicator on failure.
 
 ```dart
 final client = await SpacetimeDbClient.create(host: '...', database: '...');
-// cache is already loaded — you can read right now
+// cache is already loaded; you can read right now
 print(client.notes.count());
 
 try {
@@ -112,16 +94,16 @@ try {
 
 Every table in your generated client is a `TableCache<T>`. The cache holds the current rows locally, fires events on every change, and is the home for all the reactive primitives: `rows`, `lastBatch`, `rowNotifier(pk)`, `onInsert`, `onUpdate`, `onDelete`.
 
-You never construct a `TableCache` yourself — codegen does it. You just read: `client.note`, `client.user`, `client.entity`.
+You never construct a `TableCache` yourself; codegen does it. You just read: `client.note`, `client.user`, `client.entity`.
 
 ### The primitive rule: ValueNotifier vs Stream
 
 The SDK exposes reactive data in two shapes, and they're not interchangeable:
 
 - **`ValueNotifier<T>`** for *held state*. Has a current value you can read anytime (`rows.value`, `lastBatch.value`, `rowNotifier(pk).value`). Late subscribers immediately see the current value on read. Use this to render "what's there right now."
-- **`Stream<Event>`** for *transient events*. No current value — only the moment something happened (`onInsert`, `onUpdate`, `onDelete`). Late subscribers miss past events. Use this to react to changes ("ding on new message", "animate a delete").
+- **`Stream<Event>`** for *transient events*. No current value, only the moment something happened (`onInsert`, `onUpdate`, `onDelete`). Late subscribers miss past events. Use this to react to changes ("ding on new message", "animate a delete").
 
-If you're asking "what are the current rows?" — that's state, use the notifier. If you're asking "react once when this happens" — that's an event, use the stream.
+If you're asking "what are the current rows?", that's state, use the notifier. If you're asking "react once when this happens", that's an event, use the stream.
 
 ### Transactions and EventContext
 
@@ -129,9 +111,9 @@ Every change to a table happens inside a transaction. A reducer that touches 10 
 
 The `EventContext` attached to every event tells you who caused it:
 
-- `context.isMyTransaction` — this client initiated the change.
-- `context.isOptimistic` — this is a local optimistic change, not yet server-confirmed.
-- `context.event` — the `ReducerEvent` with caller identity, reducer name, timestamp, and status.
+- `context.isMyTransaction`: this client initiated the change.
+- `context.isOptimistic`: this is a local optimistic change, not yet server-confirmed.
+- `context.event`: the `ReducerEvent` with caller identity, reducer name, timestamp, and status (only populated on the caller side under v2).
 
 Collaborative editors use this to skip their own local echoes and only react to confirmed external changes.
 
@@ -171,7 +153,7 @@ client.users.rows.addListener(() {
 
 ### Transaction batches
 
-`lastBatch` is a `ValueNotifier<TransactionBatch<T>?>` carrying every event from the most recent transaction — useful when you need to know what changed, not just the current state.
+`lastBatch` is a `ValueNotifier<TransactionBatch<T>?>` carrying every event from the most recent transaction. Useful when you need to know what changed, not just the current state.
 
 ```dart
 client.users.lastBatch.addListener(() {
@@ -192,7 +174,7 @@ client.users.lastBatch.addListener(() {
 
 ### Watching individual rows
 
-For UIs that follow a single row — a chat message, player entity, selected item — use `rowNotifier(primaryKey)`. It only fires when that specific row's value changes. 1000 entity-watchers at game scale drops from `O(listeners * rows_touched)` to `O(rows_touched)` per transaction.
+For UIs that follow a single row (a chat message, player entity, selected item), use `rowNotifier(primaryKey)`. It only fires when that specific row's value changes. 1000 entity-watchers at game scale drops from `O(listeners * rows_touched)` to `O(rows_touched)` per transaction.
 
 ```dart
 final entity = client.entity.rowNotifier(entityId);
@@ -206,7 +188,7 @@ entity.addListener(() {
 **Semantics:**
 - Fires when the row's value changes per `==`. A server touch that doesn't change any field is de-duplicated.
 - `value` is `null` when the row is absent (never inserted, or deleted).
-- Cached per primary key — repeated calls with the same key return the same instance.
+- Cached per primary key: repeated calls with the same key return the same instance.
 - Auto-disposes when the last listener detaches; a subsequent call returns a fresh instance.
 - Only valid on tables with a declared primary key.
 
@@ -228,13 +210,13 @@ client.player.onUpdate.where((e) => e.newRow.health < e.oldRow.health).listen(
 ```
 
 **Semantics:**
-- Broadcast — multiple subscribers each receive every event.
-- Synchronous — fires during the transaction, before `lastBatch` fires. Inside an `onInsert` listener, `rows.value` already reflects the new state.
-- No replay — late subscribers do not see past events.
+- Broadcast: multiple subscribers each receive every event.
+- Synchronous: fires during the transaction, before `lastBatch` fires. Inside an `onInsert` listener, `rows.value` already reflects the new state.
+- No replay: late subscribers do not see past events.
 
 ### Waiting for initial data
 
-`TableCache.subscribed` is a `Future<void>` that resolves when the server delivers the first batch for this table — including empty tables. Use it when a screen needs to wait for a specific table before rendering.
+`TableCache.subscribed` is a `Future<void>` that resolves when the server delivers the first batch for this table (including empty tables). Use it when a screen needs to wait for a specific table before rendering.
 
 ```dart
 await client.notes.subscribed;
@@ -247,37 +229,43 @@ Completes exactly once; stays completed across reconnects. If the server rejects
 
 ## Reducers
 
-A reducer call returns a `TransactionResult` on success and throws `SpacetimeDbReducerException` on server-side failure. Fire-and-forget is fine — ignore the result if you don't need it.
+A reducer call returns a `TransactionResult` on success and throws `SpacetimeDbReducerException` on server-side failure. Fire-and-forget is fine; ignore the result if you don't need it.
 
 ```dart
 // Fire-and-forget
 await client.reducers.createUser(name: 'Alice', email: 'alice@example.com');
 
-// Use the result (energy cost, server timestamp, queued/dropped status)
+// Use the result (server timestamp, queued/dropped status, optional retValue)
 try {
   final result = await client.reducers.createUser(name: 'Alice', email: 'alice@example.com');
-  print('energy: ${result.energyConsumed}, duration: ${result.executionDuration}');
+  print('committed at: ${result.timestamp}');
   if (result.isPending) print('queued offline, will sync on reconnect');
 } on SpacetimeDbReducerException catch (e) {
   print('reducer failed: ${e.message}');
 }
 
-// Listen to reducer events (from any client)
+// Listen to your own reducer calls
 client.reducers.onCreateUser((ctx, name, email) {
-  print('User created: $name by ${ctx.callerIdentity}');
+  // Fires on the client that initiated the call. Useful for self-confirmation
+  // (e.g. show a toast after your own commit). To react to remote writes,
+  // listen to the table row streams (onInsert / onUpdate / onDelete) instead.
 });
 ```
 
 **Result status** on success is one of:
-- `Committed` — server acknowledged the mutation.
-- `Pending` — offline storage is configured and the mutation is queued; it syncs when the connection is restored. The eventual server ack/reject surfaces via `client.onMutationSyncResult` (not the original future).
-- `Dropped` — the call was made with `dropIfOffline: true` while offline, so it was discarded.
+- `Committed`: server acknowledged the mutation.
+- `Pending`: offline storage is configured and the mutation is queued; it syncs when the connection is restored. The eventual server ack/reject surfaces via `client.onMutationSyncResult` (not the original future).
+- `Dropped`: the call was made with `dropIfOffline: true` while offline, so it was discarded.
 
-`Failed` and `OutOfEnergy` never reach the return value — they throw as `SpacetimeDbReducerException`.
+`Failed` (your reducer returned `Err(...)`) and `InternalError` (the host hit a fault, e.g. a panic) never reach the return value. Both throw `SpacetimeDbReducerException`. Inspect `e.result.status` to tell them apart.
+
+### Reducer event listeners are caller-only
+
+Generated `client.reducers.on<Reducer>(...)` listeners fire **only on the client that initiated the call**. The v2 wire protocol deliberately does not broadcast reducer-call metadata (caller identity, args, reducer name) to non-callers. To react to writes from any client, listen to the table's row streams (`client.<table>.onInsert` / `onUpdate` / `onDelete`); the row data carries the full delta and is what most code wants anyway. If you genuinely need to know which connection performed a write, model it as explicit data: a `created_by` column or a separate audit-log table the reducer writes.
 
 ## Subscriptions
 
-Uses the modern `SubscribeMulti` protocol — multiple queries batch into a single subscription set, delivered atomically.
+Multiple queries batch into a single subscription set, delivered atomically. Each call to `subscribe()` creates one subscription set with a client-assigned `QuerySetId`.
 
 ```dart
 // Subscribe to more queries after connect
@@ -294,16 +282,16 @@ The client will immediately receive the initial batch plus every subsequent tran
 Server-side views expose pre-computed / filtered data without a subscription query. The generated client gives you a direct accessor.
 
 ```dart
-// Vec<T> view — multiple rows
+// Vec<T> view: multiple rows
 for (final user in client.activeUsers.iter()) {
   print(user.name);
 }
 
-// Option<T> view — single optional row
+// Option<T> view: single optional row
 final admin = client.currentAdmin; // User?
 if (admin != null) print('Admin: ${admin.name}');
 
-// T view — single required row (throws if empty)
+// T view: single required row (throws if empty)
 final config = client.appConfig;
 print(config.version);
 ```
@@ -324,15 +312,13 @@ try {
 
 The subtypes let you narrow when you care:
 
-| Type | Thrown when |
-|---|---|
-| `SpacetimeDbReducerException` | The server rejected a reducer (`Failed` / `OutOfEnergy`). |
-| `SpacetimeDbConnectionException` | Transport failure — socket, WebSocket, handshake. |
-| `SpacetimeDbAuthException` | Auth-related connection failure (extends `ConnectionException`). |
-| `SpacetimeDbTimeoutException` | An SDK-imposed timeout fired. |
-| `SpacetimeDbSchemaException` | Generated-client / server schema mismatch. |
-| `SpacetimeDbProtocolException` | BSATN decode or message-shape error. |
-| `SpacetimeDbSubscriptionException` | Server rejected a subscription query. |
+- `SpacetimeDbReducerException`: the server rejected a reducer (`Failed` from an explicit `Err(...)` return, or `InternalError` from a host-side fault like a panic). Inspect `e.result.status` to tell them apart.
+- `SpacetimeDbConnectionException`: transport failure (socket, WebSocket, handshake).
+- `SpacetimeDbAuthException`: auth-related connection failure (extends `SpacetimeDbConnectionException`).
+- `SpacetimeDbTimeoutException`: an SDK-imposed timeout fired.
+- `SpacetimeDbSchemaException`: generated-client / server schema mismatch.
+- `SpacetimeDbProtocolException`: BSATN decode or message-shape error.
+- `SpacetimeDbSubscriptionException`: server rejected a subscription query.
 
 ## Recipes
 
@@ -391,7 +377,7 @@ await client.reducers.createNote(
 
 The temp row appears in `client.note.rows` immediately. When the server confirms, the SDK matches by primary key and replaces the temp row with the server row. On rejection, the temp row is removed.
 
-**Caveat:** server-assigned auto-increment IDs don't work with optimism — the temp row and the server row end up as duplicates since they have different PKs. Pick client-side IDs (`nextOptimisticIntId()` for ints, `Uuid().v4()` for strings) or design the reducer to accept a caller-provided ID.
+**Caveat:** server-assigned auto-increment IDs don't work with optimism: the temp row and the server row end up as duplicates since they have different PKs. Pick client-side IDs (`nextOptimisticIntId()` for ints, `Uuid().v4()` for strings) or design the reducer to accept a caller-provided ID.
 
 ### React only to confirmed external changes (collaborative editor pattern)
 
@@ -423,7 +409,7 @@ final client = await SpacetimeDbClient.create(
   offlineStorage: JsonFileStorage(basePath: '/path/to/cache'),
 );
 
-// Cached reads work immediately — no network needed
+// Cached reads work immediately; no network needed
 renderFromCache(client.notes.iter().toList());
 
 try {
@@ -431,7 +417,7 @@ try {
   hideOfflineBanner();
 } on SpacetimeDbException catch (_) {
   showOfflineBanner();
-  // Writes still work — they queue locally and replay on reconnect.
+  // Writes still work; they queue locally and replay on reconnect.
 }
 ```
 
@@ -441,7 +427,7 @@ try {
 await client.connect(initialSubscriptions: ['SELECT * FROM note']);
 await client.notes.subscribed;  // resolves when the initial batch has landed
 
-// Safe to render — you know the server has delivered its first response for this table.
+// Safe to render; you know the server has delivered its first response for this table.
 renderNotes(client.notes.rows.value);
 ```
 
@@ -456,7 +442,7 @@ StreamBuilder<User?>(
 );
 ```
 
-`.toStream()` is one of four reactive extensions the SDK ships — see [Reactive helpers](#reactive-helpers).
+`.toStream()` is one of four reactive extensions the SDK ships. See [Reactive helpers](#reactive-helpers).
 
 ## Reactive helpers
 
@@ -484,7 +470,7 @@ All four clean up their listeners automatically on resolve, error, or stream can
 
 ## Connection status
 
-`client.connection.onStateChanged` is a `Stream<ConnectionState>` — a sealed type, use `switch`.
+`client.connection.onStateChanged` is a `Stream<ConnectionState>`. The state is a sealed type, use `switch`.
 
 ```dart
 client.connection.onStateChanged.listen((state) {
@@ -526,7 +512,7 @@ final token = client.parseTokenFromCallback(callbackUrl);
 await client.logout();
 ```
 
-`YourTokenStore` is any class implementing `AuthTokenStore` — for mobile use `flutter_secure_storage`, for web use `SharedPreferences`, for tests use the built-in `InMemoryTokenStore`.
+`YourTokenStore` is any class implementing `AuthTokenStore`. For mobile use `flutter_secure_storage`, for web use `SharedPreferences`, for tests use the built-in `InMemoryTokenStore`.
 
 ## SSL
 
@@ -548,7 +534,7 @@ final client = await SpacetimeDbClient.create(
 ```
 
 When offline storage is configured:
-- Cached table snapshots load during `create()` — reads work without network.
+- Cached table snapshots load during `create()`, so reads work without network.
 - Reducer calls while disconnected return `TransactionResult.pending` and queue on disk.
 - On reconnect, queued mutations replay in order. Failed mutations roll back (including their optimistic changes).
 
@@ -561,13 +547,13 @@ abstract class OfflineStorage {
   Future<void> initialize();
   Future<void> dispose();
 
-  // Snapshots — one entry per registered table. Persist whole rows as JSON maps
+  // Snapshots: one entry per registered table. Persist whole rows as JSON maps
   // so they can be rehydrated without the generated decoder.
   Future<void> saveTableSnapshot(String tableName, List<Map<String, dynamic>> rows);
   Future<List<Map<String, dynamic>>?> loadTableSnapshot(String tableName);
   Future<void> clearTableSnapshot(String tableName);
 
-  // Mutation queue — reducer calls made while offline live here until reconnect.
+  // Mutation queue: reducer calls made while offline live here until reconnect.
   Future<void> enqueueMutation(PendingMutation mutation);
   Future<List<PendingMutation>> getPendingMutations();
   Future<void> dequeueMutation(String requestId);
@@ -583,21 +569,21 @@ abstract class OfflineStorage {
 
 Two implementations ship in the box:
 
-- **`JsonFileStorage(basePath: '/path/to/cache')`** — durable across restarts. Writes one JSON file per table plus one for the mutation queue. Use this for production mobile/desktop apps; pair `basePath` with `path_provider`'s `getApplicationDocumentsDirectory()`.
-- **`InMemoryOfflineStorage()`** — lives for the lifetime of the process. Use this in tests and in-memory smoke runs.
+- **`JsonFileStorage(basePath: '/path/to/cache')`**: durable across restarts. Writes one JSON file per table plus one for the mutation queue. Use this for production mobile/desktop apps; pair `basePath` with `path_provider`'s `getApplicationDocumentsDirectory()`.
+- **`InMemoryOfflineStorage()`**: lives for the lifetime of the process. Use this in tests and in-memory smoke runs.
 
 Implement the interface yourself to plug in SQLite, Hive, IndexedDB (for Flutter Web), or any other backend your app already uses.
 
 ### Optimistic updates
 
-Writes while *online* still feel instant if you pass an `optimisticChanges` list to the reducer call. The SDK applies the described row writes to the local cache immediately — your UI re-renders — then keeps them if the server confirms or rolls them back if the server rejects.
+Writes while *online* still feel instant if you pass an `optimisticChanges` list to the reducer call. The SDK applies the described row writes to the local cache immediately (your UI re-renders), then keeps them if the server confirms or rolls them back if the server rejects.
 
 Each entry describes one row write the reducer is expected to produce. A reducer that writes to 4 tables needs 4 entries.
 
-The typed-row helpers (`insertRow`, `updateRow`, `deleteRow`) extract the table name and serialize via the decoder — no hand-typed table names, no loose maps:
+The typed-row helpers (`insertRow`, `updateRow`, `deleteRow`) extract the table name and serialize via the decoder. No hand-typed table names, no loose maps:
 
 ```dart
-// Insert — provide the row (with a client-side temp ID if the server assigns
+// Insert: provide the row (with a client-side temp ID if the server assigns
 // the real ID; see the Recipes section)
 await client.reducers.createNote(
   title: 'New Note',
@@ -606,7 +592,7 @@ await client.reducers.createNote(
   ],
 );
 
-// Update — provide old and new rows
+// Update: provide old and new rows
 await client.reducers.updateNote(
   noteId: note.id,
   title: 'Renamed',
@@ -615,7 +601,7 @@ await client.reducers.updateNote(
   ],
 );
 
-// Delete — provide the row being removed
+// Delete: provide the row being removed
 await client.reducers.deleteNote(
   noteId: note.id,
   optimisticChanges: [

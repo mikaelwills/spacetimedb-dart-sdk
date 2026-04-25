@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:math' show Random;
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
@@ -11,6 +10,7 @@ import 'package:spacetimedb_sdk/src/connection/connection_quality.dart';
 import 'package:spacetimedb_sdk/src/connection/connection_config.dart';
 import 'package:spacetimedb_sdk/src/connection/keep_alive_monitor.dart';
 import 'package:spacetimedb_sdk/src/messages/client_messages.dart';
+import 'package:spacetimedb_sdk/src/messages/decompress.dart';
 import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 import 'platform.dart' show kIsWeb;
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -23,6 +23,7 @@ typedef WebSocketFactory =
       Iterable<String>? protocols,
       Map<String, dynamic>? headers, {
       Duration connectTimeout,
+      Duration? pingInterval,
     });
 
 class SpacetimeDbConnection {
@@ -32,8 +33,6 @@ class SpacetimeDbConnection {
   final bool ssl;
   final ConnectionConfig config;
   final WebSocketFactory _socketFactory;
-
-  static final _rng = Random.secure();
 
   int _reconnectAttempts = 0;
   Timer? _reconnectTimer;
@@ -109,24 +108,44 @@ class SpacetimeDbConnection {
 
       final headers = <String, dynamic>{};
 
+      final queryParams = <String, String>{};
+      if (!brotliNativelySupported) {
+        // Server default is Brotli; pure-Dart `package:brotli` miscompiles on
+        // dart2js; older browsers lack DecompressionStream('br') (Chrome 138+
+        // / Firefox 142+). Ask server to skip compression when we can't
+        // decompress Brotli ourselves.
+        queryParams['compression'] = 'None';
+      }
       if (kIsWeb && _currentToken != null) {
         final wsToken = await _getWebSocketToken();
         if (wsToken != null) {
-          uri = uri.replace(queryParameters: {'token': wsToken});
+          queryParams['token'] = wsToken;
         }
       } else if (_currentToken != null) {
         headers['Authorization'] = 'Bearer $_currentToken';
       }
+      if (queryParams.isNotEmpty) {
+        uri = uri.replace(queryParameters: queryParams);
+      }
 
       _channel = _socketFactory(
         uri,
-        ['v1.bsatn.spacetimedb'],
+        ['v2.bsatn.spacetimedb'],
         headers,
         connectTimeout: config.connectTimeout,
+        // On VM, IOWebSocketChannel uses this to send WS-level Ping
+        // frames. On web it's ignored (HtmlWebSocketChannel doesn't
+        // expose WS ping/pong to JS).
+        pingInterval: kIsWeb ? null : config.pingInterval,
       );
       await _channel!.ready;
       _setupMessageListener();
-      _setupKeepAlive();
+      // On VM the WS-level ping (wired above) handles dead-socket
+      // detection natively. On web we still need the app-layer
+      // KeepAliveMonitor because browsers don't expose WS ping.
+      if (kIsWeb) {
+        _setupKeepAlive();
+      }
       _updateState(const Connected());
       _reconnectAttempts = 0;
       _updateQuality();
@@ -384,16 +403,9 @@ class SpacetimeDbConnection {
     _keepAlive = KeepAliveMonitor(
       onSendPing: () {
         try {
-          final messageId = Uint8List(16);
-          for (var i = 0; i < 16; i++) {
-            messageId[i] = _rng.nextInt(256);
-          }
           const pingQuery = 'SELECT * FROM __spacetime_dart_sdk_keepalive__';
 
-          final message = OneOffQueryMessage(
-            messageId: messageId,
-            queryString: pingQuery,
-          );
+          final message = OneOffQueryMessage(queryString: pingQuery);
           send(message.encode());
           _lastPingSent = DateTime.now();
         } catch (e) {

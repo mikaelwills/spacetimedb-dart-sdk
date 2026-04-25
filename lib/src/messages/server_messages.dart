@@ -4,23 +4,19 @@ import 'package:fixnum/fixnum.dart';
 
 import '../codec/bsatn_decoder.dart';
 import 'shared_types.dart';
-import 'reducer_info.dart';
 import 'update_status.dart';
 
-/// Server message type tags (Server -> Client)
-/// Based on websocket.rs ServerMessage enum order
+/// Server message type tags (Server -> Client).
+/// Based on v2 websocket.rs ServerMessage enum order (v2.rs:175-196).
 enum ServerMessageType {
-  initialSubscription(0),
-  transactionUpdate(1),
-  transactionUpdateLight(2),
-  identityToken(3),
-  oneOffQueryResponse(4),
-  subscribeApplied(5),
-  unsubscribeApplied(6),
-  subscriptionError(7),
-  subscribeMultiApplied(8),
-  unsubscribeMultiApplied(9),
-  procedureResult(10);
+  initialConnection(0),
+  subscribeApplied(1),
+  unsubscribeApplied(2),
+  subscriptionError(3),
+  transactionUpdate(4),
+  oneOffQueryResult(5),
+  reducerResult(6),
+  procedureResult(7);
 
   final int tag;
   const ServerMessageType(this.tag);
@@ -37,246 +33,92 @@ sealed class ServerMessage {
   ServerMessageType get messageType;
 }
 
-/// Initial subscription response with all matching rows
-class InitialSubscriptionMessage implements ServerMessage {
-  final List<TableUpdate> tableUpdates;
-  final int requestId;
-  final Int64 totalHostExecutionDurationMicros;
-
-  InitialSubscriptionMessage({
-    required this.tableUpdates,
-    required this.requestId,
-    required this.totalHostExecutionDurationMicros,
-  });
-
-  @override
-  ServerMessageType get messageType => ServerMessageType.initialSubscription;
-
-  static InitialSubscriptionMessage decode(BsatnDecoder decoder) {
-    final tableUpdates = decoder.readList(() => TableUpdate.decode(decoder));
-    final requestId = decoder.readU32();
-    final duration = decoder.readU64();
-
-    return InitialSubscriptionMessage(
-      tableUpdates: tableUpdates,
-      requestId: requestId,
-      totalHostExecutionDurationMicros: duration,
-    );
-  }
-}
-
+/// v2 `TransactionUpdate` — non-caller broadcast.
+/// Wire: `v2.rs:302-306` — `{ query_sets: Box<[QuerySetUpdate]> }`.
 class TransactionUpdateMessage implements ServerMessage {
-  final int transactionOffset;
-  final Int64 timestamp;
-  final List<TableUpdate> tableUpdates;
+  final List<QuerySetUpdate> querySets;
 
-  // Transaction metadata fields (from Rust TransactionUpdate struct)
-  final UpdateStatus status;
-  final Uint8List callerIdentity; // Identity: 32 bytes, NOT Option
-  final Uint8List
-  callerConnectionId; // ConnectionId: u128 (16 bytes), NOT Option
-  final ReducerInfo reducerCall; // ReducerCallInfo struct
-  final int
-  energyQuantaUsed; // EnergyQuanta: u128 - stored as int (will lose precision for huge values)
-  final Int64 totalHostExecutionDuration; // TimeDuration: i64 microseconds
-
-  TransactionUpdateMessage({
-    required this.transactionOffset,
-    required this.timestamp,
-    required this.tableUpdates,
-    required this.status,
-    required this.callerIdentity,
-    required this.callerConnectionId,
-    required this.reducerCall,
-    required this.energyQuantaUsed,
-    required this.totalHostExecutionDuration,
-  });
+  TransactionUpdateMessage({required this.querySets});
 
   @override
   ServerMessageType get messageType => ServerMessageType.transactionUpdate;
 
   static TransactionUpdateMessage decode(BsatnDecoder decoder) {
-    // 1. Read UpdateStatus (algebraic enum with table updates inside Committed variant)
-    final statusTag = decoder.readU8();
-
-    UpdateStatus status;
-    final List<TableUpdate> tableUpdates;
-
-    if (statusTag == 0) {
-      // Committed
-      status = Committed();
-      tableUpdates = decoder.readList(() => TableUpdate.decode(decoder));
-    } else if (statusTag == 1) {
-      // Failed
-      final errorMessage = decoder.readString();
-      status = Failed(errorMessage);
-      tableUpdates = [];
-    } else if (statusTag == 2) {
-      // OutOfEnergy — unit variant, no payload
-      status = OutOfEnergy();
-      tableUpdates = [];
-    } else {
-      throw ArgumentError('Unknown UpdateStatus tag: $statusTag');
-    }
-
-    // 2. Read timestamp (i64, serializes as u64)
-    final timestamp = decoder.readU64();
-
-    // 3. Read caller_identity (Identity: 32 bytes, NOT Option)
-    final callerIdentity = decoder.readBytes(32);
-
-    // 4. Read caller_connection_id (ConnectionId: u128 = 16 bytes, NOT Option)
-    final callerConnectionId = decoder.readBytes(16);
-
-    // 5. Read reducer_call (ReducerCallInfo struct)
-    final reducerCall = ReducerInfo.decode(decoder);
-
-    // 6. Read energy_quanta_used (EnergyQuanta: u128 = 16 bytes)
-    final energyBytes = decoder.readBytes(16);
-    // Convert to int (will lose precision for very large values, but acceptable)
-    final energyQuantaUsed =
-        energyBytes[0] |
-        (energyBytes[1] << 8) |
-        (energyBytes[2] << 16) |
-        (energyBytes[3] << 24);
-
-    // 7. Read total_host_execution_duration (TimeDuration: i64 microseconds)
-    final totalHostExecutionDuration =
-        decoder.readU64(); // i64 serializes as u64
-
-    return TransactionUpdateMessage(
-      transactionOffset: 0, // Not in wire protocol
-      timestamp: timestamp,
-      tableUpdates: tableUpdates,
-      status: status,
-      callerIdentity: callerIdentity,
-      callerConnectionId: callerConnectionId,
-      reducerCall: reducerCall,
-      energyQuantaUsed: energyQuantaUsed,
-      totalHostExecutionDuration: totalHostExecutionDuration,
-    );
+    final querySets = decoder.readList(() => QuerySetUpdate.decode(decoder));
+    return TransactionUpdateMessage(querySets: querySets);
   }
 }
 
-/// Lightweight transaction update with minimal metadata
-class TransactionUpdateLightMessage implements ServerMessage {
-  final int requestId;
-  final List<TableUpdate> tableUpdates;
-
-  TransactionUpdateLightMessage({
-    required this.requestId,
-    required this.tableUpdates,
-  });
-
-  @override
-  ServerMessageType get messageType => ServerMessageType.transactionUpdateLight;
-
-  static TransactionUpdateLightMessage decode(BsatnDecoder decoder) {
-    final requestId = decoder.readU32();
-    final tableUpdates = decoder.readList(() => TableUpdate.decode(decoder));
-
-    return TransactionUpdateLightMessage(
-      requestId: requestId,
-      tableUpdates: tableUpdates,
-    );
-  }
-}
-
-class IdentityTokenMessage implements ServerMessage {
+/// v2 `InitialConnection` — handshake payload.
+/// Wire: `v2.rs:198-204` — `{ identity, connection_id, token }`.
+class InitialConnectionMessage implements ServerMessage {
   final Uint8List identity;
-  final String token;
   final Uint8List connectionId;
+  final String token;
 
-  IdentityTokenMessage({
+  InitialConnectionMessage({
     required this.identity,
-    required this.token,
     required this.connectionId,
+    required this.token,
   });
 
   @override
-  ServerMessageType get messageType => ServerMessageType.identityToken;
+  ServerMessageType get messageType => ServerMessageType.initialConnection;
 
-  static IdentityTokenMessage decode(BsatnDecoder decoder) {
+  static InitialConnectionMessage decode(BsatnDecoder decoder) {
     final identity = decoder.readBytes(32);
-    final token = decoder.readString();
     final connectionId = decoder.readBytes(16);
+    final token = decoder.readString();
 
-    return IdentityTokenMessage(
+    return InitialConnectionMessage(
       identity: identity,
-      token: token,
       connectionId: connectionId,
+      token: token,
     );
   }
 }
 
-/// One-off query response from server
-class OneOffQueryResponse implements ServerMessage {
-  final Uint8List messageId;
+/// v2 `OneOffQueryResult`.
+/// Wire: `v2.rs:358-367` — `{ request_id: u32, result: Result<QueryRows, Box<str>> }`.
+/// `Result<T,E>` sum: tag 0 = Ok, tag 1 = Err (verified `sats/ser/impls.rs:120-123`).
+class OneOffQueryResult implements ServerMessage {
   final int requestId;
+  final QueryRows? rows;
   final String? error;
-  final List<OneOffTable> tables;
-  final Int64 totalHostExecutionDurationMicros;
 
-  OneOffQueryResponse({
-    required this.messageId,
-    required this.requestId,
-    required this.tables,
-    required this.totalHostExecutionDurationMicros,
-    this.error,
-  });
+  OneOffQueryResult({required this.requestId, this.rows, this.error});
 
   @override
-  ServerMessageType get messageType => ServerMessageType.oneOffQueryResponse;
+  ServerMessageType get messageType => ServerMessageType.oneOffQueryResult;
 
-  static OneOffQueryResponse decode(BsatnDecoder decoder) {
-    final messageIdLength = decoder.readU32();
-    final messageId = decoder.readBytes(messageIdLength);
-
-    // error is Option<String>
-    // DISCOVERED: SpacetimeDB uses INVERTED Option encoding: 0x00 = Some, 0x01 = None
-    // This is opposite of Rust's standard Option discriminant
-    final errorTag = decoder.readU8();
-    final error = (errorTag == 0) ? decoder.readString() : null;
-
-    // tables is Vec<OneOffTable>
-    final tables = decoder.readList(() => OneOffTable.decode(decoder));
-
-    final duration = decoder.readU64();
-
-    return OneOffQueryResponse(
-      messageId: messageId,
-      requestId: 0, // Not in wire format, using placeholder
-      error: error,
-      tables: tables,
-      totalHostExecutionDurationMicros: duration,
-    );
+  static OneOffQueryResult decode(BsatnDecoder decoder) {
+    final requestId = decoder.readU32();
+    final tag = decoder.readU8();
+    if (tag == 0) {
+      return OneOffQueryResult(
+        requestId: requestId,
+        rows: QueryRows.decode(decoder),
+      );
+    } else if (tag == 1) {
+      return OneOffQueryResult(
+        requestId: requestId,
+        error: decoder.readString(),
+      );
+    }
+    throw ArgumentError('Unknown OneOffQueryResult Result tag: $tag');
   }
 }
 
-class OneOffTable {
-  final String tableName;
-  final BsatnRowList rows;
-
-  OneOffTable({required this.tableName, required this.rows});
-
-  static OneOffTable decode(BsatnDecoder decoder) {
-    final tableName = decoder.readString();
-    final rows = BsatnRowList.decode(decoder);
-    return OneOffTable(tableName: tableName, rows: rows);
-  }
-}
-
-/// Response to Subscribe containing initial matching rows
+/// v2 `SubscribeApplied` — initial-data delivery for a query set.
+/// Wire: `v2.rs:206-221` — `{ request_id: u32, query_set_id: u32, rows: QueryRows }`.
 class SubscribeApplied implements ServerMessage {
   final int requestId;
-  final Int64 totalHostExecutionDurationMicros;
-  final int queryId;
-  final SubscribeRows rows;
+  final int querySetId;
+  final QueryRows rows;
 
   SubscribeApplied({
     required this.requestId,
-    required this.totalHostExecutionDurationMicros,
-    required this.queryId,
+    required this.querySetId,
     required this.rows,
   });
 
@@ -285,55 +127,29 @@ class SubscribeApplied implements ServerMessage {
 
   static SubscribeApplied decode(BsatnDecoder decoder) {
     final requestId = decoder.readU32();
-    final duration = decoder.readU64();
-    final queryId = decoder.readU32();
-    final rows = SubscribeRows.decode(decoder);
+    final querySetId = decoder.readU32();
+    final rows = QueryRows.decode(decoder);
 
     return SubscribeApplied(
       requestId: requestId,
-      totalHostExecutionDurationMicros: duration,
-      queryId: queryId,
+      querySetId: querySetId,
       rows: rows,
     );
   }
 }
 
-class SubscribeRows {
-  final int tableId;
-  final String tableName;
-  final TableUpdate tableUpdate;
-
-  SubscribeRows({
-    required this.tableId,
-    required this.tableName,
-    required this.tableUpdate,
-  });
-
-  static SubscribeRows decode(BsatnDecoder decoder) {
-    final tableId = decoder.readU32();
-    final tableName = decoder.readString();
-    final tableUpdate = TableUpdate.decode(decoder);
-
-    return SubscribeRows(
-      tableId: tableId,
-      tableName: tableName,
-      tableUpdate: tableUpdate,
-    );
-  }
-}
-
-/// Response to Unsubscribe
+/// v2 `UnsubscribeApplied`.
+/// Wire: `v2.rs:245-254` — `{ request_id: u32, query_set_id: u32, rows: Option<QueryRows> }`.
+/// `rows` populated only when the matching `Unsubscribe` set `SendDroppedRows`.
 class UnsubscribeApplied implements ServerMessage {
   final int requestId;
-  final Int64 totalHostExecutionDurationMicros;
-  final int queryId;
-  final SubscribeRows rows;
+  final int querySetId;
+  final QueryRows? rows;
 
   UnsubscribeApplied({
     required this.requestId,
-    required this.totalHostExecutionDurationMicros,
-    required this.queryId,
-    required this.rows,
+    required this.querySetId,
+    this.rows,
   });
 
   @override
@@ -341,32 +157,27 @@ class UnsubscribeApplied implements ServerMessage {
 
   static UnsubscribeApplied decode(BsatnDecoder decoder) {
     final requestId = decoder.readU32();
-    final duration = decoder.readU64();
-    final queryId = decoder.readU32();
-    final rows = SubscribeRows.decode(decoder);
+    final querySetId = decoder.readU32();
+    final rows = decoder.readOption(() => QueryRows.decode(decoder));
 
     return UnsubscribeApplied(
       requestId: requestId,
-      totalHostExecutionDurationMicros: duration,
-      queryId: queryId,
+      querySetId: querySetId,
       rows: rows,
     );
   }
 }
 
-/// Subscription error from server
+/// v2 `SubscriptionError`.
+/// Wire: `v2.rs:271-291` — `{ request_id: Option<u32>, query_set_id: QuerySetId, error: Box<str> }`.
 class SubscriptionErrorMessage implements ServerMessage {
-  final Int64 totalHostExecutionDurationMicros;
-  final int requestId;
-  final int queryId;
-  final int tableId;
+  final int? requestId;
+  final int querySetId;
   final String error;
 
   SubscriptionErrorMessage({
-    required this.totalHostExecutionDurationMicros,
     required this.requestId,
-    required this.queryId,
-    required this.tableId,
+    required this.querySetId,
     required this.error,
   });
 
@@ -374,90 +185,89 @@ class SubscriptionErrorMessage implements ServerMessage {
   ServerMessageType get messageType => ServerMessageType.subscriptionError;
 
   static SubscriptionErrorMessage decode(BsatnDecoder decoder) {
-    final duration = decoder.readU64();
-    final requestId = decoder.readOption(() => decoder.readU32()) ?? 0;
-    final queryId = decoder.readOption(() => decoder.readU32()) ?? 0;
-    final tableId = decoder.readOption(() => decoder.readU32()) ?? 0;
+    final requestId = decoder.readOption(() => decoder.readU32());
+    final querySetId = decoder.readU32();
     final error = decoder.readString();
 
     return SubscriptionErrorMessage(
-      totalHostExecutionDurationMicros: duration,
       requestId: requestId,
-      queryId: queryId,
-      tableId: tableId,
+      querySetId: querySetId,
       error: error,
     );
   }
 }
 
-/// Response to SubscribeMulti containing initial matching rows
-class SubscribeMultiApplied implements ServerMessage {
+/// v2 `ReducerResult` — caller's `CallReducer` outcome.
+/// Wire: `v2.rs:371-381` — `{ request_id: u32, timestamp: Timestamp(i64 µs), result: ReducerOutcome }`.
+/// `Timestamp` on v2 wire is microseconds (canonical `sats/src/timestamp.rs:11-14`,
+/// stale `v2.rs:378` doc comment notwithstanding).
+class ReducerResultMessage implements ServerMessage {
   final int requestId;
-  final Int64 totalHostExecutionDurationMicros;
-  final int queryId;
-  final List<TableUpdate> tableUpdates;
+  final Int64 timestamp;
+  final UpdateStatus status;
+  final Uint8List? retValue;
+  final List<QuerySetUpdate> querySets;
 
-  SubscribeMultiApplied({
+  ReducerResultMessage({
     required this.requestId,
-    required this.totalHostExecutionDurationMicros,
-    required this.queryId,
-    required this.tableUpdates,
+    required this.timestamp,
+    required this.status,
+    required this.querySets,
+    this.retValue,
   });
 
   @override
-  ServerMessageType get messageType => ServerMessageType.subscribeMultiApplied;
+  ServerMessageType get messageType => ServerMessageType.reducerResult;
 
-  static SubscribeMultiApplied decode(BsatnDecoder decoder) {
+  static ReducerResultMessage decode(BsatnDecoder decoder) {
     final requestId = decoder.readU32();
-    final duration = decoder.readU64();
-    final queryId = decoder.readU32();
+    final timestamp = decoder.readU64();
+    final outcomeTag = decoder.readU8();
 
-    final tableUpdates = decoder.readList(() => TableUpdate.decode(decoder));
+    UpdateStatus status;
+    Uint8List? retValue;
+    List<QuerySetUpdate> querySets;
 
-    return SubscribeMultiApplied(
+    if (outcomeTag == 0) {
+      // Ok(ReducerOk { ret_value: Bytes, transaction_update: TransactionUpdate })
+      final retLen = decoder.readU32();
+      final retBytes = decoder.readBytes(retLen);
+      retValue = retLen == 0 ? null : retBytes;
+      querySets = decoder.readList(() => QuerySetUpdate.decode(decoder));
+      status = Committed();
+    } else if (outcomeTag == 1) {
+      // OkEmpty — unit; zero ret, zero query_sets.
+      retValue = null;
+      querySets = const [];
+      status = Committed();
+    } else if (outcomeTag == 2) {
+      // Err(Bytes)
+      final errLen = decoder.readU32();
+      final errBytes = decoder.readBytes(errLen);
+      retValue = null;
+      querySets = const [];
+      status = Failed(errBytes);
+    } else if (outcomeTag == 3) {
+      // InternalError(Box<str>)
+      final message = decoder.readString();
+      retValue = null;
+      querySets = const [];
+      status = InternalError(message);
+    } else {
+      throw ArgumentError('Unknown ReducerOutcome tag: $outcomeTag');
+    }
+
+    return ReducerResultMessage(
       requestId: requestId,
-      totalHostExecutionDurationMicros: duration,
-      queryId: queryId,
-      tableUpdates: tableUpdates,
+      timestamp: timestamp,
+      status: status,
+      retValue: retValue,
+      querySets: querySets,
     );
   }
 }
 
-/// Response to UnsubscribeMulti
-class UnsubscribeMultiApplied implements ServerMessage {
-  final int requestId;
-  final Int64 totalHostExecutionDurationMicros;
-  final int queryId;
-  final List<TableUpdate> tableUpdates;
-
-  UnsubscribeMultiApplied({
-    required this.requestId,
-    required this.totalHostExecutionDurationMicros,
-    required this.queryId,
-    required this.tableUpdates,
-  });
-
-  @override
-  ServerMessageType get messageType =>
-      ServerMessageType.unsubscribeMultiApplied;
-
-  static UnsubscribeMultiApplied decode(BsatnDecoder decoder) {
-    final requestId = decoder.readU32();
-    final duration = decoder.readU64();
-    final queryId = decoder.readU32();
-
-    final tableUpdates = decoder.readList(() => TableUpdate.decode(decoder));
-
-    return UnsubscribeMultiApplied(
-      requestId: requestId,
-      totalHostExecutionDurationMicros: duration,
-      queryId: queryId,
-      tableUpdates: tableUpdates,
-    );
-  }
-}
-
-/// Result of a procedure/reducer call
+/// v2 `ProcedureResult` — procedure invocation outcome.
 class ProcedureResultMessage implements ServerMessage {
   final ProcedureStatus status;
   final Int64 timestamp;
@@ -489,7 +299,9 @@ class ProcedureResultMessage implements ServerMessage {
   }
 }
 
-/// Status of a procedure execution
+/// v2 `ProcedureStatus` two-variant sum.
+/// Wire: tag 0 `Returned(Bytes)` — u32 length + bytes; tag 1 `InternalError(Box<str>)`.
+/// Front-loaded to slice 2 (was a v1-shape collision with unit `OutOfEnergy` at tag 1).
 class ProcedureStatus {
   final ProcedureStatusType type;
   final Uint8List? returnedData;
@@ -508,8 +320,6 @@ class ProcedureStatus {
         returnedData: data,
       );
     } else if (tag == 1) {
-      return ProcedureStatus(type: ProcedureStatusType.outOfEnergy);
-    } else if (tag == 2) {
       final error = decoder.readString();
       return ProcedureStatus(
         type: ProcedureStatusType.internalError,
@@ -521,4 +331,4 @@ class ProcedureStatus {
   }
 }
 
-enum ProcedureStatusType { returned, outOfEnergy, internalError }
+enum ProcedureStatusType { returned, internalError }

@@ -1,28 +1,35 @@
-/// Status of a transaction update
+import 'dart:convert';
+import 'dart:typed_data';
+
+/// Status of a reducer transaction.
 ///
-/// Indicates whether a reducer execution succeeded, failed, or ran out of energy.
+/// Wire: v2 `ReducerOutcome` (`v2.rs:385-406`) — decoded in slice 4 via
+/// `ReducerResult`. `Pending`/`Dropped` are SDK-synthetic (offline queue).
 sealed class UpdateStatus {}
 
-/// Transaction committed successfully
 class Committed extends UpdateStatus {
   @override
   String toString() => 'Committed()';
 }
 
-/// Transaction failed with an error
 class Failed extends UpdateStatus {
-  /// Error message describing why the transaction failed
-  final String message;
+  final Uint8List errorBytes;
 
-  Failed(this.message);
+  Failed(this.errorBytes);
+
+  String get errorMessage => utf8.decode(errorBytes, allowMalformed: true);
 
   @override
-  String toString() => 'Failed(message: $message)';
+  String toString() => 'Failed(message: $errorMessage)';
 }
 
-class OutOfEnergy extends UpdateStatus {
+class InternalError extends UpdateStatus {
+  final String message;
+
+  InternalError(this.message);
+
   @override
-  String toString() => 'OutOfEnergy()';
+  String toString() => 'InternalError(message: $message)';
 }
 
 class Pending extends UpdateStatus {

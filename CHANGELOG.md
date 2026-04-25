@@ -5,13 +5,78 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 2.0.0 - 2026-04-25
+
+First release targeting the SpacetimeDB **v2** WebSocket wire protocol (server 2.x). This is a hard cut. The SDK no longer speaks v1; if you need a v1 client, stay on `spacetimedb_sdk 1.x`.
+
+This is a full rewrite of every message the SDK reads and writes, not a compatibility shim or a subprotocol flip. Every `ClientMessage` and `ServerMessage` has been re-encoded and re-decoded against the canonical upstream definitions in `crates/client-api-messages/src/websocket/v2.rs`. Removed message types are gone, not stubbed. Removed fields are deleted, not null-compat'd. Wire-format alignment was verified against live SpacetimeDB 2.x servers, not inferred from docs.
+
+### Added
+
+- **`Uint8List? retValue` on `TransactionResult`.** v2 reducer calls return `ReducerResult` with an optional `ret_value: Bytes` payload. Forward-compat for future typed reducer returns (today it's `null` unless the server sends bytes). Zero-length `Ok.ret_value` and `OkEmpty` both collapse to `retValue: null` so consumers check one thing, not two.
+- **`SendDroppedRows` flag on `unsubscribe()`.** New signature: `unsubscribe(int querySetId, {int requestId = 0, bool sendDroppedRows = false})`. When `true`, the server replies with an `UnsubscribeApplied` carrying the rows being dropped from this client's subscription set; the SDK dispatches those as delete events on the affected row streams. Default `false` preserves current behaviour (you clear your own cache view if you care).
+- **`InternalError` sealed variant on `UpdateStatus`.** Distinct from `Failed`. Maps v2 `ReducerOutcome::InternalError(Box<str>)`. Carries a server-generated diagnostic string, not consumer-supplied error bytes. Lets consumers distinguish "your reducer returned `Err`" from "the host encountered an internal fault executing your reducer."
+- **Live-server v2 integration tests** against a real 2.x server:
+  - `v2_protocol_negotiation_test.dart`. Verifies the server accepts `v2.bsatn.spacetimedb` subprotocol and emits a clean `InitialConnection` first frame.
+  - `v2_compression_test.dart`. Round-trips compressed frames against the live server.
+  - `v2_non_caller_broadcast_test.dart`. Two-connection test proving connection B receives a `TransactionUpdate` when connection A writes, and B's local cache reflects the row.
+  - `v2_non_caller_metadata_test.dart`. Pins the v2 caller-vs-non-caller metadata contract: caller sees `ReducerEvent` + `isMyTransaction == true`; non-caller observes the row insert but receives `UnknownTransactionEvent` and the generated `on<Reducer>` listener does not fire.
+  - `v2_reducer_result_variants_test.dart`. Pins all four `ReducerOutcome` paths: `Failed(Bytes)` round-trips an `Err("...")` message verbatim, `InternalError(str)` carries a server-generated diagnostic for panicking reducers, and both `Ok` (zero-length `ret_value`) and `OkEmpty` collapse to `retValue: null`.
+  - `v2_send_dropped_rows_test.dart`. Pins both `unsubscribe(sendDroppedRows: true)` (server delivers dropped rows + SDK fires deletes) and the default `false` path (no delete events).
+  - `v2_transaction_update_wire_test.dart`. Captures a real `TransactionUpdate` frame, hand-decodes it byte-by-byte against `crates/client-api-messages/src/websocket/v2.rs:302-355` + `common.rs:60-94`, and cross-checks the result against the SDK's `MessageDecoder`. Catches symmetric tag/order mistakes that fixture-only unit tests cannot.
+- **`check_health_test.dart`**. Live-server probe for the SDK's new silent-dead-socket detection.
+- **Message-ordering stress tests** (`message_ordering_stress_test.dart`, `_chrome_test.dart`). Confirm transaction-order invariants hold under burst-y broadcast conditions on both VM and web platforms.
+
+### Changed (breaking)
+
+- **WebSocket subprotocol:** `v1.bsatn.spacetimedb` → `v2.bsatn.spacetimedb`. SDK now only speaks v2. No version fallback.
+- **`onReducerEvent` listener semantics.** v2 deliberately strips reducer-call metadata (caller identity, args, reducer name) from non-caller broadcasts at the protocol level. The SDK honours this by only constructing `ReducerEvent` on the caller's own path. **Your generated `on<Reducer>` listeners now fire for self-initiated calls only.** To observe remote mutations, subscribe to the table's row streams (`client.<table>.onInsert` / `onUpdate` / `onDelete`); the delta is what you actually want to react to anyway.
+- **`isMyTransaction` derivation.** Same return values for the same situations, but derived from message-type dispatch (caller path vs broadcast path) rather than byte-comparing caller connection IDs. No consumer change needed unless you were pattern-matching on the internal construction.
+- **`UpdateStatus` sealed class reworked.** New shape: `Committed(DatabaseUpdate)` / `Failed(Uint8List errorBytes)` / `InternalError(String message)` / `Pending` / `Dropped`. `Failed` now carries raw `Uint8List errorBytes` with a `String get errorMessage => utf8.decode(errorBytes, allowMalformed: true)` getter, forward-compat for future typed errors without another breaking rev. **Removed:** `OutOfEnergy` (no v2 wire source; v2's `ReducerOutcome` enum has no such variant).
+- **`TransactionResult` fields removed outright** (no null-compat stubs): `energyConsumed`, `executionDuration`, `isLightUpdate`, `isOutOfEnergy`. None have v2 wire sources.
+- **Message types deleted** (no v2 equivalents): `TransactionUpdateLight`, `SubscribeSingle`, `SubscribeMulti`, `UnsubscribeMulti`, `SubscribeMultiApplied`, `UnsubscribeMultiApplied`, `InitialSubscription`, `IdentityTokenMessage` (replaced by `InitialConnectionMessage`).
+- **`unsubscribe()` signature:** now takes `querySetId: int` (was `queryId`). Subscriptions are now client-assigned `QuerySetId` (u32) rather than server-assigned opaque IDs, which is what makes reliable resubscribe-on-reconnect possible at all.
+- **`oneOffQuery()` signature:** now `(String query, {int requestId = 0})`. Dropped `Uint8List messageId`; v2's `OneOffQuery` message carries a `u32 request_id` instead.
+- **`CallReducer` and `CallProcedure` wire formats changed** (v1 → v2 field order). Transparent to consumers if you go through codegen; if you were hand-constructing these messages, field order is now `(tag, requestId, flags, name, args)` per `v2.rs:115-131` and `:150-166`.
+- **`InitialConnection` replaces `IdentityToken`** as the server's first message. Field order swapped (v1: `identity, token, connectionId` → v2: `identity, connectionId, token`). Callback renamed `onIdentityToken` → `onInitialConnection`.
+
+### Fixed
+
+- **Silent loss of all subscriptions after a reconnect cycle.** The previous `SubscriptionManager._startConnectionMonitoring()` tracked reconnect intent with a `wasReconnecting` flag that got cleared by the intermediate `Disconnected` state in the SDK's own auto-reconnect sequence (`Reconnecting → Disconnected → Connecting → Connected`). The final `Connected` was then treated as a fresh connect, skipping the resubscribe. Writes kept working (reducer calls don't require a subscription), but no server broadcasts arrived. Silent, easy to miss, affected every long-running client on mobile backgrounding, wifi handoff, server restart, or any transient disconnect. Replaced the transient flag with a `hasConnectedBefore` monotonic latch: any non-initial `Connected` triggers resubscribe. Validated on real iOS; previously-reproducing flake gone.
+- **`ProcedureStatus` tag table collision.** v1 Dart decoded tag `1` as `OutOfEnergy` (unit variant) and tag `2` as `InternalError(string)`. v2's `ProcedureStatus` has two variants (tag `0 = Returned(Bytes)`, tag `1 = InternalError(Box<str>)`) and would have silently misaligned the decoder on every v2 `InternalError` (reading the string-length prefix as a phantom unit-variant dispatch). Fixed before any v2 frame touched the decoder.
+- **`OneOffQueryResult` Result tag order.** v2's `Result<QueryRows, Box<str>>` encoding uses tag `0 = Ok`, tag `1 = Err` per `crates/sats/src/ser/impls.rs:120-123`. Decoder rewritten to match the canonical upstream encoding.
+- **`SubscriptionError` message shape.** Rewritten to v2 layout per `v2.rs:271-291`: `{ request_id: Option<u32>, query_set_id: QuerySetId, error: Box<str> }`. Removed v1 fields `total_host_execution_duration_micros` and `table_id`.
+- **Stale `SubscriptionError` recovery regex.** The v1 recovery path was looking for `` `(\w+)` is not a valid table `` but the actual server text (on 2.x) is `no such table: \`<name>\`...`. Recovery was dead code. Replaced with direct query extraction from the `executing: \`<query>\`` suffix, which drops the failed query by exact match rather than fuzzy table-name extraction. Survives future server text tweaks.
+- **`TransactionResult.timestamp` was 1000× too small for the entire v1 era.** The wire `Timestamp` is `i64` microseconds since Unix epoch (canonical type at `crates/sats/src/timestamp.rs`, field `__timestamp_micros_since_unix_epoch__`). The SDK's `transaction_result.dart` was treating the wire value as nanoseconds and dividing by 1000 before feeding it to `DateTime.fromMicrosecondsSinceEpoch`. Result: every `result.timestamp` since v1.0.0 came back set to a date in January 1970 instead of the real transaction time. Verified empirically against a live 2.x server (a reducer call's `result.timestamp` now lands within milliseconds of the local `DateTime.now()` straddling the call). Bug was unnoticed because no observed consumer reads `result.timestamp` meaningfully; SpaceNotes ignores it entirely. The raw `ReducerEvent.timestamp` (`Int64`) field was always documented and exposed as microseconds and is unchanged; only the `DateTime` derivation was wrong.
+
+### Why this is a real v2 SDK
+
+The v2 wire protocol isn't a subprotocol flip. It changes message shapes, field orders, tag values, and the relationship between caller and broadcast frames. Half-measures (flipping the subprotocol string while keeping v1 decoders, or patching fields ad-hoc as they surface) produce a client that looks like it works until the first non-trivial transaction silently corrupts a decoder and you get garbled data three message types downstream from the real misalignment.
+
+What this release does instead:
+
+- **Every v1-only message type is deleted**, not stubbed. No `TransactionUpdateLight`, no `SubscribeMulti*`, no `InitialSubscription`. If the compiler lets a v1 reference survive, the code path is dead. There's no v2 frame that would ever route to it.
+- **Every v2 tag value is verified against upstream source**, not inferred from docs or reused from v1 by position. `ClientMessage` tags are `Subscribe(0), Unsubscribe(1), OneOffQuery(2), CallReducer(3), CallProcedure(4)` per `v2.rs:18-29`. Every tag differs from v1. `ServerMessage` tags (v2.rs:175-196) likewise.
+- **Every field-order change in `CallReducer` / `CallProcedure` / `Subscribe` / `Unsubscribe` / `OneOffQuery` is reflected in the encoder.** The difference between "encoder writes v1 order under v2 subprotocol" and "encoder writes v2 order" is the difference between a silently-broken reducer call and a working one. There is no runtime error, just garbage args.
+- **Caller-path vs broadcast-path semantics are modelled explicitly.** v2's deliberate choice to strip reducer metadata from non-caller broadcasts requires the SDK to route `ReducerResult` (caller) and `TransactionUpdate` (broadcast) through different handlers and build `ReducerEvent` on one path, not both. Generated `on<Reducer>` listener contracts reflect this.
+- **Resubscribe after reconnect actually works.** This was silently broken under v1 too (see Fixed). A v2 SDK that inherits the v1 resubscribe bug is a v2 SDK that drops all your queries on the first wifi handoff.
+- **Live-server integration tests, not unit mocks.** `v2_protocol_negotiation_test`, `v2_compression_test`, `v2_non_caller_broadcast_test`, `v2_non_caller_metadata_test`, `v2_reducer_result_variants_test`, `v2_send_dropped_rows_test`, `v2_transaction_update_wire_test`, `check_health_test`, `message_ordering_stress_test*` all open real WebSocket connections to a live 2.x server and assert against actual server frames. Unit tests give you "I wrote the encoder I intended to write"; integration tests give you "the server on the other end agrees." `v2_transaction_update_wire_test` goes one further: it bypasses the SDK's own decoder and parses raw bytes against the upstream Rust schema, then cross-checks against the SDK's decoder. A symmetric tag-or-order mistake (e.g. swapping `inserts` and `deletes`) would self-consistently round-trip on fixtures the same code produced; this test does not.
+
+### Behaviours worth knowing about
+
+These aren't SDK choices; they're protocol and server behaviours surfaced by the pre-release validation pass. Documented here so consumers don't run into them blind:
+
+- **Reducer panic messages are scrubbed by the server.** A reducer that panics with `panic!("intentional reducer panic")` reaches the client as `InternalError(message: "the instance encountered a fatal error.")`. The original panic text does not cross the wire (upstream privacy behaviour, not an SDK transformation). If you want consumers to see a specific message, return `Err("...")` from the reducer; that path (`Failed(Bytes)`) round-trips the user-supplied string verbatim. (Verified against SpacetimeDB 2026-04-25.)
+- **Generated `on<Reducer>` listeners no longer fire on remote writes.** This is the v2 design intent (clients are entitled to *table state*, not *how the state got there*) and it lands as a behavioural change for any consumer that was using the v1 listener API. To react to remote mutations, subscribe to the table's row streams (`onInsert` / `onUpdate` / `onDelete`) and read the row data; that's the audit-trail-free signal v2 commits to delivering. If you genuinely need to know which connection performed a write, model it as explicit data: a row in an `events` or `audit_log` table the reducer writes.
+- **`RowSizeHint` variants are not stable per `TableUpdate`.** A single `TableUpdate` can carry inserts encoded as `FixedSize(N)` and deletes encoded as `RowOffsets([])`. Observed in `v2_transaction_update_wire_test`. The SDK's decoder handles both variants on each `BsatnRowList`; consumers that hand-decode wire frames must do the same.
+
 ## 1.1.1 - 2026-04-18
 
 Packaging / docs patch. No runtime changes.
 
 ### Changed
 
-- Bumped `brotli` constraint from `^0.5.0` to `^0.6.0` to pick up the latest stable. No API change — the SDK only calls `brotli.decode(bytes)`, which is unchanged.
+- Bumped `brotli` constraint from `^0.5.0` to `^0.6.0` to pick up the latest stable. No API change; the SDK only calls `brotli.decode(bytes)`, which is unchanged.
 - Pubspec description now mentions `SubscribeMulti`. New README "Compatibility" section explicitly calls out SpacetimeDB 2.x server support and the `SubscribeMulti` subscription protocol.
 
 ### Fixed
@@ -33,9 +98,9 @@ Packaging / docs patch. No runtime changes.
 - **`SubscriptionErrorMessage.decode` wire alignment.** Was structured around the broken `readOption` semantic and misread the `SubscriptionError` message: skipped `table_id` entirely and treated `error` as optional. Reordered to match the canonical layout (`u64 duration; Option<u32> request_id; Option<u32> query_id; Option<u32> table_id; String error`).
 - **`OutOfEnergy` decode reads phantom payload.** `TransactionUpdateMessage.decode` was reading a phantom `readString()` after the OutOfEnergy status tag, misaligning subsequent fields. Per the wire definition (`crates/client-api-messages/src/websocket/v1.rs`), OutOfEnergy is a unit variant with no payload. Fixed.
 
-### Changed (breaking — but phantom data only)
+### Changed (breaking, but phantom data only)
 
-- `OutOfEnergy` (in `update_status.dart`) no longer has a `budgetInfo: String` field or a string constructor. The field only ever carried garbled bytes from the misaligned decoder — it was never a real value. Consumers constructing `OutOfEnergy('...')` must now use `OutOfEnergy()`. `TransactionResult.errorMessage` returns `'Out of energy'` instead of `'Out of energy: <info>'`. This is technically a breaking change but nobody could have written working code against the old field, so it's ordinarily listed under a minor bump rather than a major.
+- `OutOfEnergy` (in `update_status.dart`) no longer has a `budgetInfo: String` field or a string constructor. The field only ever carried garbled bytes from the misaligned decoder; it was never a real value. Consumers constructing `OutOfEnergy('...')` must now use `OutOfEnergy()`. `TransactionResult.errorMessage` returns `'Out of energy'` instead of `'Out of energy: <info>'`. This is technically a breaking change but nobody could have written working code against the old field, so it's ordinarily listed under a minor bump rather than a major.
 
 ## 1.0.1 - 2026-04-15
 
@@ -49,11 +114,11 @@ This version consolidates a multi-month pre-release development effort into the 
 
 ### Reactive primitives
 
-- `TableCache<T>.rows` — `ValueNotifier<List<T>>` that fires on every transaction touching the table.
-- `TableCache<T>.lastBatch` — `ValueNotifier<TransactionBatch<T>?>` carrying every row change from the most recent transaction. Fires exactly once per transaction with a `List<TableEvent<T>>` (insert / update / delete subtypes).
-- `TableCache<T>.rowNotifier(primaryKey)` — per-row auto-disposing `ValueNotifier<T?>` that fires only when that specific row's value changes. Scales to thousands of concurrent row-watchers at `O(rows_touched)` cost per transaction, not `O(listeners × events)`.
-- `TableCache<T>.onInsert` / `onUpdate` / `onDelete` — broadcast `Stream<TableEvent<T>>` for consumers that react to one kind of change (no iteration or type-ladder needed). Fire synchronously in the same transaction as `lastBatch`.
-- `TableCache<T>.subscribed` — `Future<void>` that resolves when the server delivers the initial batch for this table (including empty tables).
+- `TableCache<T>.rows`: `ValueNotifier<List<T>>` that fires on every transaction touching the table.
+- `TableCache<T>.lastBatch`: `ValueNotifier<TransactionBatch<T>?>` carrying every row change from the most recent transaction. Fires exactly once per transaction with a `List<TableEvent<T>>` (insert / update / delete subtypes).
+- `TableCache<T>.rowNotifier(primaryKey)`: per-row auto-disposing `ValueNotifier<T?>` that fires only when that specific row's value changes. Scales to thousands of concurrent row-watchers at `O(rows_touched)` cost per transaction, not `O(listeners × events)`.
+- `TableCache<T>.onInsert` / `onUpdate` / `onDelete`: broadcast `Stream<TableEvent<T>>` for consumers that react to one kind of change (no iteration or type-ladder needed). Fire synchronously in the same transaction as `lastBatch`.
+- `TableCache<T>.subscribed`: `Future<void>` that resolves when the server delivers the initial batch for this table (including empty tables).
 
 ### Typed client
 
@@ -63,16 +128,16 @@ This version consolidates a multi-month pre-release development effort into the 
 
 ### Optimistic updates
 
-- `OptimisticChange.insertRow(tableCache, row)` / `updateRow` / `deleteRow` — typed helpers that extract the table name and serialize via the decoder.
-- `nextOptimisticIntId()` — utility for client-side temporary primary keys.
+- `OptimisticChange.insertRow(tableCache, row)` / `updateRow` / `deleteRow`: typed helpers that extract the table name and serialize via the decoder.
+- `nextOptimisticIntId()`: utility for client-side temporary primary keys.
 - Pass `optimisticChanges: [...]` on any reducer call; the SDK applies the writes locally, keeps them on server-ack, or rolls them back on rejection.
 - Multi-table reducer support: stage one `OptimisticChange` per table write.
 
 ### Offline storage
 
 - `OfflineStorage` abstract class: `saveTableSnapshot` / `loadTableSnapshot`, mutation queue, per-table last-sync timestamps.
-- `JsonFileStorage` — durable file-based implementation.
-- `InMemoryOfflineStorage` — for tests.
+- `JsonFileStorage`: durable file-based implementation.
+- `InMemoryOfflineStorage`: for tests.
 - Cached reads work without a connection; writes queue while disconnected and replay in order on reconnect.
 - `client.onSyncStateChanged` + `client.onMutationSyncResult` streams for sync-state UI.
 
@@ -86,17 +151,17 @@ Sealed `SpacetimeDbException` root with seven typed subtypes (`Reducer`, `Connec
 
 ### Connection
 
-- Sealed `ConnectionState` (`Connecting` / `Connected` / `Reconnecting` / `Disconnected` / `AuthError` / `FatalError`) — `switch` exhaustively.
-- `client.connection.onStateChanged` — `Stream<ConnectionState>`.
+- Sealed `ConnectionState` (`Connecting` / `Connected` / `Reconnecting` / `Disconnected` / `AuthError` / `FatalError`); `switch` exhaustively.
+- `client.connection.onStateChanged`: `Stream<ConnectionState>`.
 - Automatic reconnection with exponential backoff.
 
 ### Extensions
 
 `ValueListenable<T>` extensions for common async patterns:
-- `firstNonNull()` — resolve with first non-null value (current or future).
-- `firstWhere(predicate)` — resolve when predicate first holds.
-- `next` — resolve on next change, ignore current.
-- `toStream()` — bridge to `Stream<T>` for `StreamBuilder` / rxdart interop.
+- `firstNonNull()`: resolve with first non-null value (current or future).
+- `firstWhere(predicate)`: resolve when predicate first holds.
+- `next`: resolve on next change, ignore current.
+- `toStream()`: bridge to `Stream<T>` for `StreamBuilder` / rxdart interop.
 
 ### Migration from pre-1.0 consumers
 

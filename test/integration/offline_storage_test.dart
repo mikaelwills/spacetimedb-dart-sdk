@@ -39,10 +39,10 @@ void main() {
       subManager.reducerRegistry.register(deleteNoteDef);
 
       await connection.connect();
-      await subManager.onIdentityToken.first.timeout(_timeout);
+      await subManager.onInitialConnection.first.timeout(_timeout);
 
       subManager.subscribe(['SELECT * FROM note']);
-      await subManager.onInitialSubscription.first.timeout(_timeout);
+      await subManager.onSubscribeApplied.first.timeout(_timeout);
 
       noteTable = subManager.cache.getTableByTypedName<Note>('note');
     }
@@ -112,9 +112,9 @@ void main() {
             expect(pending.first.reducerName, equals('create_note'));
 
             await connection.connect();
-            await subManager.onIdentityToken.first.timeout(_timeout);
+            await subManager.onInitialConnection.first.timeout(_timeout);
             subManager.subscribe(['SELECT * FROM note']);
-            await subManager.onInitialSubscription.first.timeout(_timeout);
+            await subManager.onSubscribeApplied.first.timeout(_timeout);
 
             final syncResult = await syncResultFuture.timeout(_timeout);
 
@@ -219,9 +219,9 @@ void main() {
           final syncResultFuture = subManager.onMutationSyncResult.first;
 
           await connection.connect();
-          await subManager.onIdentityToken.first.timeout(_timeout);
+          await subManager.onInitialConnection.first.timeout(_timeout);
           subManager.subscribe(['SELECT * FROM note']);
-          await subManager.onInitialSubscription.first.timeout(_timeout);
+          await subManager.onSubscribeApplied.first.timeout(_timeout);
 
           final syncResult = await syncResultFuture.timeout(_timeout);
 
@@ -294,9 +294,9 @@ void main() {
             });
 
             await connection.connect();
-            await subManager.onIdentityToken.first.timeout(_timeout);
+            await subManager.onInitialConnection.first.timeout(_timeout);
             subManager.subscribe(['SELECT * FROM note']);
-            await subManager.onInitialSubscription.first.timeout(_timeout);
+            await subManager.onSubscribeApplied.first.timeout(_timeout);
 
             await syncResultsCompleter.future.timeout(_timeout);
             await subscription.cancel();
@@ -361,9 +361,9 @@ void main() {
             });
 
             await connection.connect();
-            await subManager.onIdentityToken.first.timeout(_timeout);
+            await subManager.onInitialConnection.first.timeout(_timeout);
             subManager.subscribe(['SELECT * FROM note']);
-            await subManager.onInitialSubscription.first.timeout(_timeout);
+            await subManager.onSubscribeApplied.first.timeout(_timeout);
 
             await idleCompleter.future.timeout(_timeout);
             await idleSubscription.cancel();
@@ -484,9 +484,9 @@ void main() {
             });
 
             await connection.connect();
-            await subManager.onIdentityToken.first.timeout(_timeout);
+            await subManager.onInitialConnection.first.timeout(_timeout);
             subManager.subscribe(['SELECT * FROM note']);
-            await subManager.onInitialSubscription.first.timeout(_timeout);
+            await subManager.onSubscribeApplied.first.timeout(_timeout);
 
             await allDone.future.timeout(_timeout);
             await sub.cancel();

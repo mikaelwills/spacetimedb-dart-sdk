@@ -10,7 +10,6 @@ void main() {
         status: Committed(),
         callerIdentity: Uint8List(32),
         callerConnectionId: Uint8List.fromList([1, 2, 3, 4]),
-        energyConsumed: 100,
         reducerName: 'create_note',
         reducerArgs: {'title': 'Test', 'content': 'Content'},
       );
@@ -46,7 +45,6 @@ void main() {
         }
       }
 
-      // Should compile and run without errors
       testEvent(
         ReducerEvent(
           timestamp: Int64.ZERO,
@@ -62,37 +60,42 @@ void main() {
     });
   });
 
-  group('UpdateStatus sealed class', () {
-    test('Committed has correct toString', () {
+  group('UpdateStatus sealed class (v2)', () {
+    test('Committed toString', () {
       final status = Committed();
       expect(status.toString(), equals('Committed()'));
     });
 
-    test('Failed has correct toString', () {
-      final status = Failed('Database error');
+    test('Failed carries decodable UTF-8 bytes', () {
+      final bytes = Uint8List.fromList('Database error'.codeUnits);
+      final status = Failed(bytes);
+      expect(status.errorMessage, equals('Database error'));
       expect(status.toString(), equals('Failed(message: Database error)'));
     });
 
-    test('OutOfEnergy has correct toString', () {
-      final status = OutOfEnergy();
-      expect(status.toString(), equals('OutOfEnergy()'));
+    test('InternalError toString', () {
+      final status = InternalError('db panic');
+      expect(status.toString(), equals('InternalError(message: db panic)'));
     });
 
-    test('pattern matching works on UpdateStatus', () {
+    test('pattern matching on v2 UpdateStatus', () {
       String handleStatus(UpdateStatus status) {
         return switch (status) {
           Committed() => 'success',
-          Failed(:final message) => 'failed: $message',
-          OutOfEnergy() => 'out of energy',
+          Failed(:final errorMessage) => 'failed: $errorMessage',
+          InternalError(:final message) => 'internal: $message',
           Pending() => 'pending',
           Dropped() => 'dropped',
         };
       }
 
       expect(handleStatus(Committed()), equals('success'));
-      expect(handleStatus(Failed('error')), equals('failed: error'));
+      expect(
+        handleStatus(Failed(Uint8List.fromList('error'.codeUnits))),
+        equals('failed: error'),
+      );
       expect(handleStatus(Pending()), equals('pending'));
-      expect(handleStatus(OutOfEnergy()), equals('out of energy'));
+      expect(handleStatus(InternalError('boom')), equals('internal: boom'));
     });
   });
 
@@ -121,7 +124,6 @@ void main() {
         status: Committed(),
         callerIdentity: Uint8List(32),
         callerConnectionId: myConnectionId,
-        energyConsumed: 100,
         reducerName: 'test',
         reducerArgs: {},
       );
@@ -139,7 +141,6 @@ void main() {
         status: Committed(),
         callerIdentity: Uint8List(32),
         callerConnectionId: otherConnectionId,
-        energyConsumed: 100,
         reducerName: 'test',
         reducerArgs: {},
       );
@@ -154,7 +155,6 @@ void main() {
         status: Committed(),
         callerIdentity: Uint8List(32),
         callerConnectionId: Uint8List.fromList([1, 2, 3, 4]),
-        energyConsumed: 100,
         reducerName: 'test',
         reducerArgs: {},
       );
@@ -171,7 +171,6 @@ void main() {
         status: Committed(),
         callerIdentity: Uint8List(32),
         callerConnectionId: null,
-        energyConsumed: 100,
         reducerName: 'test',
         reducerArgs: {},
       );
@@ -180,7 +179,7 @@ void main() {
       expect(ctx.isMyTransaction, isFalse);
     });
 
-    test('byte comparison works correctly for different length arrays', () {
+    test('byte comparison returns false for different-length arrays', () {
       final myConnectionId = Uint8List.fromList([1, 2, 3]);
       final otherConnectionId = Uint8List.fromList([1, 2, 3, 4]);
 
@@ -189,13 +188,11 @@ void main() {
         status: Committed(),
         callerIdentity: Uint8List(32),
         callerConnectionId: otherConnectionId,
-        energyConsumed: 100,
         reducerName: 'test',
         reducerArgs: {},
       );
 
       final ctx = EventContext(myConnectionId: myConnectionId, event: event);
-      // Should return false because lengths don't match
       expect(ctx.isMyTransaction, isFalse);
     });
   });
@@ -247,7 +244,6 @@ void main() {
         }
       }
 
-      // Should compile and run without errors
       handleTableEvent(TableInsertEvent<String>(mockContext, 'test'));
       handleTableEvent(TableUpdateEvent<String>(mockContext, 'old', 'new'));
       handleTableEvent(TableDeleteEvent<String>(mockContext, 'test'));

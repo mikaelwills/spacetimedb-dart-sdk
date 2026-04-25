@@ -54,7 +54,7 @@ void main() async {
     final completer = Completer<void>();
     late StreamSubscription sub;
 
-    sub = subscriptionManager.onInitialSubscription.listen((_) {
+    sub = subscriptionManager.onSubscribeApplied.listen((_) {
       if (!completer.isCompleted) {
         completer.complete();
         sub.cancel();

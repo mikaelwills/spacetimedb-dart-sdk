@@ -276,7 +276,7 @@ void main() {
             if (!failureCompleter.isCompleted) {
               failureCompleter.complete();
             }
-          case OutOfEnergy():
+          case InternalError():
           case Pending():
           case Dropped():
             break;
@@ -303,7 +303,7 @@ void main() {
           myConnectionId: null,
           event: ReducerEvent(
             timestamp: Int64(456),
-            status: Failed('error'),
+            status: Failed(Uint8List.fromList('error'.codeUnits)),
             callerIdentity: Uint8List(32),
             reducerName: 'test_reducer',
             reducerArgs: {},

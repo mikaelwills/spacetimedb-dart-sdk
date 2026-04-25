@@ -5,12 +5,13 @@ import 'package:spacetimedb_sdk/src/messages/message_decoder.dart';
 import 'package:spacetimedb_sdk/src/messages/server_messages.dart';
 import 'package:spacetimedb_sdk/src/codec/bsatn_encoder.dart';
 
-Uint8List _encodeIdentityTokenBody() {
+/// v2 `InitialConnection`: tag 0 in the `ServerMessage` enum (v2.rs:175-196).
+Uint8List _encodeInitialConnectionBody() {
   final encoder = BsatnEncoder();
-  encoder.writeU8(3);
-  encoder.writeBytes(Uint8List(32));
+  encoder.writeU8(0); // ServerMessageType.initialConnection tag
+  encoder.writeBytes(Uint8List(32)); // identity
+  encoder.writeBytes(Uint8List(16)); // connection_id
   encoder.writeString('test-token');
-  encoder.writeBytes(Uint8List(16));
   return encoder.toBytes();
 }
 
@@ -22,21 +23,23 @@ Uint8List _frame(int compressionTag, List<int> payload) {
 }
 
 void main() {
-  group('MessageDecoder', () {
-    test('decodes IdentityTokenMessage', () {
+  group('MessageDecoder (v2)', () {
+    test('decodes InitialConnectionMessage', () async {
       final encoder = BsatnEncoder();
-      encoder.writeU8(0);
-      encoder.writeU8(3);
+      encoder.writeU8(0); // compression: none
+      encoder.writeU8(0); // ServerMessageType.initialConnection
       encoder.writeBytes(Uint8List(32));
-      encoder.writeString('test-token');
       encoder.writeBytes(Uint8List(16));
+      encoder.writeString('test-token');
 
       final bytes = encoder.toBytes();
-      final message = MessageDecoder.decode(bytes);
+      final message = await MessageDecoder.decode(bytes);
 
-      expect(message, isA<IdentityTokenMessage>());
-      final identityMsg = message as IdentityTokenMessage;
-      expect(identityMsg.token, equals('test-token'));
+      expect(message, isA<InitialConnectionMessage>());
+      final initial = message as InitialConnectionMessage;
+      expect(initial.token, equals('test-token'));
+      expect(initial.identity.length, equals(32));
+      expect(initial.connectionId.length, equals(16));
     });
 
     test('throws on unsupported message type', () {
@@ -46,18 +49,18 @@ void main() {
 
       final bytes = encoder.toBytes();
 
-      expect(() => MessageDecoder.decode(bytes), throwsA(isA<ArgumentError>()));
+      expect(MessageDecoder.decode(bytes), throwsA(isA<ArgumentError>()));
     });
 
-    test('decodes a Gzip-compressed IdentityTokenMessage', () {
-      final body = _encodeIdentityTokenBody();
+    test('decodes a Gzip-compressed InitialConnectionMessage', () async {
+      final body = _encodeInitialConnectionBody();
       final compressed = gzip.encode(body);
       final frame = _frame(2, compressed);
 
-      final message = MessageDecoder.decode(frame);
+      final message = await MessageDecoder.decode(frame);
 
-      expect(message, isA<IdentityTokenMessage>());
-      expect((message as IdentityTokenMessage).token, equals('test-token'));
+      expect(message, isA<InitialConnectionMessage>());
+      expect((message as InitialConnectionMessage).token, equals('test-token'));
     });
   });
 }

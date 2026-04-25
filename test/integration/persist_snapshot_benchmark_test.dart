@@ -120,10 +120,10 @@ void main() {
       subManager.reducerRegistry.register(deleteAllNotesDef);
 
       await connection.connect();
-      await subManager.onIdentityToken.first.timeout(_timeout);
+      await subManager.onInitialConnection.first.timeout(_timeout);
 
       subManager.subscribe(['SELECT * FROM note', 'SELECT * FROM folder']);
-      await subManager.onInitialSubscription.first.timeout(_timeout);
+      await subManager.onSubscribeApplied.first.timeout(_timeout);
 
       final deleteEnc = BsatnEncoder();
       await subManager.reducers

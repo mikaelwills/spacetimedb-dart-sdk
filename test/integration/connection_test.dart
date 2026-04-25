@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/protocol.dart';
 import '../helpers/integration_test_helper.dart';
@@ -106,19 +105,18 @@ void main() {
       await waitForState<Connected>(connection);
 
       const pingQuery = 'SELECT * FROM __spacetime_dart_sdk_keepalive__';
-
-      final messageId = Uint8List.fromList(List.filled(16, 0xDD));
+      const probeRequestId = 0xDD;
 
       final message = OneOffQueryMessage(
-        messageId: messageId,
         queryString: pingQuery,
+        requestId: probeRequestId,
       );
 
       final responseFuture = connection.onMessage
-          .map(MessageDecoder.decode)
-          .where((msg) => msg is OneOffQueryResponse)
-          .cast<OneOffQueryResponse>()
-          .where((msg) => _listEquals(msg.messageId, messageId))
+          .asyncMap(MessageDecoder.decode)
+          .where((msg) => msg is OneOffQueryResult)
+          .cast<OneOffQueryResult>()
+          .where((msg) => msg.requestId == probeRequestId)
           .first
           .timeout(const Duration(seconds: 10));
 
@@ -200,12 +198,4 @@ void main() {
       }
     });
   });
-}
-
-bool _listEquals(Uint8List a, Uint8List b) {
-  if (a.length != b.length) return false;
-  for (int i = 0; i < a.length; i++) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
 }

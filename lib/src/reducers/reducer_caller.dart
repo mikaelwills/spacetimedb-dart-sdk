@@ -18,6 +18,7 @@ class _PendingRequest {
   final Completer<TransactionResult> completer;
   final Timer timeout;
   final String reducerName;
+  final Uint8List args;
   final String? uuidRequestId;
   final bool hasOptimisticChanges;
 
@@ -25,6 +26,7 @@ class _PendingRequest {
     required this.completer,
     required this.timeout,
     required this.reducerName,
+    required this.args,
     this.uuidRequestId,
     this.hasOptimisticChanges = false,
   });
@@ -105,6 +107,7 @@ class ReducerCaller {
       completer: completer,
       timeout: timer,
       reducerName: reducerName,
+      args: args,
       uuidRequestId: requestId,
     );
 
@@ -120,6 +123,19 @@ class ReducerCaller {
 
   String? getUuidForRequest(int requestId) {
     return _pendingRequests[requestId]?.uuidRequestId;
+  }
+
+  /// Reducer name of the in-flight request, or null when the id is unknown
+  /// (e.g. protocol-level server error with `request_id = 0`).
+  String? pendingReducerName(int requestId) {
+    return _pendingRequests[requestId]?.reducerName;
+  }
+
+  /// BSATN-encoded args the SDK sent for the in-flight request. Used by the
+  /// caller-side `ReducerResult` handler to construct the `ReducerEvent`
+  /// without re-decoding from the (non-existent) wire copy.
+  Uint8List? pendingArgs(int requestId) {
+    return _pendingRequests[requestId]?.args;
   }
 
   /// Completes the pending request with the given [requestId]. Returns true
@@ -147,30 +163,6 @@ class ReducerCaller {
         ),
       );
     }
-    return true;
-  }
-
-  /// Fail the oldest in-flight request for the given reducer name. Used when
-  /// the server returns a protocol-level failure (e.g. "no such reducer")
-  /// with `requestId=0` because it cannot associate the failure with a
-  /// specific outbound call. Without this fallback, such failures silently
-  /// miss the requestId lookup in [completeRequest] and the pending request
-  /// sits until [_timeoutRequest] fires 10s later.
-  ///
-  /// Returns true if a pending request was matched and failed.
-  bool failOldestPendingByReducerName(
-    String reducerName,
-    TransactionResult result,
-  ) {
-    int? matchedId;
-    for (final entry in _pendingRequests.entries) {
-      if (entry.value.reducerName == reducerName) {
-        matchedId = entry.key;
-        break;
-      }
-    }
-    if (matchedId == null) return false;
-    completeRequest(matchedId, result);
     return true;
   }
 
@@ -261,6 +253,7 @@ class ReducerCaller {
       completer: completer,
       timeout: timer,
       reducerName: reducerName,
+      args: args,
       hasOptimisticChanges: hasOptimistic,
     );
 

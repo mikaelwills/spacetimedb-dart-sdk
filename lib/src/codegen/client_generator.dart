@@ -370,7 +370,7 @@ final client = $clientName._(
   ssl: ssl,
 );
 
-subscriptionManager.onIdentityToken.listen((msg) async {
+subscriptionManager.onInitialConnection.listen((msg) async {
   await storage.saveToken(msg.token);
   connection.updateToken(msg.token);
 });

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/src/exceptions.dart';
 import 'package:spacetimedb_sdk/src/connection/connection_state.dart';
@@ -28,7 +30,7 @@ void main() {
               reducerName: 'create_note',
               message: 'validation',
               result: TransactionResult(
-                status: Failed('validation'),
+                status: Failed(Uint8List.fromList('validation'.codeUnits)),
                 timestamp: DateTime.now(),
               ),
             ):
