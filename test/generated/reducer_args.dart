@@ -292,6 +292,37 @@ class NoOpArgsDecoder implements ReducerArgDecoder<NoOpArgs> {
   }
 }
 
+class ReducerReturnsErrArgs {
+  ReducerReturnsErrArgs({required this.message});
+
+  final String message;
+}
+
+class ReducerReturnsErrArgsDecoder
+    implements ReducerArgDecoder<ReducerReturnsErrArgs> {
+  const ReducerReturnsErrArgsDecoder();
+
+  @override
+  ReducerReturnsErrArgs decode(BsatnDecoder decoder) {
+    final message = decoder.readString();
+    return ReducerReturnsErrArgs(message: message);
+  }
+}
+
+class ReducerThatPanicsArgs {
+  ReducerThatPanicsArgs();
+}
+
+class ReducerThatPanicsArgsDecoder
+    implements ReducerArgDecoder<ReducerThatPanicsArgs> {
+  const ReducerThatPanicsArgsDecoder();
+
+  @override
+  ReducerThatPanicsArgs decode(BsatnDecoder decoder) {
+    return ReducerThatPanicsArgs();
+  }
+}
+
 class UpdateAllNotesArgs {
   UpdateAllNotesArgs({required this.newContent});
 
@@ -388,6 +419,14 @@ const mutateRandomEntitiesDef = ReducerDef<MutateRandomEntitiesArgs>(
   MutateRandomEntitiesArgsDecoder(),
 );
 const noOpDef = ReducerDef<NoOpArgs>('no_op', NoOpArgsDecoder());
+const reducerReturnsErrDef = ReducerDef<ReducerReturnsErrArgs>(
+  'reducer_returns_err',
+  ReducerReturnsErrArgsDecoder(),
+);
+const reducerThatPanicsDef = ReducerDef<ReducerThatPanicsArgs>(
+  'reducer_that_panics',
+  ReducerThatPanicsArgsDecoder(),
+);
 const updateAllNotesDef = ReducerDef<UpdateAllNotesArgs>(
   'update_all_notes',
   UpdateAllNotesArgsDecoder(),

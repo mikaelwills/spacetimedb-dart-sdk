@@ -340,6 +340,48 @@ class Reducers {
     );
   }
 
+  /// Calls the `reducer_returns_err` reducer.
+  ///
+  /// Returns a [TransactionResult] on success. Throws
+  /// [SpacetimeDbReducerException] if the reducer returns `Failed` or
+  /// `InternalError`. The returned status is one of `Committed`,
+  /// `Pending` (queued to offline storage), or `Dropped` (skipped via
+  /// `dropIfOffline: true` while offline).
+  Future<TransactionResult> reducerReturnsErr({
+    required String message,
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    encoder.writeString(message);
+    return await _reducerCaller.call(
+      reducerReturnsErrDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
+  /// Calls the `reducer_that_panics` reducer.
+  ///
+  /// Returns a [TransactionResult] on success. Throws
+  /// [SpacetimeDbReducerException] if the reducer returns `Failed` or
+  /// `InternalError`. The returned status is one of `Committed`,
+  /// `Pending` (queued to offline storage), or `Dropped` (skipped via
+  /// `dropIfOffline: true` while offline).
+  Future<TransactionResult> reducerThatPanics({
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    return await _reducerCaller.call(
+      reducerThatPanicsDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
   /// Calls the `update_all_notes` reducer.
   ///
   /// Returns a [TransactionResult] on success. Throws
@@ -573,6 +615,30 @@ class Reducers {
       if (event is! ReducerEvent) return;
       final args = event.reducerArgs;
       if (args is! NoOpArgs) return;
+      callback(ctx);
+    });
+  }
+
+  StreamSubscription<void> onReducerReturnsErr(
+    void Function(EventContext ctx, String message) callback,
+  ) {
+    return _reducerEmitter.on(reducerReturnsErrDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! ReducerReturnsErrArgs) return;
+      callback(ctx, args.message);
+    });
+  }
+
+  StreamSubscription<void> onReducerThatPanics(
+    void Function(EventContext ctx) callback,
+  ) {
+    return _reducerEmitter.on(reducerThatPanicsDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! ReducerThatPanicsArgs) return;
       callback(ctx);
     });
   }

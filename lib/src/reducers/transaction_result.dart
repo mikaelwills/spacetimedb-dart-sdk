@@ -1,7 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:fixnum/fixnum.dart';
-
 import '../messages/server_messages.dart';
 import '../messages/update_status.dart';
 
@@ -67,9 +65,7 @@ class TransactionResult {
   }) {
     return TransactionResult(
       status: message.status,
-      timestamp: DateTime.fromMicrosecondsSinceEpoch(
-        (message.timestamp ~/ Int64(1000)).toInt(),
-      ),
+      timestamp: DateTime.fromMicrosecondsSinceEpoch(message.timestamp.toInt()),
       reducerName: reducerName,
       reducerId: reducerId,
       retValue: message.retValue,

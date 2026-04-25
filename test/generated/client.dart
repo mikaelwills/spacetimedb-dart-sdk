@@ -8,8 +8,8 @@ import 'reducer_args.dart';
 import 'folder.dart';
 import 'note.dart';
 import 'optional_item.dart';
-import 'entity.dart';
 import 'tagged_item.dart';
+import 'entity.dart';
 
 class SpacetimeDbClient {
   SpacetimeDbClient._({
@@ -78,12 +78,12 @@ class SpacetimeDbClient {
     );
   }
 
-  TableCache<Entity> get entity {
-    return subscriptions.cache.getTableByTypedName<Entity>('entity');
-  }
-
   TableCache<TaggedItem> get taggedItem {
     return subscriptions.cache.getTableByTypedName<TaggedItem>('tagged_item');
+  }
+
+  TableCache<Entity> get entity {
+    return subscriptions.cache.getTableByTypedName<Entity>('entity');
   }
 
   TableCache<Note> get allNotes {
@@ -134,13 +134,13 @@ class SpacetimeDbClient {
       'optional_item',
       OptionalItemDecoder(),
     );
-    subscriptionManager.cache.registerDecoder<Entity>(
-      'entity',
-      EntityDecoder(),
-    );
     subscriptionManager.cache.registerDecoder<TaggedItem>(
       'tagged_item',
       TaggedItemDecoder(),
+    );
+    subscriptionManager.cache.registerDecoder<Entity>(
+      'entity',
+      EntityDecoder(),
     );
 
     subscriptionManager.cache.registerDecoder<Note>('all_notes', NoteDecoder());
@@ -167,6 +167,8 @@ class SpacetimeDbClient {
     subscriptionManager.reducerRegistry.register(mixedNoteBatchDef);
     subscriptionManager.reducerRegistry.register(mutateRandomEntitiesDef);
     subscriptionManager.reducerRegistry.register(noOpDef);
+    subscriptionManager.reducerRegistry.register(reducerReturnsErrDef);
+    subscriptionManager.reducerRegistry.register(reducerThatPanicsDef);
     subscriptionManager.reducerRegistry.register(updateAllNotesDef);
     subscriptionManager.reducerRegistry.register(updateNoteDef);
 
