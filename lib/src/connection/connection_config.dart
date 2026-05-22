@@ -1,28 +1,25 @@
-/// Configuration for connection behavior
-///
-/// Allows customization of reconnection strategy, heartbeat intervals,
-/// and other connection parameters.
+enum OutboundBatchingPolicy { opportunistic, disabled }
+
 class ConnectionConfig {
-  /// Maximum number of reconnection attempts before giving up
   final int maxReconnectAttempts;
-
-  /// Base delay for exponential backoff (first retry)
   final Duration baseReconnectDelay;
-
-  /// Maximum delay between reconnection attempts
   final Duration maxReconnectDelay;
-
-  /// How often to send ping messages
   final Duration pingInterval;
-
-  /// How long to wait for pong before declaring connection stale
   final Duration pongTimeout;
-
-  /// Enable/disable automatic reconnection
   final bool autoReconnect;
-
-  /// Timeout for initial WebSocket connection
   final Duration connectTimeout;
+
+  /// Outbound batching policy on the v3 WebSocket transport.
+  ///
+  /// Ignored when the negotiated protocol is v2. On v3, [opportunistic]
+  /// coalesces same-microtask `send` calls into one frame (capped at
+  /// [maxV3OutboundFrameBytes]); [disabled] forces one frame per call.
+  final OutboundBatchingPolicy outboundBatching;
+
+  /// Maximum bytes per v3 outbound frame. A queue exceeding this is split
+  /// across multiple frames; a single oversized message still ships solo.
+  /// Matches the TypeScript SDK's 256 KiB cap.
+  final int maxV3OutboundFrameBytes;
 
   const ConnectionConfig({
     this.maxReconnectAttempts = 10,
@@ -32,12 +29,10 @@ class ConnectionConfig {
     this.pongTimeout = const Duration(seconds: 10),
     this.autoReconnect = true,
     this.connectTimeout = const Duration(seconds: 10),
+    this.outboundBatching = OutboundBatchingPolicy.opportunistic,
+    this.maxV3OutboundFrameBytes = 256 * 1024,
   });
 
-  /// Preset for mobile networks (more aggressive reconnection)
-  ///
-  /// Uses shorter intervals and more attempts to handle
-  /// unstable mobile network connections.
   static const mobile = ConnectionConfig(
     maxReconnectAttempts: 20,
     baseReconnectDelay: Duration(milliseconds: 500),
@@ -47,10 +42,6 @@ class ConnectionConfig {
     connectTimeout: Duration(seconds: 15),
   );
 
-  /// Preset for stable connections (less aggressive)
-  ///
-  /// Uses longer intervals appropriate for stable
-  /// network connections like WiFi or Ethernet.
   static const stable = ConnectionConfig(
     maxReconnectAttempts: 5,
     baseReconnectDelay: Duration(seconds: 2),
@@ -60,10 +51,6 @@ class ConnectionConfig {
     connectTimeout: Duration(seconds: 10),
   );
 
-  /// Preset for development (no reconnection, immediate feedback)
-  ///
-  /// Disables automatic reconnection for faster feedback
-  /// during development and debugging.
   static const development = ConnectionConfig(
     maxReconnectAttempts: 0,
     autoReconnect: false,
@@ -80,6 +67,8 @@ class ConnectionConfig {
         'pingInterval: $pingInterval, '
         'pongTimeout: $pongTimeout, '
         'autoReconnect: $autoReconnect, '
-        'connectTimeout: $connectTimeout)';
+        'connectTimeout: $connectTimeout, '
+        'outboundBatching: $outboundBatching, '
+        'maxV3OutboundFrameBytes: $maxV3OutboundFrameBytes)';
   }
 }

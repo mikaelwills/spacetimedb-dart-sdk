@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 2.1.0 - 2026-05-22
+
+Adds v3 WebSocket transport support (SpacetimeDB 2.2.0+) and unblocks Flutter web wasm builds. Both changes are additive — no consumer code changes required, no semver-breaking deltas.
+
+### Added
+
+- **v3 WebSocket subprotocol negotiation.** SDK now advertises `[v3.bsatn.spacetimedb, v2.bsatn.spacetimedb]` and uses whichever the server picks. v3 servers (SpacetimeDB 2.2.0+, upstream PR #4761) negotiate v3 automatically; older servers fall back to v2 with no behavioural change. New `SpacetimeDbConnection.negotiatedProtocol` getter exposes the result. New public enum `NegotiatedWsProtocol { v2, v3 }`.
+- **Inbound v3 frame batching.** On v3, the server may pack multiple `ServerMessage`s into one WebSocket frame to cut per-message overhead. `MessageDecoder.decodeAll(bytes)` reads the compression tag once, decompresses once, then splits the payload into N messages and dispatches each in logical order. The single-message `MessageDecoder.decode(bytes)` is preserved for v2 callers and asserts a single-message payload.
+- **Outbound v3 frame batching (opportunistic).** Same-microtask `send(...)` calls coalesce into one frame on v3 — captures the realistic win of N synchronous subscribes during reconnect-resubscribe. Capped at `ConnectionConfig.maxV3OutboundFrameBytes` (default 256 KiB, matching the TypeScript SDK); a queue exceeding the cap splits across multiple frames with a `Timer(Duration.zero)` yield between them so a backlog never starves the read path. New `ConnectionConfig.outboundBatching` knob (`OutboundBatchingPolicy.opportunistic` default, `disabled` for one-frame-per-call). On v2 or with `disabled`, every `send` is one frame unchanged.
+- **Flutter web wasm support.** `flutter build web --wasm` no longer fails at first connection with `UnsupportedError: No WebSocket implementation for this platform`. The conditional-import gate in `lib/src/connection/websocket.dart` and `platform.dart` migrated from `dart.library.html` (false under wasm) to `dart.library.js_interop` (true under both JS and wasm). `HtmlWebSocketChannel` in `web_socket_channel` 3.x is already wasm-safe — no behavioural change for existing JS web builds.
+- **Integration tests** against a live 2.2.0+ server: `test/integration/v3_protocol_negotiation_test.dart` verifies (a) server accepts v3, (b) `[v3, v2]` lands on v3, (c) v2 fallback regression guard, (d) `SpacetimeDbConnection.negotiatedProtocol == v3` end-to-end with first-frame decode.
+
+### Changed (non-breaking)
+
+- Renamed internal files `websocket_html.dart` → `websocket_web.dart` and `platform_html.dart` → `platform_web.dart`. Public surface unchanged — these files were never exported.
+
+### Compatibility
+
+- **Server:** v3 features require SpacetimeDB 2.2.0+. Older servers transparently negotiate v2.
+- **Flutter web:** wasm builds now work; JS builds behave identically to 2.0.0.
+- **Test infrastructure:** local development requires `spacetime version use >= 2.2.0` for the v3 integration tests to land on v3 (otherwise the suite still passes via v2 fallback assertions).
+
 ## 2.0.0 - 2026-04-25
 
 First release targeting the SpacetimeDB **v2** WebSocket wire protocol (server 2.x). This is a hard cut. The SDK no longer speaks v1; if you need a v1 client, stay on `spacetimedb_sdk 1.x`.

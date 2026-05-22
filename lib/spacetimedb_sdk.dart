@@ -10,6 +10,8 @@ export 'src/connection/spacetimedb_connection.dart' show SpacetimeDbConnection;
 export 'src/connection/connection_state.dart';
 export 'src/connection/connection_quality.dart';
 export 'src/connection/connection_config.dart';
+export 'src/connection/websocket_protocols.dart'
+    show NegotiatedWsProtocol, kV2WsProtocol, kV3WsProtocol;
 
 // Cache
 export 'src/cache/table_cache.dart';
