@@ -1,9 +1,9 @@
 import 'dart:typed_data';
 import '../codec/bsatn_decoder.dart';
+import '../exceptions.dart';
 import 'decompress.dart';
 import 'server_messages.dart';
 
-/// Compression tags used by SpacetimeDB
 enum CompressionTag {
   none(0),
   brotli(1),
@@ -21,14 +21,21 @@ enum CompressionTag {
 }
 
 class MessageDecoder {
-  /// Async entry — strips the compression tag, decompresses with the
-  /// platform-appropriate implementation (pure-Dart on VM, native
-  /// DecompressionStream on web), then hands the uncompressed BSATN to the
-  /// sync decoder.
   static Future<ServerMessage> decode(Uint8List bytes) async {
-    final decoder = BsatnDecoder(bytes);
-    final compressionTag = CompressionTag.fromValue(decoder.readU8());
-    final payload = decoder.readBytes(decoder.remaining);
+    final messages = await decodeAll(bytes);
+    if (messages.length != 1) {
+      throw SpacetimeDbProtocolException(
+        'MessageDecoder.decode expects exactly one server message per frame; '
+        'got ${messages.length}. Use decodeAll on the v3 path.',
+      );
+    }
+    return messages.single;
+  }
+
+  static Future<List<ServerMessage>> decodeAll(Uint8List bytes) async {
+    final outer = BsatnDecoder(bytes);
+    final compressionTag = CompressionTag.fromValue(outer.readU8());
+    final payload = outer.readBytes(outer.remaining);
 
     final messageBytes = switch (compressionTag) {
       CompressionTag.none => payload,
@@ -36,12 +43,22 @@ class MessageDecoder {
       CompressionTag.gzip => await decompressGzip(payload),
     };
 
-    return _decodeServerMessage(messageBytes);
+    if (messageBytes.isEmpty) {
+      throw SpacetimeDbProtocolException(
+        'WebSocket frame payload is empty after decompression — expected at '
+        'least one server message',
+      );
+    }
+
+    final cursor = BsatnDecoder(messageBytes);
+    final results = <ServerMessage>[];
+    while (cursor.remaining > 0) {
+      results.add(_decodeServerMessage(cursor));
+    }
+    return results;
   }
 
-  static ServerMessage _decodeServerMessage(Uint8List bytes) {
-    final decoder = BsatnDecoder(bytes);
-
+  static ServerMessage _decodeServerMessage(BsatnDecoder decoder) {
     final tag = decoder.readU8();
     final messageType = ServerMessageType.fromTag(tag);
 

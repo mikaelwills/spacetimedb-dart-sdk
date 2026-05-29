@@ -6,6 +6,9 @@ import 'package:spacetimedb_sdk/codegen.dart';
 class MockConnection implements SpacetimeDbConnection {
   final List<Uint8List> sentMessages = [];
 
+  @override
+  NegotiatedWsProtocol get negotiatedProtocol => NegotiatedWsProtocol.v2;
+
   final StreamController<Uint8List> _incomingController =
       StreamController<Uint8List>.broadcast();
 

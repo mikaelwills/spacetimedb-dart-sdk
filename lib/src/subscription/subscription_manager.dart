@@ -310,10 +310,13 @@ class SubscriptionManager {
   Future<void> _handleMessage(Uint8List bytes) async {
     if (_disposed) return;
     try {
-      final message = await MessageDecoder.decode(bytes);
+      final messages = await MessageDecoder.decodeAll(bytes);
       if (_disposed) return;
-      SdkLogger.d('RX_MSG: ${message.runtimeType}');
-      _routeMessage(message);
+      for (final message in messages) {
+        if (_disposed) return;
+        SdkLogger.d('RX_MSG: ${message.runtimeType}');
+        _routeMessage(message);
+      }
     } catch (e, st) {
       SdkLogger.e(
         'RX_DECODE_FAILED: $e (${bytes.length} bytes, '

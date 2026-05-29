@@ -16,6 +16,8 @@ import 'platform.dart' show kIsWeb;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'websocket.dart' as ws;
+import 'websocket_protocols.dart';
+import 'websocket_v3_frames.dart';
 
 typedef WebSocketFactory =
     WebSocketChannel Function(
@@ -46,6 +48,10 @@ class SpacetimeDbConnection {
   DateTime? _lastPingSent;
 
   WebSocketChannel? _channel;
+  NegotiatedWsProtocol _negotiatedProtocol = NegotiatedWsProtocol.v2;
+
+  final List<Uint8List> _outboundQueue = <Uint8List>[];
+  bool _isOutboundFlushScheduled = false;
 
   ConnectionState _state = const Disconnected();
   final StreamController<ConnectionState> _stateController =
@@ -75,6 +81,8 @@ class SpacetimeDbConnection {
   bool get isConnected => _state is Connected;
 
   String? get token => _currentToken;
+
+  NegotiatedWsProtocol get negotiatedProtocol => _negotiatedProtocol;
 
   SpacetimeDbConnection({
     required this.host,
@@ -130,7 +138,7 @@ class SpacetimeDbConnection {
 
       _channel = _socketFactory(
         uri,
-        ['v2.bsatn.spacetimedb'],
+        kPreferredWsProtocols,
         headers,
         connectTimeout: config.connectTimeout,
         // On VM, IOWebSocketChannel uses this to send WS-level Ping
@@ -139,6 +147,8 @@ class SpacetimeDbConnection {
         pingInterval: kIsWeb ? null : config.pingInterval,
       );
       await _channel!.ready;
+      _negotiatedProtocol = normalizeWsProtocol(_channel!.protocol);
+      SdkLogger.i('Negotiated WebSocket protocol: ${_negotiatedProtocol.name}');
       _setupMessageListener();
       // On VM the WS-level ping (wired above) handles dead-socket
       // detection natively. On web we still need the app-layer
@@ -179,6 +189,14 @@ class SpacetimeDbConnection {
     _updateState(const Disconnected());
     await _channel?.sink.close();
     _channel = null;
+    _negotiatedProtocol = NegotiatedWsProtocol.v2;
+    if (_outboundQueue.isNotEmpty) {
+      SdkLogger.w(
+        'Dropping ${_outboundQueue.length} queued outbound message(s) on '
+        'disconnect',
+      );
+      _outboundQueue.clear();
+    }
   }
 
   void send(Uint8List data) {
@@ -186,7 +204,15 @@ class SpacetimeDbConnection {
       SdkLogger.i('Cannot send: not connected');
       return;
     }
-    _channel!.sink.add(data);
+    final shouldBatch =
+        _negotiatedProtocol == NegotiatedWsProtocol.v3 &&
+        config.outboundBatching == OutboundBatchingPolicy.opportunistic;
+    if (!shouldBatch) {
+      _channel!.sink.add(data);
+      return;
+    }
+    _outboundQueue.add(Uint8List.fromList(data));
+    _scheduleOutboundFlush();
   }
 
   void enableAutoReconnect(bool enabled) {
@@ -424,5 +450,34 @@ class SpacetimeDbConnection {
   void _handleStaleConnection() {
     _keepAlive?.stop();
     _channel?.sink.close();
+  }
+
+  void _scheduleOutboundFlush() {
+    if (_isOutboundFlushScheduled) return;
+    _isOutboundFlushScheduled = true;
+    scheduleMicrotask(_flushOutboundQueue);
+  }
+
+  void _flushOutboundQueue() {
+    _isOutboundFlushScheduled = false;
+    if (_outboundQueue.isEmpty) return;
+    if (!isConnected || _channel == null) {
+      SdkLogger.w(
+        'Dropping ${_outboundQueue.length} queued outbound message(s): '
+        'not connected',
+      );
+      _outboundQueue.clear();
+      return;
+    }
+    final count = countClientMessagesForV3Frame(
+      _outboundQueue,
+      config.maxV3OutboundFrameBytes,
+    );
+    final frame = encodeClientMessagesV3(_outboundQueue, count);
+    _channel!.sink.add(frame);
+    _outboundQueue.removeRange(0, count);
+    if (_outboundQueue.isNotEmpty) {
+      Timer(Duration.zero, _flushOutboundQueue);
+    }
   }
 }

@@ -10,6 +10,9 @@ class MockOfflineConnection implements SpacetimeDbConnection {
   final List<Uint8List> sentMessages = [];
   ConnectionState _state = const Disconnected();
 
+  @override
+  NegotiatedWsProtocol get negotiatedProtocol => NegotiatedWsProtocol.v2;
+
   final _stateController = StreamController<ConnectionState>.broadcast();
   final _incomingController = StreamController<Uint8List>.broadcast();
   final _qualityController = StreamController<ConnectionQuality>.broadcast();
