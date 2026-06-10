@@ -3,10 +3,7 @@ import 'dart:typed_data';
 /// Greedy count of how many leading queue entries fit into one v3 outbound
 /// frame at [maxFrameBytes]. Always returns at least 1 when the queue is
 /// non-empty (a single oversized message ships solo).
-int countClientMessagesForV3Frame(
-  List<Uint8List> queue,
-  int maxFrameBytes,
-) {
+int countClientMessagesForV3Frame(List<Uint8List> queue, int maxFrameBytes) {
   if (queue.isEmpty) return 0;
   var total = 0;
   var count = 0;

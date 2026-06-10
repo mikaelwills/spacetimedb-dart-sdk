@@ -64,19 +64,22 @@ void main() {
       await channel.sink.close();
     });
 
-    test('v2 fallback still works (regression guard for dual-support)', () async {
-      final uri = Uri.parse('ws://$host/v1/database/$database/subscribe');
+    test(
+      'v2 fallback still works (regression guard for dual-support)',
+      () async {
+        final uri = Uri.parse('ws://$host/v1/database/$database/subscribe');
 
-      final channel = IOWebSocketChannel.connect(
-        uri,
-        protocols: const ['v2.bsatn.spacetimedb'],
-      );
+        final channel = IOWebSocketChannel.connect(
+          uri,
+          protocols: const ['v2.bsatn.spacetimedb'],
+        );
 
-      await channel.ready.timeout(const Duration(seconds: 5));
-      expect(channel.protocol, 'v2.bsatn.spacetimedb');
+        await channel.ready.timeout(const Duration(seconds: 5));
+        expect(channel.protocol, 'v2.bsatn.spacetimedb');
 
-      await channel.sink.close();
-    });
+        await channel.sink.close();
+      },
+    );
 
     test('SpacetimeDbConnection negotiates v3 end-to-end', () async {
       final connection = SpacetimeDbConnection(
