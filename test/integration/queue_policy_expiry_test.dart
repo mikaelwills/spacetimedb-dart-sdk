@@ -82,19 +82,24 @@ void main() {
     }
 
     Future<void> backdateMutation(String requestId, Duration age) async {
-      final file = File('${tempDir.path}/pending_mutations.json');
-      final decoded = jsonDecode(await file.readAsString());
-      if (decoded is! List) {
-        fail('pending_mutations.json should contain a list');
-      }
-      final data = decoded;
-      for (final entry in data) {
-        if (entry['requestId'] == requestId) {
-          entry['createdAt'] =
+      final file = File('${tempDir.path}/pending_mutations.jsonl');
+      final lines = await file.readAsLines();
+      final rewritten = <String>[];
+      for (final line in lines) {
+        if (line.trim().isEmpty) continue;
+        final decoded = jsonDecode(line);
+        if (decoded is! Map<String, dynamic>) {
+          fail('journal line should be an object');
+        }
+        final mutation = decoded['mutation'];
+        if (mutation is Map<String, dynamic> &&
+            mutation['requestId'] == requestId) {
+          mutation['createdAt'] =
               DateTime.now().subtract(age).toIso8601String();
         }
+        rewritten.add(jsonEncode(decoded));
       }
-      await file.writeAsString(jsonEncode(data));
+      await file.writeAsString('${rewritten.join('\n')}\n', flush: true);
     }
 
     test(
@@ -246,7 +251,9 @@ void main() {
             allDone.complete();
           }
         });
-        await connectEnv(env);
+        await env.connection.connect();
+        await env.subManager.onInitialConnection.first.timeout(_timeout);
+        await env.subManager.onSubscribeApplied.first.timeout(_timeout);
         await allDone.future.timeout(_timeout);
         await resultSub.cancel();
         await dropSub.cancel();

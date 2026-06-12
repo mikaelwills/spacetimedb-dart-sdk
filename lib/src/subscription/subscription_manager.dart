@@ -139,6 +139,7 @@ class SubscriptionManager {
 
   /// Subscribe a new query set. Returns the assigned `querySetId`.
   /// Awaits the matching `SubscribeApplied` so initial rows are in the cache.
+  /// Resolves without throwing if the manager is disposed first.
   Future<int> subscribe(List<String> queries) async {
     final querySetId = _nextQuerySetId++;
     _subscriptionsByQuerySetId[querySetId] = List.of(queries);
@@ -146,7 +147,13 @@ class SubscriptionManager {
     final message = SubscribeMessage(queries, querySetId: querySetId);
     _connection.send(message.encode());
 
-    await onSubscribeApplied.firstWhere((m) => m.querySetId == querySetId);
+    try {
+      await onSubscribeApplied.firstWhere((m) => m.querySetId == querySetId);
+    } on StateError {
+      SdkLogger.d(
+        'subscribe($querySetId): manager disposed before SubscribeApplied',
+      );
+    }
     return querySetId;
   }
 

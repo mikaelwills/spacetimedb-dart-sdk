@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -67,20 +68,17 @@ void main() {
       });
 
       test(
-        'recovers mutations from backup when main file is corrupted',
+        'migrates legacy mutations from backup when main file is corrupted',
         () async {
-          await storage
-              .enqueueMutation(_createMutation('req-1'))
-              .timeout(_timeout);
-
           final mainFile = File('${tempDir.path}/pending_mutations.json');
           final backupFile = File('${tempDir.path}/pending_mutations.json.bak');
           await backupFile
-              .writeAsString(await mainFile.readAsString())
+              .writeAsString(jsonEncode([_createMutation('req-1').toJson()]))
               .timeout(_timeout);
           await mainFile.writeAsString('corrupted{invalid').timeout(_timeout);
 
-          final loaded = await storage.getPendingMutations().timeout(_timeout);
+          final fresh = JsonFileStorage(basePath: tempDir.path);
+          final loaded = await fresh.getPendingMutations().timeout(_timeout);
           expect(loaded.length, equals(1));
           expect(loaded.first.requestId, equals('req-1'));
         },

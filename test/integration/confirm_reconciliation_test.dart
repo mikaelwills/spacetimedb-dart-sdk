@@ -174,7 +174,6 @@ void main() {
 
         await env.connection.connect();
         await env.subManager.onInitialConnection.first.timeout(_timeout);
-        env.subManager.subscribe(['SELECT * FROM note']);
         await env.subManager.onSubscribeApplied.first.timeout(_timeout);
         await allSynced.future.timeout(_timeout);
         await resultSub.cancel();
@@ -271,7 +270,6 @@ void main() {
 
         await env.connection.connect();
         await env.subManager.onInitialConnection.first.timeout(_timeout);
-        env.subManager.subscribe(['SELECT * FROM note']);
         await env.subManager.onSubscribeApplied.first.timeout(_timeout);
 
         await bSynced.future.timeout(_timeout);

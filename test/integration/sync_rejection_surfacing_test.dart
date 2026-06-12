@@ -26,7 +26,7 @@ void main() {
       );
       await env.connection.connect();
       await env.subManager.onInitialConnection.first.timeout(_timeout);
-      env.subManager.subscribe(['SELECT * FROM note']);
+      unawaited(env.subManager.subscribe(['SELECT * FROM note']));
       await env.subManager.onSubscribeApplied.first.timeout(_timeout);
     });
 
@@ -114,7 +114,6 @@ void main() {
 
       await env.connection.connect();
       await env.subManager.onInitialConnection.first.timeout(_timeout);
-      env.subManager.subscribe(['SELECT * FROM note']);
       await env.subManager.onSubscribeApplied.first.timeout(_timeout);
 
       final result = await failed.future.timeout(_timeout);
@@ -186,7 +185,6 @@ void main() {
 
       await env.connection.connect();
       await env.subManager.onInitialConnection.first.timeout(_timeout);
-      env.subManager.subscribe(['SELECT * FROM note']);
       await env.subManager.onSubscribeApplied.first.timeout(_timeout);
       await allDone.future.timeout(_timeout);
       await sub.cancel();
@@ -244,7 +242,6 @@ void main() {
         });
         await env.connection.connect();
         await env.subManager.onInitialConnection.first.timeout(_timeout);
-        env.subManager.subscribe(['SELECT * FROM note']);
         await env.subManager.onSubscribeApplied.first.timeout(_timeout);
         await done.future.timeout(_timeout);
         await sub.cancel();

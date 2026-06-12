@@ -63,7 +63,7 @@ void main() {
 
         await storage.enqueueMutation(mutation);
 
-        final file = File('${tempDir.path}/pending_mutations.json');
+        final file = File('${tempDir.path}/pending_mutations.jsonl');
         expect(
           await file.exists(),
           isTrue,

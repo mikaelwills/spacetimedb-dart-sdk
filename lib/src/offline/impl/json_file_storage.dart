@@ -15,11 +15,16 @@ class JsonFileStorage implements OfflineStorage {
 
   Directory? _baseDir;
   File? _mutationsFile;
+  File? _journalFile;
   File? _syncTimesFile;
   bool _initialized = false;
   bool _disposed = false;
   int _pendingOperations = 0;
   Completer<void>? _allOperationsComplete;
+
+  final List<PendingMutation> _queue = [];
+  bool _queueLoaded = false;
+  int _journalOpCount = 0;
 
   JsonFileStorage({required this.basePath})
     : _fileStore = AtomicFileStore(basePath);
@@ -33,6 +38,7 @@ class JsonFileStorage implements OfflineStorage {
       await _baseDir!.create(recursive: true);
     }
     _mutationsFile = File('$basePath/pending_mutations.json');
+    _journalFile = File('$basePath/pending_mutations.jsonl');
     _syncTimesFile = File('$basePath/sync_times.json');
 
     await _fileStore.recoverFromTempFiles(_baseDir!);
@@ -101,9 +107,12 @@ class JsonFileStorage implements OfflineStorage {
     await _tracked(() async {
       await _ensureInitialized();
       await _locks.mutations.synchronized(() async {
-        final mutations = await _loadMutationsUnsafe();
-        mutations.add(mutation);
-        await _saveMutationsUnsafe(mutations);
+        await _ensureQueueLoadedUnsafe();
+        _queue.add(mutation);
+        await _appendJournalUnsafe({
+          'op': 'enqueue',
+          'mutation': mutation.toJson(),
+        });
       });
     });
   }
@@ -111,16 +120,21 @@ class JsonFileStorage implements OfflineStorage {
   @override
   Future<List<PendingMutation>> getPendingMutations() async {
     await _ensureInitialized();
-    return _locks.mutations.synchronized(() => _loadMutationsUnsafe());
+    return _locks.mutations.synchronized(() async {
+      await _ensureQueueLoadedUnsafe();
+      return List<PendingMutation>.of(_queue);
+    });
   }
 
   @override
   Future<void> dequeueMutation(String requestId) async {
     await _tracked(() async {
+      await _ensureInitialized();
       await _locks.mutations.synchronized(() async {
-        final mutations = await _loadMutationsUnsafe();
-        mutations.removeWhere((m) => m.requestId == requestId);
-        await _saveMutationsUnsafe(mutations);
+        await _ensureQueueLoadedUnsafe();
+        _queue.removeWhere((m) => m.requestId == requestId);
+        await _appendJournalUnsafe({'op': 'dequeue', 'requestId': requestId});
+        await _maybeCompactUnsafe();
       });
     });
   }
@@ -157,6 +171,9 @@ class JsonFileStorage implements OfflineStorage {
               await _baseDir!.delete(recursive: true);
               await _baseDir!.create(recursive: true);
             }
+            _queue.clear();
+            _queueLoaded = true;
+            _journalOpCount = 0;
             _locks.clearDynamicLocks();
           });
         });
@@ -180,9 +197,16 @@ class JsonFileStorage implements OfflineStorage {
   @override
   Future<void> clearMutationQueue() async {
     await _tracked(() async {
+      await _ensureInitialized();
       await _locks.mutations.synchronized(() async {
+        _queue.clear();
+        _queueLoaded = true;
+        _journalOpCount = 0;
         if (await _mutationsFile!.exists()) {
           await _mutationsFile!.delete();
+        }
+        if (await _journalFile!.exists()) {
+          await _journalFile!.delete();
         }
       });
     });
@@ -221,6 +245,93 @@ class JsonFileStorage implements OfflineStorage {
   }
 
   File _tableFile(String tableName) => File('$basePath/table_$tableName.json');
+
+  Future<void> _ensureQueueLoadedUnsafe() async {
+    if (_queueLoaded) return;
+
+    if (await _mutationsFile!.exists()) {
+      final legacy = await _loadMutationsUnsafe();
+      _queue
+        ..clear()
+        ..addAll(legacy);
+      await _compactUnsafe();
+      await _mutationsFile!.delete();
+      await _fileStore.cleanupBackup(_mutationsFile!);
+      SdkLogger.i(
+        'Migrated ${legacy.length} pending mutations from legacy file to journal',
+      );
+    } else if (await _journalFile!.exists()) {
+      await _replayJournalUnsafe();
+    }
+
+    _queueLoaded = true;
+  }
+
+  Future<void> _replayJournalUnsafe() async {
+    final lines = await _journalFile!.readAsLines();
+    _queue.clear();
+    var ops = 0;
+    var skipped = 0;
+    for (final line in lines) {
+      if (line.trim().isEmpty) continue;
+      try {
+        final decoded = jsonDecode(line);
+        if (decoded is! Map<String, dynamic>) {
+          throw const FormatException('journal entry is not an object');
+        }
+        final op = decoded['op'] ?? '';
+        if (op == 'enqueue') {
+          final mutationJson = decoded['mutation'];
+          if (mutationJson is! Map<String, dynamic>) {
+            throw const FormatException('enqueue entry missing mutation');
+          }
+          _queue.add(PendingMutation.fromJson(mutationJson));
+        } else if (op == 'dequeue') {
+          final requestId = decoded['requestId'] ?? '';
+          _queue.removeWhere((m) => m.requestId == requestId);
+        } else {
+          throw FormatException('unknown journal op "$op"');
+        }
+        ops++;
+      } catch (e) {
+        skipped++;
+        SdkLogger.w('Skipping unreadable journal line: $e');
+      }
+    }
+    _journalOpCount = ops;
+    if (skipped > 0) {
+      SdkLogger.e(
+        'Mutation journal recovery: $skipped unreadable line(s) skipped, '
+        '${_queue.length} mutations recovered',
+      );
+      await _compactUnsafe();
+    }
+  }
+
+  Future<void> _appendJournalUnsafe(Map<String, dynamic> entry) async {
+    await _journalFile!.writeAsString(
+      '${jsonEncode(entry)}\n',
+      mode: FileMode.append,
+      flush: true,
+    );
+    _journalOpCount++;
+  }
+
+  Future<void> _maybeCompactUnsafe() async {
+    if (_journalOpCount > 64 && _journalOpCount > _queue.length * 4) {
+      await _compactUnsafe();
+    }
+  }
+
+  Future<void> _compactUnsafe() async {
+    final buffer = StringBuffer();
+    for (final mutation in _queue) {
+      buffer.writeln(jsonEncode({'op': 'enqueue', 'mutation': mutation.toJson()}));
+    }
+    await _fileStore.atomicWrite(_journalFile!, buffer.toString());
+    await _fileStore.cleanupBackup(_journalFile!);
+    _journalOpCount = _queue.length;
+  }
 
   Future<List<PendingMutation>> _loadMutationsUnsafe() async {
     final content = await _fileStore.readWithFallback(_mutationsFile!);
@@ -262,11 +373,6 @@ class JsonFileStorage implements OfflineStorage {
       }
       return [];
     }
-  }
-
-  Future<void> _saveMutationsUnsafe(List<PendingMutation> mutations) async {
-    final json = jsonEncode(mutations.map((m) => m.toJson()).toList());
-    await _fileStore.atomicWrite(_mutationsFile!, json);
   }
 
   Future<Map<String, String>> _loadSyncTimesUnsafe() async {
