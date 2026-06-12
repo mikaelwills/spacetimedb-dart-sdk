@@ -184,19 +184,23 @@ void main() {
 
         await syncCompleter.future.timeout(_timeout);
         await syncSub.cancel();
+        await Future.delayed(const Duration(milliseconds: 100));
 
         expect(
           noteTable.getRow(optimisticNoteId),
-          isNotNull,
+          isNull,
           reason:
-              'Row should still exist after sync (client-generated ID is preserved by server)',
+              'Phantom optimistic id must be replaced by the server-assigned '
+              'id once the create confirms',
         );
 
-        final note = noteTable.getRow(optimisticNoteId)!;
+        final note = noteTable.iter().firstWhere(
+          (n) => n.title == optimisticTitle,
+        );
         expect(
-          note.title,
-          equals(optimisticTitle),
-          reason: 'Row should have correct title after sync',
+          note.content,
+          equals('Pending content'),
+          reason: 'Server row carries the created content after sync',
         );
       },
       timeout: const Timeout(Duration(seconds: 30)),
@@ -590,20 +594,31 @@ void main() {
 
         final syncResult = await syncCompleter.future.timeout(_timeout);
         await syncSub.cancel();
+        await Future.delayed(const Duration(milliseconds: 100));
 
         expect(syncResult.success, isTrue, reason: 'Sync should succeed');
 
         expect(
           noteTable.getRow(optimisticId),
-          isNotNull,
+          isNull,
           reason:
-              'Row should still exist after server confirms (client-generated ID is preserved)',
+              'Phantom optimistic id must be replaced by the server-assigned '
+              'id once the create confirms',
+        );
+
+        final confirmed = noteTable.iter().firstWhere(
+          (n) => n.title == optimisticTitle,
+        );
+        expect(
+          confirmed.content,
+          equals('Should be confirmed'),
+          reason: 'Server row replaces the optimistic placeholder',
         );
 
         expect(
           noteTable.count(),
           equals(initialCount + 1),
-          reason: 'New row should exist with client-generated ID',
+          reason: 'Exactly one new row after confirm, no phantom duplicate',
         );
       },
       timeout: const Timeout(Duration(seconds: 30)),

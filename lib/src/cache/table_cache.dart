@@ -92,9 +92,16 @@ class TableCache<T> {
   void applyTransactionUpdate(
     BsatnRowList deletes,
     BsatnRowList inserts,
-    EventContext context,
-  ) {
-    final changes = _applyChanges(deletes, inserts);
+    EventContext context, {
+    Set<dynamic>? protectedKeys,
+    bool reconcile = false,
+  }) {
+    final changes = _applyChanges(
+      deletes,
+      inserts,
+      protectedKeys: protectedKeys,
+      reconcile: reconcile,
+    );
     _emitChanges(changes, context);
 
     if (isEvent) {
@@ -110,9 +117,16 @@ class TableCache<T> {
   Set<dynamic> applyTransactionUpdateAndCollectKeys(
     BsatnRowList deletes,
     BsatnRowList inserts,
-    EventContext context,
-  ) {
-    final changes = _applyChanges(deletes, inserts);
+    EventContext context, {
+    Set<dynamic>? protectedKeys,
+    bool reconcile = false,
+  }) {
+    final changes = _applyChanges(
+      deletes,
+      inserts,
+      protectedKeys: protectedKeys,
+      reconcile: reconcile,
+    );
     _emitChanges(changes, context);
 
     if (isEvent) {
@@ -120,20 +134,7 @@ class TableCache<T> {
       _rows.clear();
     }
 
-    final touchedKeys = <dynamic>{};
-    for (final row in changes.inserted) {
-      final pk = decoder.getPrimaryKey(row);
-      if (pk != null) touchedKeys.add(pk);
-    }
-    for (final row in changes.deleted) {
-      final pk = decoder.getPrimaryKey(row);
-      if (pk != null) touchedKeys.add(pk);
-    }
-    for (final (_, newRow) in changes.updated) {
-      final pk = decoder.getPrimaryKey(newRow);
-      if (pk != null) touchedKeys.add(pk);
-    }
-    return touchedKeys;
+    return changes.touchedKeys;
   }
 
   /// Returns the number of rows in the cache
@@ -498,6 +499,7 @@ class TableCache<T> {
     BsatnRowList deletes,
     BsatnRowList inserts, {
     Set<dynamic>? protectedKeys,
+    bool reconcile = false,
   }) {
     final changes = _RowChanges<T>();
     final oldValues = <dynamic, T>{};
@@ -514,11 +516,12 @@ class TableCache<T> {
         if (protectedKeys != null && protectedKeys.contains(primaryKey)) {
           continue;
         }
+        changes.touchedKeys.add(primaryKey);
         final old = _rowsByPrimaryKey.remove(primaryKey);
         if (old != null) {
           oldValues[primaryKey] = old;
           pendingDeletes.add((primaryKey, old));
-        } else {
+        } else if (!reconcile) {
           pendingDeletes.add((primaryKey, row));
         }
       } else {
@@ -537,9 +540,20 @@ class TableCache<T> {
         if (protectedKeys != null && protectedKeys.contains(primaryKey)) {
           continue;
         }
+        changes.touchedKeys.add(primaryKey);
         if (oldValues.containsKey(primaryKey)) {
-          changes.updated.add((oldValues[primaryKey]!, row));
+          final old = oldValues[primaryKey] as T;
+          if (!(reconcile && old == row)) {
+            changes.updated.add((old, row));
+          }
           coalescedKeys.add(primaryKey);
+        } else if (reconcile) {
+          final existing = _rowsByPrimaryKey[primaryKey];
+          if (existing == null) {
+            changes.inserted.add(row);
+          } else if (existing != row) {
+            changes.updated.add((existing, row));
+          }
         } else {
           changes.inserted.add(row);
         }
@@ -564,6 +578,7 @@ class _RowChanges<T> {
   final List<T> inserted = [];
   final List<T> deleted = [];
   final List<(T, T)> updated = [];
+  final Set<dynamic> touchedKeys = {};
 }
 
 class _AutoDisposeNotifier<T> extends ValueNotifier<T> {

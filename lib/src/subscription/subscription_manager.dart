@@ -575,16 +575,69 @@ class SubscriptionManager {
     }
     final context = EventContext(myConnectionId: _connectionId, event: event);
 
-    // Short-circuit for self-initiated commits with optimistic state in flight:
-    // confirm, persist only the touched tables, done.
+    // Short-circuit for self-initiated commits with optimistic state in
+    // flight: confirm, reconcile released keys to the committed rows
+    // (keys still covered by other pending overlays stay protected),
+    // persist only the touched tables, done.
     if (isOurTransaction && isCommitted && hasOptimistic) {
-      _optimisticState.confirmOptimisticChange(effectiveRequestId);
+      final confirmedEntries = _optimisticState.confirmOptimisticChange(
+        effectiveRequestId,
+      );
+
+      final shortCircuitUpdates = message.querySets
+          .expand((qs) => qs.tables)
+          .toList(growable: false);
+
+      for (final tableUpdate in shortCircuitUpdates) {
+        final table = cache.getTableByName(tableUpdate.tableName);
+        if (table == null) continue;
+
+        final stillPending = _optimisticState.optimisticPrimaryKeysForTable(
+          tableUpdate.tableName,
+        );
+        final touchedKeys = <dynamic>{};
+        for (final rowGroup in tableUpdate.rows) {
+          if (rowGroup is PersistentTableRows) {
+            touchedKeys.addAll(
+              table.applyTransactionUpdateAndCollectKeys(
+                rowGroup.deletes,
+                rowGroup.inserts,
+                context,
+                protectedKeys: stillPending,
+                reconcile: true,
+              ),
+            );
+          } else if (rowGroup is EventTableRows) {
+            touchedKeys.addAll(
+              table.applyTransactionUpdateAndCollectKeys(
+                BsatnRowList.empty(),
+                rowGroup.events,
+                context,
+                protectedKeys: stillPending,
+                reconcile: true,
+              ),
+            );
+          }
+        }
+
+        // An optimistic insert whose key the commit never touched is a
+        // phantom (the server assigned a different id); the committed row
+        // applied above is the real one, so drop the placeholder.
+        for (final entry in confirmedEntries) {
+          if (entry.tableName != tableUpdate.tableName) continue;
+          if (entry.type != OptimisticChangeType.insert) continue;
+          final pk = entry.primaryKey;
+          if (pk == null ||
+              touchedKeys.contains(pk) ||
+              stillPending.contains(pk)) {
+            continue;
+          }
+          table.deleteRow(pk);
+        }
+      }
+
       _mutationSyncer?.persistTableSnapshots(
-        onlyTables:
-            message.querySets
-                .expand((qs) => qs.tables)
-                .map((tu) => tu.tableName)
-                .toSet(),
+        onlyTables: shortCircuitUpdates.map((tu) => tu.tableName).toSet(),
       );
       reducers.completeRequest(numericRequestId, result);
       if (event is ReducerEvent) {

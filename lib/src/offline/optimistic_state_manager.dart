@@ -132,8 +132,8 @@ class OptimisticStateManager {
     }
   }
 
-  void confirmOptimisticChange(String requestId) {
-    _entries.remove(requestId);
+  List<OptimisticEntry> confirmOptimisticChange(String requestId) {
+    return _entries.remove(requestId) ?? const [];
   }
 
   void confirmOrRollbackWithTouchedKeys(
