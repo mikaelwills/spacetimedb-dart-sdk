@@ -435,7 +435,13 @@ class SubscriptionManager {
 
       SdkLogger.d('  Table "${single.tableName}": applying initial rows');
       _optimisticState.clearNonOptimisticRows(single.tableName);
-      table.applyInitialData(single.rows, context);
+      table.applyInitialData(
+        single.rows,
+        context,
+        protectedKeys: _optimisticState.optimisticPrimaryKeysForTable(
+          single.tableName,
+        ),
+      );
       table.markSubscribed();
     }
 

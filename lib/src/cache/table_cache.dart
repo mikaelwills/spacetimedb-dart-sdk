@@ -204,9 +204,17 @@ class TableCache<T> {
   ///
   /// Called when initial subscription data arrives. Emits events with
   /// SubscribeAppliedEvent so users can distinguish initial load from updates.
-  void applyInitialData(BsatnRowList inserts, EventContext context) {
+  void applyInitialData(
+    BsatnRowList inserts,
+    EventContext context, {
+    Set<dynamic>? protectedKeys,
+  }) {
     // Treat initial data as inserts with no deletes
-    final changes = _applyChanges(BsatnRowList.empty(), inserts);
+    final changes = _applyChanges(
+      BsatnRowList.empty(),
+      inserts,
+      protectedKeys: protectedKeys,
+    );
     _emitChanges(changes, context);
   }
 
@@ -486,7 +494,11 @@ class TableCache<T> {
     }
   }
 
-  _RowChanges<T> _applyChanges(BsatnRowList deletes, BsatnRowList inserts) {
+  _RowChanges<T> _applyChanges(
+    BsatnRowList deletes,
+    BsatnRowList inserts, {
+    Set<dynamic>? protectedKeys,
+  }) {
     final changes = _RowChanges<T>();
     final oldValues = <dynamic, T>{};
     final pendingDeletes = <(dynamic, T)>[];
@@ -499,6 +511,9 @@ class TableCache<T> {
       final row = decoder.decode(bsatnDecoder);
       final primaryKey = decoder.getPrimaryKey(row);
       if (primaryKey != null) {
+        if (protectedKeys != null && protectedKeys.contains(primaryKey)) {
+          continue;
+        }
         final old = _rowsByPrimaryKey.remove(primaryKey);
         if (old != null) {
           oldValues[primaryKey] = old;
@@ -519,6 +534,9 @@ class TableCache<T> {
       final primaryKey = decoder.getPrimaryKey(row);
 
       if (primaryKey != null) {
+        if (protectedKeys != null && protectedKeys.contains(primaryKey)) {
+          continue;
+        }
         if (oldValues.containsKey(primaryKey)) {
           changes.updated.add((oldValues[primaryKey]!, row));
           coalescedKeys.add(primaryKey);
