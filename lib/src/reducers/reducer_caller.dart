@@ -6,6 +6,7 @@ import 'package:spacetimedb_sdk/src/connection/connection_state.dart';
 import 'package:spacetimedb_sdk/src/exceptions.dart';
 import 'package:spacetimedb_sdk/src/messages/client_messages.dart';
 import 'package:spacetimedb_sdk/src/reducers/transaction_result.dart';
+import 'package:spacetimedb_sdk/src/offline/offline_queue_policy.dart';
 import 'package:spacetimedb_sdk/src/offline/offline_storage.dart';
 import 'package:spacetimedb_sdk/src/offline/pending_mutation.dart';
 import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
@@ -40,6 +41,7 @@ class ReducerCaller {
   final SpacetimeDbConnection _connection;
   final OfflineStorage? _offlineStorage;
   final MutationHandler? _mutationHandler;
+  final OfflineQueuePolicy _policy;
   int _nextRequestId = 1;
   final _uuid = const Uuid();
 
@@ -52,8 +54,10 @@ class ReducerCaller {
     this._connection, {
     OfflineStorage? offlineStorage,
     MutationHandler? mutationHandler,
+    OfflineQueuePolicy policy = const OfflineQueuePolicy(),
   }) : _offlineStorage = offlineStorage,
-       _mutationHandler = mutationHandler;
+       _mutationHandler = mutationHandler,
+       _policy = policy;
 
   Future<TransactionResult> call(
     String reducerName,
@@ -200,6 +204,30 @@ class ReducerCaller {
     Uint8List args,
     List<OptimisticChange>? optimisticChanges,
   ) async {
+    final maxLength = _policy.maxQueueLength;
+    if (maxLength != null) {
+      final pending = await _offlineStorage!.getPendingMutations();
+      if (pending.length >= maxLength) {
+        if (_policy.overflow == OverflowStrategy.rejectNew) {
+          throw SpacetimeDbQueueFullException(
+            'Offline mutation queue is full ($maxLength), '
+            'rejecting $reducerName',
+            queueLength: pending.length,
+          );
+        }
+        final oldest = pending.first;
+        final handler = _mutationHandler;
+        if (handler != null) {
+          await handler.onMutationDropped(
+            oldest,
+            'dropped: queue full ($maxLength), making room for $reducerName',
+          );
+        } else {
+          await _offlineStorage.dequeueMutation(oldest.requestId);
+        }
+      }
+    }
+
     final requestId = _uuid.v4();
 
     if (optimisticChanges != null && optimisticChanges.isNotEmpty) {

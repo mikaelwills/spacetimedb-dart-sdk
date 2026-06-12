@@ -37,6 +37,7 @@ export 'src/auth/identity.dart';
 
 // Offline support (consumer-facing)
 export 'src/offline/offline_storage.dart';
+export 'src/offline/offline_queue_policy.dart';
 export 'src/offline/optimistic_change.dart';
 export 'src/offline/sync_state.dart';
 export 'src/offline/impl/json_file_storage.dart';

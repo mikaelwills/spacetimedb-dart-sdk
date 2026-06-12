@@ -7,6 +7,7 @@ import 'package:spacetimedb_sdk/src/connection/connection_state.dart';
 import 'package:spacetimedb_sdk/src/exceptions.dart';
 import 'package:spacetimedb_sdk/src/reducers/transaction_result.dart';
 import 'package:spacetimedb_sdk/src/reducers/mutation_handler.dart';
+import 'package:spacetimedb_sdk/src/offline/offline_queue_policy.dart';
 import 'package:spacetimedb_sdk/src/offline/offline_storage.dart';
 import 'package:spacetimedb_sdk/src/offline/optimistic_state_manager.dart';
 import 'package:spacetimedb_sdk/src/offline/pending_mutation.dart';
@@ -26,6 +27,7 @@ class MutationSyncer implements MutationHandler {
   final OptimisticStateManager _optimisticState;
   final ClientCache _cache;
   final SendReducer _send;
+  final OfflineQueuePolicy _policy;
 
   bool _isSyncing = false;
   bool _disposed = false;
@@ -50,11 +52,13 @@ class MutationSyncer implements MutationHandler {
     required OptimisticStateManager optimisticState,
     required ClientCache cache,
     required SendReducer send,
+    OfflineQueuePolicy policy = const OfflineQueuePolicy(),
   }) : _connection = connection,
        _storage = storage,
        _optimisticState = optimisticState,
        _cache = cache,
-       _send = send;
+       _send = send,
+       _policy = policy;
 
   Stream<SyncState> get onSyncStateChanged => _syncStateController.stream;
   Stream<MutationSyncResult> get onMutationSyncResult =>
@@ -163,6 +167,37 @@ class MutationSyncer implements MutationHandler {
         if (_connection.state is! Connected) {
           SdkLogger.d('Connection lost during sync. Pausing queue.');
           break;
+        }
+
+        final maxAge = _policy.maxMutationAge;
+        if (maxAge != null &&
+            DateTime.now().difference(mutation.createdAt) > maxAge) {
+          await _discardMutation(
+            mutation,
+            'expired: older than ${maxAge.inSeconds}s at replay',
+            cycleFailures,
+            expired: true,
+          );
+          continue;
+        }
+
+        final hook = _policy.onBeforeReplay;
+        if (hook != null) {
+          ReplayDecision decision;
+          try {
+            decision = await hook(mutation);
+          } catch (e) {
+            SdkLogger.e('onBeforeReplay hook threw, replaying anyway: $e');
+            decision = ReplayDecision.replay;
+          }
+          if (decision == ReplayDecision.discard) {
+            await _discardMutation(
+              mutation,
+              'discarded by onBeforeReplay',
+              cycleFailures,
+            );
+            continue;
+          }
         }
 
         try {
@@ -295,6 +330,70 @@ class MutationSyncer implements MutationHandler {
     } else if (remaining.isEmpty) {
       cancelRetry();
       _retryAttempt = 0;
+    }
+  }
+
+  Future<void> _discardMutation(
+    PendingMutation mutation,
+    String reason,
+    List<MutationSyncResult> cycleFailures, {
+    bool expired = false,
+  }) async {
+    final touched = _optimisticState.rollbackOptimisticChanges(
+      mutation.requestId,
+    );
+    if (touched.isNotEmpty) {
+      await persistTableSnapshots(onlyTables: touched);
+    }
+    await _storage.dequeueMutation(mutation.requestId);
+    _decrementPendingCount();
+    SdkLogger.w('Discarding mutation ${mutation.reducerName}: $reason');
+    final failure = MutationSyncResult(
+      requestId: mutation.requestId,
+      reducerName: mutation.reducerName,
+      success: false,
+      error: reason,
+      expired: expired,
+      optimisticChanges: mutation.optimisticChanges,
+    );
+    cycleFailures.add(failure);
+    if (!_disposed) {
+      _mutationSyncResultController.add(failure);
+    }
+  }
+
+  @override
+  Future<void> onMutationDropped(PendingMutation mutation, String reason) async {
+    final touched = _optimisticState.rollbackOptimisticChanges(
+      mutation.requestId,
+    );
+    if (touched.isNotEmpty) {
+      await persistTableSnapshots(onlyTables: touched);
+    }
+    await _storage.dequeueMutation(mutation.requestId);
+    _decrementPendingCount();
+    SdkLogger.w('Dropping queued mutation ${mutation.reducerName}: $reason');
+    final failure = MutationSyncResult(
+      requestId: mutation.requestId,
+      reducerName: mutation.reducerName,
+      success: false,
+      error: reason,
+      optimisticChanges: mutation.optimisticChanges,
+    );
+    var recentFailures = [..._currentSyncState.recentFailures, failure];
+    if (recentFailures.length > _maxRetainedFailures) {
+      recentFailures = recentFailures.sublist(
+        recentFailures.length - _maxRetainedFailures,
+      );
+    }
+    _updateSyncState(
+      _currentSyncState.copyWith(
+        failedCount: _currentSyncState.failedCount + 1,
+        recentFailures: recentFailures,
+      ),
+    );
+    if (!_disposed) {
+      _mutationSyncResultController.add(failure);
     }
   }
 

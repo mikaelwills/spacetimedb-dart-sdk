@@ -99,6 +99,7 @@ class MockMutationHandler implements MutationHandler {
   final List<String> queuedRequestIds = [];
   final List<String> optimisticRequestIds = [];
   final List<String> rolledBackRequestIds = [];
+  final List<PendingMutation> droppedMutations = [];
 
   @override
   void trySyncNow() => syncTriggered = true;
@@ -111,6 +112,11 @@ class MockMutationHandler implements MutationHandler {
   @override
   void onOptimisticChanges(String requestId, List<OptimisticChange>? changes) {
     optimisticRequestIds.add(requestId);
+  }
+
+  @override
+  Future<void> onMutationDropped(PendingMutation mutation, String reason) async {
+    droppedMutations.add(mutation);
   }
 
   @override

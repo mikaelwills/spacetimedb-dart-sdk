@@ -24,4 +24,5 @@ export 'src/reducers/mutation_handler.dart';
 // Offline internals needed by generated client
 export 'src/offline/mutation_syncer.dart';
 export 'src/offline/pending_mutation.dart';
+export 'src/offline/offline_queue_policy.dart';
 export 'src/offline/optimistic_state_manager.dart';

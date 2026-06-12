@@ -20,6 +20,7 @@ import '../exceptions.dart';
 import '../events/event.dart';
 import '../events/event_context.dart';
 import '../auth/identity.dart';
+import '../offline/offline_queue_policy.dart';
 import '../offline/offline_storage.dart';
 import '../offline/sync_state.dart';
 import '../offline/pending_mutation.dart';
@@ -66,7 +67,11 @@ class SubscriptionManager {
   StreamSubscription<Uint8List>? _messageSubscription;
   StreamSubscription<ConnectionState>? _connectionStatusSubscription;
 
-  SubscriptionManager(this._connection, {OfflineStorage? offlineStorage}) {
+  SubscriptionManager(
+    this._connection, {
+    OfflineStorage? offlineStorage,
+    OfflineQueuePolicy queuePolicy = const OfflineQueuePolicy(),
+  }) {
     _optimisticState = OptimisticStateManager(cache);
 
     if (offlineStorage != null) {
@@ -79,11 +84,13 @@ class SubscriptionManager {
         send:
             (name, args, {requestId}) =>
                 caller.callWithBytes(name, args, requestId: requestId),
+        policy: queuePolicy,
       );
       caller = ReducerCaller(
         _connection,
         offlineStorage: offlineStorage,
         mutationHandler: _mutationSyncer,
+        policy: queuePolicy,
       );
       reducers = caller;
     } else {

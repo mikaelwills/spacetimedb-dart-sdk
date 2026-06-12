@@ -31,6 +31,7 @@ Future<TestEnv> createTestEnv({
   bool registerFolder = false,
   bool registerViews = false,
   OfflineStorage? offlineStorage,
+  OfflineQueuePolicy queuePolicy = const OfflineQueuePolicy(),
 }) async {
   final connection = SpacetimeDbConnection(
     host: 'localhost:3000',
@@ -39,6 +40,7 @@ Future<TestEnv> createTestEnv({
   final subManager = SubscriptionManager(
     connection,
     offlineStorage: offlineStorage,
+    queuePolicy: queuePolicy,
   );
 
   if (registerNote) {

@@ -14,6 +14,7 @@ String classify(SpacetimeDbException e) => switch (e) {
   SpacetimeDbSchemaException() => 'schema',
   SpacetimeDbProtocolException() => 'protocol',
   SpacetimeDbSubscriptionException() => 'subscription',
+  SpacetimeDbQueueFullException() => 'queue-full',
 };
 
 void main() {

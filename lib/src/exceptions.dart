@@ -44,6 +44,12 @@ class SpacetimeDbSchemaException extends SpacetimeDbException {
   SpacetimeDbSchemaException(super.message);
 }
 
+class SpacetimeDbQueueFullException extends SpacetimeDbException {
+  final int queueLength;
+
+  SpacetimeDbQueueFullException(super.message, {required this.queueLength});
+}
+
 class SpacetimeDbProtocolException extends SpacetimeDbException {
   SpacetimeDbProtocolException(super.message);
 }

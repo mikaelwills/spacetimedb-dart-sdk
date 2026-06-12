@@ -7,6 +7,7 @@ class MutationSyncResult {
   final String reducerName;
   final bool success;
   final String? error;
+  final bool expired;
   final List<OptimisticChange>? optimisticChanges;
 
   const MutationSyncResult({
@@ -14,6 +15,7 @@ class MutationSyncResult {
     required this.reducerName,
     required this.success,
     this.error,
+    this.expired = false,
     this.optimisticChanges,
   });
 
