@@ -55,6 +55,7 @@ Future<TestEnv> createTestEnv({
 
   subManager.reducerRegistry.register(createNoteDef);
   subManager.reducerRegistry.register(updateNoteDef);
+  subManager.reducerRegistry.register(updateNoteGuardedDef);
   subManager.reducerRegistry.register(deleteNoteDef);
   subManager.reducerRegistry.register(deleteAllNotesDef);
   subManager.reducerRegistry.register(createNotesBulkDef);

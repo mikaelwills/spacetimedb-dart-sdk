@@ -249,6 +249,10 @@ class SubscriptionManager {
     await _mutationSyncer?.clearAllPendingMutations();
   }
 
+  void clearSyncErrors() {
+    _mutationSyncer?.clearSyncErrors();
+  }
+
   // --- Lifecycle ---
 
   Future<void> dispose() async {

@@ -5,11 +5,11 @@ import 'dart:async';
 import 'package:spacetimedb_sdk/codegen.dart';
 import 'reducers.dart';
 import 'reducer_args.dart';
-import 'note.dart';
-import 'optional_item.dart';
-import 'entity.dart';
-import 'tagged_item.dart';
 import 'folder.dart';
+import 'optional_item.dart';
+import 'tagged_item.dart';
+import 'entity.dart';
+import 'note.dart';
 
 class SpacetimeDbClient {
   SpacetimeDbClient._({
@@ -64,8 +64,8 @@ class SpacetimeDbClient {
     return subscriptions.onMutationSyncResult;
   }
 
-  TableCache<Note> get note {
-    return subscriptions.cache.getTableByTypedName<Note>('note');
+  TableCache<Folder> get folder {
+    return subscriptions.cache.getTableByTypedName<Folder>('folder');
   }
 
   TableCache<OptionalItem> get optionalItem {
@@ -74,16 +74,16 @@ class SpacetimeDbClient {
     );
   }
 
-  TableCache<Entity> get entity {
-    return subscriptions.cache.getTableByTypedName<Entity>('entity');
-  }
-
   TableCache<TaggedItem> get taggedItem {
     return subscriptions.cache.getTableByTypedName<TaggedItem>('tagged_item');
   }
 
-  TableCache<Folder> get folder {
-    return subscriptions.cache.getTableByTypedName<Folder>('folder');
+  TableCache<Entity> get entity {
+    return subscriptions.cache.getTableByTypedName<Entity>('entity');
+  }
+
+  TableCache<Note> get note {
+    return subscriptions.cache.getTableByTypedName<Note>('note');
   }
 
   TableCache<Note> get allNotes {
@@ -125,23 +125,23 @@ class SpacetimeDbClient {
       offlineStorage: offlineStorage,
     );
 
-    subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
+    subscriptionManager.cache.registerDecoder<Folder>(
+      'folder',
+      FolderDecoder(),
+    );
     subscriptionManager.cache.registerDecoder<OptionalItem>(
       'optional_item',
       OptionalItemDecoder(),
-    );
-    subscriptionManager.cache.registerDecoder<Entity>(
-      'entity',
-      EntityDecoder(),
     );
     subscriptionManager.cache.registerDecoder<TaggedItem>(
       'tagged_item',
       TaggedItemDecoder(),
     );
-    subscriptionManager.cache.registerDecoder<Folder>(
-      'folder',
-      FolderDecoder(),
+    subscriptionManager.cache.registerDecoder<Entity>(
+      'entity',
+      EntityDecoder(),
     );
+    subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
 
     subscriptionManager.cache.registerDecoder<Note>('all_notes', NoteDecoder());
     subscriptionManager.cache.registerDecoder<Note>(
@@ -171,6 +171,7 @@ class SpacetimeDbClient {
     subscriptionManager.reducerRegistry.register(reducerThatPanicsDef);
     subscriptionManager.reducerRegistry.register(updateAllNotesDef);
     subscriptionManager.reducerRegistry.register(updateNoteDef);
+    subscriptionManager.reducerRegistry.register(updateNoteGuardedDef);
 
     final client = SpacetimeDbClient._(
       connection: connection,

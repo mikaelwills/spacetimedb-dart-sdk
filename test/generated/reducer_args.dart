@@ -366,6 +366,26 @@ class UpdateNoteArgsDecoder implements ReducerArgDecoder<UpdateNoteArgs> {
   }
 }
 
+class UpdateNoteGuardedArgs {
+  UpdateNoteGuardedArgs({required this.noteId, required this.content});
+
+  final int noteId;
+
+  final String content;
+}
+
+class UpdateNoteGuardedArgsDecoder
+    implements ReducerArgDecoder<UpdateNoteGuardedArgs> {
+  const UpdateNoteGuardedArgsDecoder();
+
+  @override
+  UpdateNoteGuardedArgs decode(BsatnDecoder decoder) {
+    final noteId = decoder.readU32();
+    final content = decoder.readString();
+    return UpdateNoteGuardedArgs(noteId: noteId, content: content);
+  }
+}
+
 const bulkInsertEntitiesDef = ReducerDef<BulkInsertEntitiesArgs>(
   'bulk_insert_entities',
   BulkInsertEntitiesArgsDecoder(),
@@ -434,4 +454,8 @@ const updateAllNotesDef = ReducerDef<UpdateAllNotesArgs>(
 const updateNoteDef = ReducerDef<UpdateNoteArgs>(
   'update_note',
   UpdateNoteArgsDecoder(),
+);
+const updateNoteGuardedDef = ReducerDef<UpdateNoteGuardedArgs>(
+  'update_note_guarded',
+  UpdateNoteGuardedArgsDecoder(),
 );

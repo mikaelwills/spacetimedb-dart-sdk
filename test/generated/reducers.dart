@@ -430,6 +430,30 @@ class Reducers {
     );
   }
 
+  /// Calls the `update_note_guarded` reducer.
+  ///
+  /// Returns a [TransactionResult] on success. Throws
+  /// [SpacetimeDbReducerException] if the reducer returns `Failed` or
+  /// `InternalError`. The returned status is one of `Committed`,
+  /// `Pending` (queued to offline storage), or `Dropped` (skipped via
+  /// `dropIfOffline: true` while offline).
+  Future<TransactionResult> updateNoteGuarded({
+    required int noteId,
+    required String content,
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    encoder.writeU32(noteId);
+    encoder.writeString(content);
+    return await _reducerCaller.call(
+      updateNoteGuardedDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
   StreamSubscription<void> onBulkInsertEntities(
     void Function(EventContext ctx, int count) callback,
   ) {
@@ -665,6 +689,18 @@ class Reducers {
       final args = event.reducerArgs;
       if (args is! UpdateNoteArgs) return;
       callback(ctx, args.noteId, args.title, args.content);
+    });
+  }
+
+  StreamSubscription<void> onUpdateNoteGuarded(
+    void Function(EventContext ctx, int noteId, String content) callback,
+  ) {
+    return _reducerEmitter.on(updateNoteGuardedDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! UpdateNoteGuardedArgs) return;
+      callback(ctx, args.noteId, args.content);
     });
   }
 }

@@ -37,6 +37,7 @@ class MutationSyncer implements MutationHandler {
   int _retryAttempt = 0;
   static const Duration _initialRetryDelay = Duration(seconds: 5);
   static const Duration _maxRetryDelay = Duration(seconds: 60);
+  static const int _maxRetainedFailures = 20;
 
   final StreamController<SyncState> _syncStateController =
       StreamController<SyncState>.broadcast();
@@ -110,6 +111,12 @@ class MutationSyncer implements MutationHandler {
     _retryAttempt = 0;
   }
 
+  void clearSyncErrors() {
+    _updateSyncState(
+      _currentSyncState.copyWith(failedCount: 0, recentFailures: const []),
+    );
+  }
+
   void cancelRetry() {
     _retryTimer?.cancel();
     _retryTimer = null;
@@ -128,6 +135,7 @@ class MutationSyncer implements MutationHandler {
 
     SdkLogger.d('syncPendingMutations: starting');
     _isSyncing = true;
+    final cycleFailures = <MutationSyncResult>[];
 
     try {
       final pending = await _storage.getPendingMutations();
@@ -190,15 +198,16 @@ class MutationSyncer implements MutationHandler {
             SdkLogger.e(
               'Server rejected mutation: ${mutation.reducerName} - $errorMsg',
             );
+            final failure = MutationSyncResult(
+              requestId: mutation.requestId,
+              reducerName: mutation.reducerName,
+              success: false,
+              error: errorMsg,
+              optimisticChanges: mutation.optimisticChanges,
+            );
+            cycleFailures.add(failure);
             if (!_disposed) {
-              _mutationSyncResultController.add(
-                MutationSyncResult(
-                  requestId: mutation.requestId,
-                  reducerName: mutation.reducerName,
-                  success: false,
-                  error: errorMsg,
-                ),
-              );
+              _mutationSyncResultController.add(failure);
             }
           }
         } on SpacetimeDbReducerException catch (e) {
@@ -208,15 +217,16 @@ class MutationSyncer implements MutationHandler {
           SdkLogger.e(
             'Server rejected mutation: ${mutation.reducerName} - ${e.message}',
           );
+          final failure = MutationSyncResult(
+            requestId: mutation.requestId,
+            reducerName: mutation.reducerName,
+            success: false,
+            error: e.message,
+            optimisticChanges: mutation.optimisticChanges,
+          );
+          cycleFailures.add(failure);
           if (!_disposed) {
-            _mutationSyncResultController.add(
-              MutationSyncResult(
-                requestId: mutation.requestId,
-                reducerName: mutation.reducerName,
-                success: false,
-                error: e.message,
-              ),
-            );
+            _mutationSyncResultController.add(failure);
           }
         } on SpacetimeDbTimeoutException catch (e) {
           SdkLogger.w(
@@ -245,13 +255,38 @@ class MutationSyncer implements MutationHandler {
     final remaining = await _storage.getPendingMutations();
     _cachedPendingCount = remaining.length;
     SdkLogger.d(
-      'syncPendingMutations: remaining=$_cachedPendingCount, setting idle',
+      'syncPendingMutations: remaining=$_cachedPendingCount, '
+      'failures=${cycleFailures.length}, setting idle',
     );
+
+    int failedCount;
+    List<MutationSyncResult> recentFailures;
+    if (cycleFailures.isNotEmpty) {
+      failedCount = _currentSyncState.failedCount + cycleFailures.length;
+      recentFailures = [
+        ..._currentSyncState.recentFailures,
+        ...cycleFailures,
+      ];
+      if (recentFailures.length > _maxRetainedFailures) {
+        recentFailures = recentFailures.sublist(
+          recentFailures.length - _maxRetainedFailures,
+        );
+      }
+    } else if (remaining.isEmpty) {
+      failedCount = 0;
+      recentFailures = const [];
+    } else {
+      failedCount = _currentSyncState.failedCount;
+      recentFailures = _currentSyncState.recentFailures;
+    }
+
     _updateSyncState(
       _currentSyncState.copyWith(
         status: SyncStatus.idle,
         pendingCount: _cachedPendingCount,
         lastSyncTime: DateTime.now(),
+        failedCount: failedCount,
+        recentFailures: recentFailures,
       ),
     );
 

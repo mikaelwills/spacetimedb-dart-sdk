@@ -65,6 +65,20 @@ pub fn update_note(ctx: &ReducerContext, note_id: u32, title: String, content: S
 }
 
 #[reducer]
+pub fn update_note_guarded(ctx: &ReducerContext, note_id: u32, content: String) -> Result<(), String> {
+    let Some(mut note) = ctx.db.note().id().find(note_id) else {
+        return Err("no such note".into());
+    };
+    if note.content.starts_with("LOCKED") {
+        return Err("note is locked".into());
+    }
+    note.content = content;
+    note.timestamp = 0;
+    ctx.db.note().id().update(note);
+    Ok(())
+}
+
+#[reducer]
 pub fn delete_note(ctx: &ReducerContext, note_id: u32) {
     ctx.db.note().id().delete(note_id);
 }
