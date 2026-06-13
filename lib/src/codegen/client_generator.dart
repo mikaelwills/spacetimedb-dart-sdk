@@ -175,6 +175,16 @@ class ClientGenerator {
         ),
       );
 
+      b.methods.add(
+        Method(
+          (m) =>
+              m
+                ..name = 'clearSyncErrors'
+                ..returns = refer('void')
+                ..body = const Code('subscriptions.clearSyncErrors();'),
+        ),
+      );
+
       _addTableGetters(b);
       _addViewGetters(b);
 

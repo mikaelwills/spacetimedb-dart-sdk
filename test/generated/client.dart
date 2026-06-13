@@ -6,10 +6,10 @@ import 'package:spacetimedb_sdk/codegen.dart';
 import 'reducers.dart';
 import 'reducer_args.dart';
 import 'folder.dart';
-import 'optional_item.dart';
+import 'note.dart';
 import 'tagged_item.dart';
 import 'entity.dart';
-import 'note.dart';
+import 'optional_item.dart';
 
 class SpacetimeDbClient {
   SpacetimeDbClient._({
@@ -64,14 +64,16 @@ class SpacetimeDbClient {
     return subscriptions.onMutationSyncResult;
   }
 
+  void clearSyncErrors() {
+    subscriptions.clearSyncErrors();
+  }
+
   TableCache<Folder> get folder {
     return subscriptions.cache.getTableByTypedName<Folder>('folder');
   }
 
-  TableCache<OptionalItem> get optionalItem {
-    return subscriptions.cache.getTableByTypedName<OptionalItem>(
-      'optional_item',
-    );
+  TableCache<Note> get note {
+    return subscriptions.cache.getTableByTypedName<Note>('note');
   }
 
   TableCache<TaggedItem> get taggedItem {
@@ -82,8 +84,10 @@ class SpacetimeDbClient {
     return subscriptions.cache.getTableByTypedName<Entity>('entity');
   }
 
-  TableCache<Note> get note {
-    return subscriptions.cache.getTableByTypedName<Note>('note');
+  TableCache<OptionalItem> get optionalItem {
+    return subscriptions.cache.getTableByTypedName<OptionalItem>(
+      'optional_item',
+    );
   }
 
   TableCache<Note> get allNotes {
@@ -129,10 +133,7 @@ class SpacetimeDbClient {
       'folder',
       FolderDecoder(),
     );
-    subscriptionManager.cache.registerDecoder<OptionalItem>(
-      'optional_item',
-      OptionalItemDecoder(),
-    );
+    subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
     subscriptionManager.cache.registerDecoder<TaggedItem>(
       'tagged_item',
       TaggedItemDecoder(),
@@ -141,7 +142,10 @@ class SpacetimeDbClient {
       'entity',
       EntityDecoder(),
     );
-    subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
+    subscriptionManager.cache.registerDecoder<OptionalItem>(
+      'optional_item',
+      OptionalItemDecoder(),
+    );
 
     subscriptionManager.cache.registerDecoder<Note>('all_notes', NoteDecoder());
     subscriptionManager.cache.registerDecoder<Note>(
