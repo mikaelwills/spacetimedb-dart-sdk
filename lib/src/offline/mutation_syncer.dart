@@ -39,7 +39,6 @@ class MutationSyncer implements MutationHandler {
   int _retryAttempt = 0;
   static const Duration _initialRetryDelay = Duration(seconds: 5);
   static const Duration _maxRetryDelay = Duration(seconds: 60);
-  static const int _maxRetainedFailures = 20;
 
   final StreamController<SyncState> _syncStateController =
       StreamController<SyncState>.broadcast();
@@ -298,15 +297,10 @@ class MutationSyncer implements MutationHandler {
     List<MutationSyncResult> recentFailures;
     if (cycleFailures.isNotEmpty) {
       failedCount = _currentSyncState.failedCount + cycleFailures.length;
-      recentFailures = [
+      recentFailures = _capFailures([
         ..._currentSyncState.recentFailures,
         ...cycleFailures,
-      ];
-      if (recentFailures.length > _maxRetainedFailures) {
-        recentFailures = recentFailures.sublist(
-          recentFailures.length - _maxRetainedFailures,
-        );
-      }
+      ]);
     } else if (remaining.isEmpty) {
       failedCount = 0;
       recentFailures = const [];
@@ -333,35 +327,6 @@ class MutationSyncer implements MutationHandler {
     }
   }
 
-  Future<void> _discardMutation(
-    PendingMutation mutation,
-    String reason,
-    List<MutationSyncResult> cycleFailures, {
-    bool expired = false,
-  }) async {
-    final touched = _optimisticState.rollbackOptimisticChanges(
-      mutation.requestId,
-    );
-    if (touched.isNotEmpty) {
-      await persistTableSnapshots(onlyTables: touched);
-    }
-    await _storage.dequeueMutation(mutation.requestId);
-    _decrementPendingCount();
-    SdkLogger.w('Discarding mutation ${mutation.reducerName}: $reason');
-    final failure = MutationSyncResult(
-      requestId: mutation.requestId,
-      reducerName: mutation.reducerName,
-      success: false,
-      error: reason,
-      expired: expired,
-      optimisticChanges: mutation.optimisticChanges,
-    );
-    cycleFailures.add(failure);
-    if (!_disposed) {
-      _mutationSyncResultController.add(failure);
-    }
-  }
-
   @override
   Future<void> onMutationDropped(PendingMutation mutation, String reason) async {
     final touched = _optimisticState.rollbackOptimisticChanges(
@@ -380,12 +345,10 @@ class MutationSyncer implements MutationHandler {
       error: reason,
       optimisticChanges: mutation.optimisticChanges,
     );
-    var recentFailures = [..._currentSyncState.recentFailures, failure];
-    if (recentFailures.length > _maxRetainedFailures) {
-      recentFailures = recentFailures.sublist(
-        recentFailures.length - _maxRetainedFailures,
-      );
-    }
+    final recentFailures = _capFailures([
+      ..._currentSyncState.recentFailures,
+      failure,
+    ]);
     _updateSyncState(
       _currentSyncState.copyWith(
         failedCount: _currentSyncState.failedCount + 1,
@@ -473,6 +436,42 @@ class MutationSyncer implements MutationHandler {
     _syncStateController.close();
     _mutationSyncResultController.close();
     await _storage.dispose();
+  }
+
+  Future<void> _discardMutation(
+    PendingMutation mutation,
+    String reason,
+    List<MutationSyncResult> cycleFailures, {
+    bool expired = false,
+  }) async {
+    final touched = _optimisticState.rollbackOptimisticChanges(
+      mutation.requestId,
+    );
+    if (touched.isNotEmpty) {
+      await persistTableSnapshots(onlyTables: touched);
+    }
+    await _storage.dequeueMutation(mutation.requestId);
+    _decrementPendingCount();
+    SdkLogger.w('Discarding mutation ${mutation.reducerName}: $reason');
+    final failure = MutationSyncResult(
+      requestId: mutation.requestId,
+      reducerName: mutation.reducerName,
+      success: false,
+      error: reason,
+      expired: expired,
+      optimisticChanges: mutation.optimisticChanges,
+    );
+    cycleFailures.add(failure);
+    if (!_disposed) {
+      _mutationSyncResultController.add(failure);
+    }
+  }
+
+  List<MutationSyncResult> _capFailures(List<MutationSyncResult> failures) {
+    final max = _policy.maxRetainedFailures;
+    if (max == null || failures.length <= max) return failures;
+    if (max <= 0) return const [];
+    return failures.sublist(failures.length - max);
   }
 
   void _updateSyncState(SyncState state) {

@@ -40,6 +40,7 @@ class _Harness {
 
   factory _Harness({
     required TransactionResult Function(String reducerName) respond,
+    OfflineQueuePolicy policy = const OfflineQueuePolicy(),
   }) {
     final connection = MockConnection();
     connection.setStateSilently(const Connected());
@@ -52,6 +53,7 @@ class _Harness {
       storage: storage,
       optimisticState: optimisticState,
       cache: cache,
+      policy: policy,
       send: (reducerName, args, {requestId}) async {
         harness.sentReducers.add(reducerName);
         final result = respond(reducerName);
@@ -205,7 +207,7 @@ void main() {
       timeoutSyncer.cancelRetry();
     });
 
-    test('retained failures are capped at 20', () async {
+    test('retained failures default to the most recent 20', () async {
       final harness = _Harness(respond: (name) => _rejected(name, 'denied'));
       for (var i = 0; i < 25; i++) {
         await harness.storage.enqueueMutation(_mutation('r$i', 'update_note'));
@@ -218,6 +220,41 @@ void main() {
       expect(state.recentFailures, hasLength(20));
       expect(state.recentFailures.last.requestId, equals('r24'));
       expect(state.recentFailures.first.requestId, equals('r5'));
+    });
+
+    test('retention bound is configurable via policy', () async {
+      final harness = _Harness(
+        respond: (name) => _rejected(name, 'denied'),
+        policy: const OfflineQueuePolicy(maxRetainedFailures: 5),
+      );
+      for (var i = 0; i < 12; i++) {
+        await harness.storage.enqueueMutation(_mutation('r$i', 'update_note'));
+      }
+
+      await harness.syncer.syncPendingMutations();
+
+      final state = harness.syncer.syncState;
+      expect(state.failedCount, equals(12),
+          reason: 'failedCount always reflects the true total');
+      expect(state.recentFailures, hasLength(5));
+      expect(state.recentFailures.first.requestId, equals('r7'));
+      expect(state.recentFailures.last.requestId, equals('r11'));
+    });
+
+    test('null retention bound keeps every failure', () async {
+      final harness = _Harness(
+        respond: (name) => _rejected(name, 'denied'),
+        policy: const OfflineQueuePolicy(maxRetainedFailures: null),
+      );
+      for (var i = 0; i < 50; i++) {
+        await harness.storage.enqueueMutation(_mutation('r$i', 'update_note'));
+      }
+
+      await harness.syncer.syncPendingMutations();
+
+      final state = harness.syncer.syncState;
+      expect(state.failedCount, equals(50));
+      expect(state.recentFailures, hasLength(50));
     });
   });
 }

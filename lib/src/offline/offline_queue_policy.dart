@@ -21,17 +21,23 @@ enum ReplayDecision { replay, discard }
 /// - [onBeforeReplay]: per-mutation veto called at flush time. Returning
 ///   [ReplayDecision.discard] drops the mutation through the same surfaced
 ///   path as expiry. Must be fast; it runs on the sync path.
+/// - [maxRetainedFailures]: how many recent failed `MutationSyncResult`s
+///   `SyncState.recentFailures` keeps for UIs to display. `failedCount`
+///   always reflects the true total regardless of this bound. `null` retains
+///   every failure (unbounded); the default keeps the most recent 20.
 class OfflineQueuePolicy {
   final Duration? maxMutationAge;
   final int? maxQueueLength;
   final OverflowStrategy overflow;
   final FutureOr<ReplayDecision> Function(PendingMutation mutation)?
   onBeforeReplay;
+  final int? maxRetainedFailures;
 
   const OfflineQueuePolicy({
     this.maxMutationAge,
     this.maxQueueLength,
     this.overflow = OverflowStrategy.rejectNew,
     this.onBeforeReplay,
+    this.maxRetainedFailures = 20,
   });
 }
