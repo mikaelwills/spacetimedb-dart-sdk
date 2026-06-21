@@ -39,7 +39,11 @@ void main() {
       return env;
     }
 
-    Future<Note> createAndSync(TestEnv env, String title, String content) async {
+    Future<Note> createAndSync(
+      TestEnv env,
+      String title,
+      String content,
+    ) async {
       final synced = Completer<void>();
       final sub = env.subManager.onMutationSyncResult.listen((r) {
         if (r.reducerName == 'create_note' && !synced.isCompleted) {
@@ -281,90 +285,92 @@ void main() {
       timeout: const Timeout(Duration(seconds: 90)),
     );
 
-    test(
-      'TTL and bounds together: expired drop AND overflow drop both shed, '
-      'newest survives',
-      () async {
-        final title = 'TtlBound-${DateTime.now().microsecondsSinceEpoch}';
+    test('TTL and bounds together: expired drop AND overflow drop both shed, '
+        'newest survives', () async {
+      final title = 'TtlBound-${DateTime.now().microsecondsSinceEpoch}';
 
-        final env1 = await connectEnv(
-          await createTestEnv(
-            offlineStorage: JsonFileStorage(basePath: tempDir.path),
-            queuePolicy: const OfflineQueuePolicy(
-              maxQueueLength: 3,
-              overflow: OverflowStrategy.dropOldest,
-            ),
-          ),
-        );
-        final note = await createAndSync(env1, title, 'server v1');
-
-        final disconnected = env1.connection.onStateChanged
-            .firstWhere((s) => s is! Connected)
-            .timeout(_timeout);
-        await env1.connection.disconnect();
-        await disconnected;
-
-        final staleResult = await env1.reducers.updateNote(
-          noteId: note.id,
-          title: note.title,
-          content: 'stale-then-backdated',
-        );
-        await queueEdit(env1, env1.noteTable.getRow(note.id)!, 'mid');
-        await queueEdit(env1, env1.noteTable.getRow(note.id)!, 'newest');
-        expect(env1.subManager.syncState.pendingCount, equals(3));
-
-        await env1.subManager.dispose();
-        await env1.connection.disconnect();
-
-        await backdateMutation(
-          staleResult.pendingRequestId!,
-          const Duration(hours: 2),
-        );
-
-        final env2 = await createTestEnv(
+      final env1 = await connectEnv(
+        await createTestEnv(
           offlineStorage: JsonFileStorage(basePath: tempDir.path),
           queuePolicy: const OfflineQueuePolicy(
-            maxMutationAge: Duration(hours: 1),
             maxQueueLength: 3,
             overflow: OverflowStrategy.dropOldest,
           ),
-        );
-        addTearDown(() async {
-          await env2.subManager.dispose();
-          await env2.connection.disconnect();
-        });
-        await env2.subManager.loadFromOfflineCache();
-        expect(env2.subManager.syncState.pendingCount, equals(3));
+        ),
+      );
+      final note = await createAndSync(env1, title, 'server v1');
 
-        final results = <MutationSyncResult>[];
-        final allDone = Completer<void>();
-        final resultSub = env2.subManager.onMutationSyncResult.listen((r) {
-          results.add(r);
-          if (results.length == 3 && !allDone.isCompleted) allDone.complete();
-        });
-        await connectEnv(env2);
-        await allDone.future.timeout(_timeout);
-        await resultSub.cancel();
-        await Future.delayed(const Duration(milliseconds: 300));
+      final disconnected = env1.connection.onStateChanged
+          .firstWhere((s) => s is! Connected)
+          .timeout(_timeout);
+      await env1.connection.disconnect();
+      await disconnected;
 
-        expect(results.where((r) => r.expired), hasLength(1),
-            reason: 'the backdated mutation is dropped by TTL even within bounds');
-        expect(results.where((r) => r.success), hasLength(2),
-            reason: 'the two in-policy edits replay');
+      final staleResult = await env1.reducers.updateNote(
+        noteId: note.id,
+        title: note.title,
+        content: 'stale-then-backdated',
+      );
+      await queueEdit(env1, env1.noteTable.getRow(note.id)!, 'mid');
+      await queueEdit(env1, env1.noteTable.getRow(note.id)!, 'newest');
+      expect(env1.subManager.syncState.pendingCount, equals(3));
 
-        final observer = await connectEnv(await createTestEnv());
-        addTearDown(() async {
-          await observer.subManager.dispose();
-          await observer.connection.disconnect();
-        });
-        expect(
-          observer.noteTable.getRow(note.id)!.content,
-          equals('newest'),
-          reason: 'newest in-policy edit must win on the server',
-        );
-      },
-      timeout: const Timeout(Duration(seconds: 90)),
-    );
+      await env1.subManager.dispose();
+      await env1.connection.disconnect();
+
+      await backdateMutation(
+        staleResult.pendingRequestId!,
+        const Duration(hours: 2),
+      );
+
+      final env2 = await createTestEnv(
+        offlineStorage: JsonFileStorage(basePath: tempDir.path),
+        queuePolicy: const OfflineQueuePolicy(
+          maxMutationAge: Duration(hours: 1),
+          maxQueueLength: 3,
+          overflow: OverflowStrategy.dropOldest,
+        ),
+      );
+      addTearDown(() async {
+        await env2.subManager.dispose();
+        await env2.connection.disconnect();
+      });
+      await env2.subManager.loadFromOfflineCache();
+      expect(env2.subManager.syncState.pendingCount, equals(3));
+
+      final results = <MutationSyncResult>[];
+      final allDone = Completer<void>();
+      final resultSub = env2.subManager.onMutationSyncResult.listen((r) {
+        results.add(r);
+        if (results.length == 3 && !allDone.isCompleted) allDone.complete();
+      });
+      await connectEnv(env2);
+      await allDone.future.timeout(_timeout);
+      await resultSub.cancel();
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      expect(
+        results.where((r) => r.expired),
+        hasLength(1),
+        reason: 'the backdated mutation is dropped by TTL even within bounds',
+      );
+      expect(
+        results.where((r) => r.success),
+        hasLength(2),
+        reason: 'the two in-policy edits replay',
+      );
+
+      final observer = await connectEnv(await createTestEnv());
+      addTearDown(() async {
+        await observer.subManager.dispose();
+        await observer.connection.disconnect();
+      });
+      expect(
+        observer.noteTable.getRow(note.id)!.content,
+        equals('newest'),
+        reason: 'newest in-policy edit must win on the server',
+      );
+    }, timeout: const Timeout(Duration(seconds: 90)));
 
     test(
       'maxRetainedFailures caps recentFailures while failedCount tracks the true total',
@@ -397,10 +403,16 @@ void main() {
           await queueEdit(env, env.noteTable.getRow(note.id)!, 'v$v');
         }
 
-        expect(env.subManager.syncState.failedCount, equals(5),
-            reason: '6 edits into a depth-1 queue => 5 overflow drops total');
-        expect(env.subManager.syncState.recentFailures, hasLength(2),
-            reason: 'recentFailures is capped at maxRetainedFailures=2');
+        expect(
+          env.subManager.syncState.failedCount,
+          equals(5),
+          reason: '6 edits into a depth-1 queue => 5 overflow drops total',
+        );
+        expect(
+          env.subManager.syncState.recentFailures,
+          hasLength(2),
+          reason: 'recentFailures is capped at maxRetainedFailures=2',
+        );
       },
       timeout: const Timeout(Duration(seconds: 90)),
     );

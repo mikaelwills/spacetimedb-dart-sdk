@@ -115,7 +115,10 @@ class MockMutationHandler implements MutationHandler {
   }
 
   @override
-  Future<void> onMutationDropped(PendingMutation mutation, String reason) async {
+  Future<void> onMutationDropped(
+    PendingMutation mutation,
+    String reason,
+  ) async {
     droppedMutations.add(mutation);
   }
 

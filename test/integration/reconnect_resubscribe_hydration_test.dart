@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/protocol.dart';
-import '../generated/note.dart';
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';
 
@@ -35,9 +34,11 @@ void main() {
         .firstWhere((state) => state is T)
         .timeout(
           timeout,
-          onTimeout: () => throw TimeoutException(
-            'Timed out waiting for state $T. Current: ${connection.state}',
-          ),
+          onTimeout:
+              () =>
+                  throw TimeoutException(
+                    'Timed out waiting for state $T. Current: ${connection.state}',
+                  ),
         );
   }
 
@@ -84,7 +85,8 @@ void main() {
       expect(
         tableA.iter().any((n) => n.title == marker),
         isTrue,
-        reason: 'the specific row written during the disconnect must be present',
+        reason:
+            'the specific row written during the disconnect must be present',
       );
 
       // Phase 2 — the real-world failure: after A reconnected, does its

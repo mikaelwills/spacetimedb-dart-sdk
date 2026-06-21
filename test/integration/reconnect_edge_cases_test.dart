@@ -14,7 +14,10 @@ void main() {
   tearDownAll(cleanupTestEnvironment);
 
   setUp(() async {
-    final cleaner = await createTestEnv(registerNote: true, registerFolder: true);
+    final cleaner = await createTestEnv(
+      registerNote: true,
+      registerFolder: true,
+    );
     await cleaner.connection.connect();
     await cleaner.subManager.onInitialConnection.first.timeout(_timeout);
     await cleaner.reducers.deleteAllNotes().timeout(_timeout);
@@ -32,9 +35,11 @@ void main() {
         .firstWhere((state) => state is T)
         .timeout(
           timeout,
-          onTimeout: () => throw TimeoutException(
-            'Timed out waiting for state $T. Current: ${connection.state}',
-          ),
+          onTimeout:
+              () =>
+                  throw TimeoutException(
+                    'Timed out waiting for state $T. Current: ${connection.state}',
+                  ),
         );
   }
 
@@ -42,8 +47,14 @@ void main() {
     test(
       'multiple query sets all rehydrate on one reconnect',
       () async {
-        final envA = await createTestEnv(registerNote: true, registerFolder: true);
-        final envB = await createTestEnv(registerNote: true, registerFolder: true);
+        final envA = await createTestEnv(
+          registerNote: true,
+          registerFolder: true,
+        );
+        final envB = await createTestEnv(
+          registerNote: true,
+          registerFolder: true,
+        );
         addTearDown(() async {
           envA.subManager.dispose();
           envB.subManager.dispose();
@@ -75,13 +86,24 @@ void main() {
         await waitForState<Connected>(envA.connection);
         await Future.delayed(const Duration(seconds: 2));
 
-        expect(envA.noteTable.count(), equals(noteBefore + 1),
-            reason: 'note query set must rehydrate on reconnect');
-        expect(envA.folderTable.count(), equals(folderBefore + 1),
-            reason: 'folder query set must ALSO rehydrate on the same reconnect');
-        expect(envA.noteTable.iter().any((n) => n.title == 'multiset-note'), isTrue);
-        expect(envA.folderTable.iter().any((f) => f.path == '/multiset-folder'),
-            isTrue);
+        expect(
+          envA.noteTable.count(),
+          equals(noteBefore + 1),
+          reason: 'note query set must rehydrate on reconnect',
+        );
+        expect(
+          envA.folderTable.count(),
+          equals(folderBefore + 1),
+          reason: 'folder query set must ALSO rehydrate on the same reconnect',
+        );
+        expect(
+          envA.noteTable.iter().any((n) => n.title == 'multiset-note'),
+          isTrue,
+        );
+        expect(
+          envA.folderTable.iter().any((f) => f.path == '/multiset-folder'),
+          isTrue,
+        );
       },
       timeout: const Timeout(Duration(seconds: 60)),
     );
@@ -108,10 +130,14 @@ void main() {
             .timeout(_timeout);
 
         await envA.subManager.subscribe(['SELECT * FROM note']);
-        final doomed =
-            envA.noteTable.iter().firstWhere((n) => n.title == 'doomed');
-        expect(envA.noteTable.getRow(doomed.id), isNotNull,
-            reason: 'precondition: A sees the row before disconnect');
+        final doomed = envA.noteTable.iter().firstWhere(
+          (n) => n.title == 'doomed',
+        );
+        expect(
+          envA.noteTable.getRow(doomed.id),
+          isNotNull,
+          reason: 'precondition: A sees the row before disconnect',
+        );
 
         await envA.connection.disconnect();
         await waitForState<Disconnected>(envA.connection);
@@ -122,11 +148,14 @@ void main() {
         await waitForState<Connected>(envA.connection);
         await Future.delayed(const Duration(seconds: 2));
 
-        expect(envA.noteTable.getRow(doomed.id), isNull,
-            reason:
-                'a row deleted on the server during the disconnect must be gone '
-                'from the cache after reconnect — the snapshot reconcile must '
-                'propagate deletes, not only inserts');
+        expect(
+          envA.noteTable.getRow(doomed.id),
+          isNull,
+          reason:
+              'a row deleted on the server during the disconnect must be gone '
+              'from the cache after reconnect — the snapshot reconcile must '
+              'propagate deletes, not only inserts',
+        );
         expect(envA.noteTable.iter().any((n) => n.title == 'doomed'), isFalse);
       },
       timeout: const Timeout(Duration(seconds: 60)),
@@ -150,8 +179,11 @@ void main() {
         await envA.connection.reconnect();
         await waitForState<Connected>(envA.connection);
 
-        expect(envA.connection.isConnected, isTrue,
-            reason: 'reconnect with no tracked query sets must still connect');
+        expect(
+          envA.connection.isConnected,
+          isTrue,
+          reason: 'reconnect with no tracked query sets must still connect',
+        );
       },
       timeout: const Timeout(Duration(seconds: 60)),
     );

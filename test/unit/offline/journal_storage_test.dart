@@ -6,7 +6,10 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
 
-PendingMutation _mutation(String requestId, {String reducerName = 'create_note'}) {
+PendingMutation _mutation(
+  String requestId, {
+  String reducerName = 'create_note',
+}) {
   return PendingMutation(
     requestId: requestId,
     reducerName: reducerName,
@@ -31,47 +34,51 @@ void main() {
   });
 
   group('journal equivalence', () {
-    test('random op interleavings match in-memory reference after every op',
-        () async {
-      final random = Random(42);
-      final reference = InMemoryOfflineStorage();
-      final journal = JsonFileStorage(basePath: tempDir.path);
-      await journal.initialize();
+    test(
+      'random op interleavings match in-memory reference after every op',
+      () async {
+        final random = Random(42);
+        final reference = InMemoryOfflineStorage();
+        final journal = JsonFileStorage(basePath: tempDir.path);
+        await journal.initialize();
 
-      var nextId = 0;
-      final liveIds = <String>[];
+        var nextId = 0;
+        final liveIds = <String>[];
 
-      for (var op = 0; op < 300; op++) {
-        final roll = random.nextDouble();
-        if (roll < 0.55 || liveIds.isEmpty) {
-          final id = 'req-${nextId++}';
-          liveIds.add(id);
-          final m = _mutation(id);
-          await reference.enqueueMutation(m);
-          await journal.enqueueMutation(m);
-        } else {
-          final id = liveIds.removeAt(random.nextInt(liveIds.length));
-          await reference.dequeueMutation(id);
-          await journal.dequeueMutation(id);
+        for (var op = 0; op < 300; op++) {
+          final roll = random.nextDouble();
+          if (roll < 0.55 || liveIds.isEmpty) {
+            final id = 'req-${nextId++}';
+            liveIds.add(id);
+            final m = _mutation(id);
+            await reference.enqueueMutation(m);
+            await journal.enqueueMutation(m);
+          } else {
+            final id = liveIds.removeAt(random.nextInt(liveIds.length));
+            await reference.dequeueMutation(id);
+            await journal.dequeueMutation(id);
+          }
+
+          final expected = (await reference.getPendingMutations()).map(
+            (m) => m.requestId,
+          );
+          final actual = (await journal.getPendingMutations()).map(
+            (m) => m.requestId,
+          );
+          expect(actual, equals(expected), reason: 'diverged after op $op');
         }
 
-        final expected =
-            (await reference.getPendingMutations()).map((m) => m.requestId);
-        final actual =
-            (await journal.getPendingMutations()).map((m) => m.requestId);
-        expect(actual, equals(expected), reason: 'diverged after op $op');
-      }
-
-      final reloaded = JsonFileStorage(basePath: tempDir.path);
-      await reloaded.initialize();
-      expect(
-        (await reloaded.getPendingMutations()).map((m) => m.requestId),
-        equals(
-          (await reference.getPendingMutations()).map((m) => m.requestId),
-        ),
-        reason: 'fresh instance must replay the journal to the same state',
-      );
-    });
+        final reloaded = JsonFileStorage(basePath: tempDir.path);
+        await reloaded.initialize();
+        expect(
+          (await reloaded.getPendingMutations()).map((m) => m.requestId),
+          equals(
+            (await reference.getPendingMutations()).map((m) => m.requestId),
+          ),
+          reason: 'fresh instance must replay the journal to the same state',
+        );
+      },
+    );
   });
 
   group('crash recovery', () {
@@ -118,10 +125,7 @@ void main() {
       await recovered.initialize();
       final pending = await recovered.getPendingMutations();
 
-      expect(
-        pending.map((m) => m.requestId),
-        equals(['req-0', 'req-2']),
-      );
+      expect(pending.map((m) => m.requestId), equals(['req-0', 'req-2']));
     });
   });
 
@@ -141,8 +145,11 @@ void main() {
       final pending = await storage.getPendingMutations();
 
       expect(pending.map((m) => m.requestId), equals(['legacy-1', 'legacy-2']));
-      expect(await legacyFile.exists(), isFalse,
-          reason: 'legacy file removed after migration');
+      expect(
+        await legacyFile.exists(),
+        isFalse,
+        reason: 'legacy file removed after migration',
+      );
       expect(
         await File('${tempDir.path}/pending_mutations.jsonl').exists(),
         isTrue,
@@ -169,9 +176,10 @@ void main() {
       }
 
       final journalFile = File('${tempDir.path}/pending_mutations.jsonl');
-      final lines = (await journalFile.readAsLines())
-          .where((l) => l.trim().isNotEmpty)
-          .length;
+      final lines =
+          (await journalFile.readAsLines())
+              .where((l) => l.trim().isNotEmpty)
+              .length;
       expect(
         lines,
         lessThan(100),

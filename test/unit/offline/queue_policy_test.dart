@@ -204,54 +204,58 @@ void main() {
       );
     });
 
-    test('dropOldest evicts and rolls back the oldest, keeps FIFO order',
-        () async {
-      final harness = _Harness(
-        policy: const OfflineQueuePolicy(
-          maxQueueLength: 3,
-          overflow: OverflowStrategy.dropOldest,
-        ),
-      );
-      harness.noteTable.insertRow(_note(1, 'v1'));
-
-      final dropped = <MutationSyncResult>[];
-      final sub = harness.syncer.onMutationSyncResult.listen(dropped.add);
-
-      final first = await harness.caller.call(
-        'update_note',
-        Uint8List(0),
-        optimisticChanges: [
-          OptimisticChange.update(
-            'note',
-            _note(1, 'v1').toJson(),
-            _note(1, 'first edit').toJson(),
+    test(
+      'dropOldest evicts and rolls back the oldest, keeps FIFO order',
+      () async {
+        final harness = _Harness(
+          policy: const OfflineQueuePolicy(
+            maxQueueLength: 3,
+            overflow: OverflowStrategy.dropOldest,
           ),
-        ],
-      );
-      await harness.caller.call('create_note', Uint8List(0));
-      await harness.caller.call('delete_note', Uint8List(0));
-      await harness.caller.call('no_op', Uint8List(0));
-      await Future.delayed(Duration.zero);
-      await sub.cancel();
+        );
+        harness.noteTable.insertRow(_note(1, 'v1'));
 
-      final pending = await harness.storage.getPendingMutations();
-      expect(pending, hasLength(3));
-      expect(
-        pending.map((m) => m.reducerName),
-        equals(['create_note', 'delete_note', 'no_op']),
-        reason: 'oldest dropped, remaining order preserved',
-      );
-      expect(pending.map((m) => m.requestId),
-          isNot(contains(first.pendingRequestId)));
-      expect(
-        harness.noteTable.getRow(1)?.content,
-        equals('v1'),
-        reason: 'dropped mutation optimistic edit must be rolled back',
-      );
-      expect(dropped, hasLength(1));
-      expect(dropped.single.success, isFalse);
-      expect(harness.syncer.syncState.failedCount, equals(1));
-    });
+        final dropped = <MutationSyncResult>[];
+        final sub = harness.syncer.onMutationSyncResult.listen(dropped.add);
+
+        final first = await harness.caller.call(
+          'update_note',
+          Uint8List(0),
+          optimisticChanges: [
+            OptimisticChange.update(
+              'note',
+              _note(1, 'v1').toJson(),
+              _note(1, 'first edit').toJson(),
+            ),
+          ],
+        );
+        await harness.caller.call('create_note', Uint8List(0));
+        await harness.caller.call('delete_note', Uint8List(0));
+        await harness.caller.call('no_op', Uint8List(0));
+        await Future.delayed(Duration.zero);
+        await sub.cancel();
+
+        final pending = await harness.storage.getPendingMutations();
+        expect(pending, hasLength(3));
+        expect(
+          pending.map((m) => m.reducerName),
+          equals(['create_note', 'delete_note', 'no_op']),
+          reason: 'oldest dropped, remaining order preserved',
+        );
+        expect(
+          pending.map((m) => m.requestId),
+          isNot(contains(first.pendingRequestId)),
+        );
+        expect(
+          harness.noteTable.getRow(1)?.content,
+          equals('v1'),
+          reason: 'dropped mutation optimistic edit must be rolled back',
+        );
+        expect(dropped, hasLength(1));
+        expect(dropped.single.success, isFalse);
+        expect(harness.syncer.syncState.failedCount, equals(1));
+      },
+    );
   });
 
   group('onBeforeReplay veto', () {
@@ -274,8 +278,11 @@ void main() {
       harness.goOnline();
       await harness.syncer.syncPendingMutations();
 
-      expect(hookCalls, equals(['r1', 'r2', 'r3']),
-          reason: 'hook fires exactly once per mutation, in FIFO order');
+      expect(
+        hookCalls,
+        equals(['r1', 'r2', 'r3']),
+        reason: 'hook fires exactly once per mutation, in FIFO order',
+      );
       expect(harness.sentReducers, equals(['create_note', 'delete_note']));
       expect(await harness.storage.getPendingMutations(), isEmpty);
       final state = harness.syncer.syncState;

@@ -326,7 +326,9 @@ class JsonFileStorage implements OfflineStorage {
   Future<void> _compactUnsafe() async {
     final buffer = StringBuffer();
     for (final mutation in _queue) {
-      buffer.writeln(jsonEncode({'op': 'enqueue', 'mutation': mutation.toJson()}));
+      buffer.writeln(
+        jsonEncode({'op': 'enqueue', 'mutation': mutation.toJson()}),
+      );
     }
     await _fileStore.atomicWrite(_journalFile!, buffer.toString());
     await _fileStore.cleanupBackup(_journalFile!);

@@ -76,8 +76,11 @@ void main() {
   group('sync error surfacing', () {
     test('rejected mutation sets error state on SyncState', () async {
       final harness = _Harness(
-        respond: (name) =>
-            name == 'bad_reducer' ? _rejected(name, 'nope') : _committed(name),
+        respond:
+            (name) =>
+                name == 'bad_reducer'
+                    ? _rejected(name, 'nope')
+                    : _committed(name),
       );
       await harness.storage.enqueueMutation(_mutation('r1', 'good_a'));
       await harness.storage.enqueueMutation(_mutation('r2', 'bad_reducer'));
@@ -99,33 +102,36 @@ void main() {
       );
     });
 
-    test('error state persists across flushes, clean flush resets it',
-        () async {
-      var rejectAll = true;
-      final harness = _Harness(
-        respond: (name) =>
-            rejectAll ? _rejected(name, 'locked') : _committed(name),
-      );
-      await harness.storage.enqueueMutation(_mutation('r1', 'update_note'));
+    test(
+      'error state persists across flushes, clean flush resets it',
+      () async {
+        var rejectAll = true;
+        final harness = _Harness(
+          respond:
+              (name) =>
+                  rejectAll ? _rejected(name, 'locked') : _committed(name),
+        );
+        await harness.storage.enqueueMutation(_mutation('r1', 'update_note'));
 
-      await harness.syncer.syncPendingMutations();
-      expect(harness.syncer.syncState.hasError, isTrue);
-      expect(harness.syncer.syncState.failedCount, equals(1));
+        await harness.syncer.syncPendingMutations();
+        expect(harness.syncer.syncState.hasError, isTrue);
+        expect(harness.syncer.syncState.failedCount, equals(1));
 
-      rejectAll = false;
-      await harness.storage.enqueueMutation(_mutation('r2', 'update_note'));
-      await harness.syncer.updatePendingCount();
-      expect(
-        harness.syncer.syncState.hasError,
-        isTrue,
-        reason: 'badge survives until a clean flush resolves it',
-      );
+        rejectAll = false;
+        await harness.storage.enqueueMutation(_mutation('r2', 'update_note'));
+        await harness.syncer.updatePendingCount();
+        expect(
+          harness.syncer.syncState.hasError,
+          isTrue,
+          reason: 'badge survives until a clean flush resolves it',
+        );
 
-      await harness.syncer.syncPendingMutations();
-      expect(harness.syncer.syncState.hasError, isFalse);
-      expect(harness.syncer.syncState.failedCount, equals(0));
-      expect(harness.syncer.syncState.recentFailures, isEmpty);
-    });
+        await harness.syncer.syncPendingMutations();
+        expect(harness.syncer.syncState.hasError, isFalse);
+        expect(harness.syncer.syncState.failedCount, equals(0));
+        expect(harness.syncer.syncState.recentFailures, isEmpty);
+      },
+    );
 
     test('clearSyncErrors dismisses without a flush', () async {
       final harness = _Harness(respond: (name) => _rejected(name, 'denied'));
@@ -234,8 +240,11 @@ void main() {
       await harness.syncer.syncPendingMutations();
 
       final state = harness.syncer.syncState;
-      expect(state.failedCount, equals(12),
-          reason: 'failedCount always reflects the true total');
+      expect(
+        state.failedCount,
+        equals(12),
+        reason: 'failedCount always reflects the true total',
+      );
       expect(state.recentFailures, hasLength(5));
       expect(state.recentFailures.first.requestId, equals('r7'));
       expect(state.recentFailures.last.requestId, equals('r11'));
