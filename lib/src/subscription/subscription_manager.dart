@@ -306,17 +306,19 @@ class SubscriptionManager {
 
   Future<void> _onReconnected() async {
     if (_subscriptionsByQuerySetId.isNotEmpty) {
-      SdkLogger.i(
-        'Re-subscribing to ${_subscriptionsByQuerySetId.length} query sets...',
-      );
-      for (final entry in _subscriptionsByQuerySetId.entries) {
-        final message = SubscribeMessage(entry.value, querySetId: entry.key);
-        _connection.send(message.encode());
+      final querySets = _subscriptionsByQuerySetId.values
+          .map((q) => List<String>.of(q))
+          .toList(growable: false);
+      _subscriptionsByQuerySetId.clear();
+
+      SdkLogger.i('Re-subscribing to ${querySets.length} query sets...');
+      for (final queries in querySets) {
+        await subscribe(queries);
       }
-    } else if (_mutationSyncer != null) {
-      SdkLogger.i(
-        'No active subscriptions, syncing pending mutations directly...',
-      );
+    }
+
+    if (_mutationSyncer != null) {
+      SdkLogger.i('Syncing pending mutations after reconnect...');
       _mutationSyncer!.syncPendingMutations();
     }
   }
