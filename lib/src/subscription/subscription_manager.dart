@@ -441,11 +441,18 @@ class SubscriptionManager {
     final event = SubscribeAppliedEvent();
     final context = EventContext(myConnectionId: _connectionId, event: event);
 
+    final fromRegex = RegExp(r'FROM\s+(\w+)', caseSensitive: false);
+    final queries = _subscriptionsByQuerySetId[message.querySetId] ?? const [];
+    final querySetTables = <String>{
+      for (final query in queries)
+        for (final match in fromRegex.allMatches(query)) match.group(1)!,
+    };
+
     final serverTableNames =
         message.rows.tables.map((t) => t.tableName).toSet();
-    for (final table in cache.allTables) {
-      if (!serverTableNames.contains(table.tableName)) {
-        _optimisticState.clearNonOptimisticRows(table.tableName);
+    for (final tableName in querySetTables) {
+      if (!serverTableNames.contains(tableName)) {
+        _optimisticState.clearNonOptimisticRows(tableName);
       }
     }
 
@@ -465,18 +472,8 @@ class SubscriptionManager {
       table.markSubscribed();
     }
 
-    // Server omits tables with zero matching rows from `tables`. Parse
-    // FROM <table> out of the active queries in this set and mark those
-    // tables subscribed too, so `client.<table>.subscribed` resolves for
-    // empty initial results instead of hanging forever.
-    final fromRegex = RegExp(r'FROM\s+(\w+)', caseSensitive: false);
-    final queries = _subscriptionsByQuerySetId[message.querySetId] ?? const [];
-    for (final query in queries) {
-      for (final match in fromRegex.allMatches(query)) {
-        final tableName = match.group(1)!;
-        final table = cache.getTableByName(tableName);
-        table?.markSubscribed();
-      }
+    for (final tableName in querySetTables) {
+      cache.getTableByName(tableName)?.markSubscribed();
     }
 
     await _mutationSyncer?.persistTableSnapshots();
