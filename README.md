@@ -9,7 +9,7 @@
 
 ## Compatibility
 
-Works with SpacetimeDB 2.x servers. Speaks the `v2.bsatn.spacetimedb` WebSocket subprotocol with client-assigned `QuerySetId` subscriptions, typed reducer return values, server-defined views, and BSATN binary wire format. If you need to connect to a v1-only server, use `spacetimedb_sdk 1.x`.
+Works with SpacetimeDB 2.x servers (tested against 2.4.1). Negotiates the `v3.bsatn.spacetimedb` WebSocket subprotocol on 2.2.0+ servers and transparently falls back to `v2.bsatn.spacetimedb` on older 2.x servers. Uses client-assigned `QuerySetId` subscriptions, typed reducer return values, server-defined views, and BSATN binary wire format. If you need to connect to a v1-only server, use `spacetimedb_sdk 1.x`.
 
 Built for collaborative editors, real-time games, multi-device sync, presence, chat.
 
@@ -38,7 +38,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://install.spacetimedb.com | sh
 
 ```yaml
 dependencies:
-  spacetimedb_sdk: ^2.0.0
+  spacetimedb_sdk: ^2.2.0
 ```
 
 ### 3. Generate client code from your module

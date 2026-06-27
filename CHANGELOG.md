@@ -5,7 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 2.1.0 - 2026-05-22
+## 2.2.0 - 2026-06-27
+
+Hardens the offline-first sync path: a configurable replay policy for the offline mutation queue, surfaced flush failures, append-only journal storage, and a cluster of reconnect-correctness fixes that stop offline edits being silently clobbered when a subscription rehydrates. All additive — existing consumers keep working unchanged.
+
+### Added
+
+- **`OfflineQueuePolicy`** — opt-in control over how the offline mutation queue replays on reconnect. Configurable TTL (drop mutations older than a bound), queue size bounds, and an `onBeforeReplay` veto callback that lets the consumer inspect and reject queued mutations before they flush. Exported from `spacetimedb_sdk.dart` and `codegen.dart`. Defaults preserve prior behaviour (replay everything, no expiry).
+- **Sync-failure surfacing on `SyncState`.** Flush rejections are now recorded as failure records on `SyncState` instead of being swallowed, with a configurable retention bound (also via `OfflineQueuePolicy`). New `clearSyncErrors()` to drain them; generated clients expose a `clearSyncErrors` passthrough.
+- New exception type(s) on `lib/src/exceptions.dart` for offline-replay rejection paths.
+
+### Changed (non-breaking)
+
+- **Append-only journal storage** for the offline mutation queue. The JSON file backend no longer rewrites the entire queue file on every mutation — it appends to a journal, cutting write amplification for large or churny queues. Transparent to consumers; same `OfflineStorage` contract.
+
+### Fixed
+
+- **Offline edits no longer clobbered on reconnect.** Rows with pending offline mutations are protected from stale-snapshot overwrites when a subscription delivers a fresh server snapshot on reconnect (`5bc3898`).
+- **Subscription rehydrates via the awaited subscribe path on reconnect** rather than racing the cache, so reconnect-time row state is correct (`b4bae9f`).
+- **`SubscribeApplied` cache clear scoped to the current query set** — a multi-queryset client no longer wipes unrelated cached rows when one subscription re-applies (`48b0a09`).
+- **Cache reconciled to committed server rows** when an optimistic confirmation releases a key, eliminating a window where the local view diverged from the server (`1c638df`).
+
+
 
 Adds v3 WebSocket transport support (SpacetimeDB 2.2.0+) and unblocks Flutter web wasm builds. Both changes are additive — no consumer code changes required, no semver-breaking deltas.
 
