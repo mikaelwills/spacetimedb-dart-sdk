@@ -90,4 +90,66 @@ void main() {
     },
     timeout: const Timeout(Duration(seconds: 30)),
   );
+
+  test(
+    'connection B drops a row LIVE when connection A deletes it (remote delete propagates)',
+    () async {
+      // Mirrors the recent-notes regression: another client (or the MCP)
+      // deletes a note server-side; a running, subscribed client must remove it
+      // from its live cache without a restart/reconnect.
+      final envA = await createTestEnv();
+      final envB = await createTestEnv();
+      addTearDown(() async {
+        envA.subManager.dispose();
+        envB.subManager.dispose();
+        await envA.disconnect();
+        await envB.disconnect();
+      });
+
+      await envA.connection.connect();
+      await envA.subManager.onInitialConnection.first.timeout(
+        const Duration(seconds: 5),
+      );
+      await envB.connection.connect();
+      await envB.subManager.onInitialConnection.first.timeout(
+        const Duration(seconds: 5),
+      );
+
+      await envB.subManager.subscribe(['SELECT * FROM note']);
+      final tableB = envB.subManager.cache.getTableByTypedName<Note>('note');
+
+      // A creates a note; B observes it live via broadcast.
+      await envA.reducers
+          .createNote(title: 'Doomed', content: 'delete me live')
+          .timeout(const Duration(seconds: 5));
+      await Future.delayed(const Duration(seconds: 1));
+
+      final doomed = tableB.iter().firstWhere((n) => n.title == 'Doomed');
+      expect(
+        tableB.getRow(doomed.id),
+        isNotNull,
+        reason: 'precondition: B sees the row before the remote delete',
+      );
+
+      // A deletes it. B must drop it from the live cache — no reconnect.
+      await envA.reducers
+          .deleteNote(noteId: doomed.id)
+          .timeout(const Duration(seconds: 5));
+      await Future.delayed(const Duration(seconds: 1));
+
+      expect(
+        tableB.getRow(doomed.id),
+        isNull,
+        reason:
+            'a remote delete must propagate to a subscribed client\'s live '
+            'cache via TransactionUpdate — not require an app restart',
+      );
+      expect(
+        tableB.iter().any((n) => n.title == 'Doomed'),
+        isFalse,
+        reason: 'the deleted row must be gone from rows/iter as well',
+      );
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
 }
