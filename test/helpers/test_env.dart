@@ -1,6 +1,7 @@
 import 'package:spacetimedb_sdk/codegen.dart';
 import '../generated/note.dart';
 import '../generated/folder.dart';
+import '../generated/entity.dart';
 import '../generated/reducer_args.dart';
 import '../generated/reducers.dart' as gen;
 
@@ -21,6 +22,9 @@ class TestEnv {
   TableCache<Folder> get folderTable =>
       subManager.cache.getTableByTypedName<Folder>('folder');
 
+  TableCache<Entity> get entityTable =>
+      subManager.cache.getTableByTypedName<Entity>('entity');
+
   Future<void> disconnect() async {
     await connection.disconnect();
   }
@@ -30,6 +34,7 @@ Future<TestEnv> createTestEnv({
   bool registerNote = true,
   bool registerFolder = false,
   bool registerViews = false,
+  bool registerEntity = false,
   OfflineStorage? offlineStorage,
   OfflineQueuePolicy queuePolicy = const OfflineQueuePolicy(),
 }) async {
@@ -53,6 +58,9 @@ Future<TestEnv> createTestEnv({
     subManager.cache.registerDecoder<Note>('all_notes', NoteDecoder());
     subManager.cache.registerDecoder<Note>('first_note', NoteDecoder());
     subManager.cache.registerDecoder<Note>('notes_query_all', NoteDecoder());
+  }
+  if (registerEntity) {
+    subManager.cache.registerDecoder<Entity>('entity', EntityDecoder());
   }
 
   subManager.reducerRegistry.register(createNoteDef);

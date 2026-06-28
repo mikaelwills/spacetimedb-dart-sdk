@@ -43,6 +43,8 @@ class SubscriptionManager {
   final Map<int, List<String>> _subscriptionsByQuerySetId = {};
   int _nextQuerySetId = 1;
 
+  final Map<String, Map<dynamic, Set<int>>> _rowProvenance = {};
+
   late final OptimisticStateManager _optimisticState;
   MutationSyncer? _mutationSyncer;
   bool _disposed = false;
@@ -226,6 +228,7 @@ class SubscriptionManager {
     );
     _connection.send(message.encode());
     _subscriptionsByQuerySetId.remove(querySetId);
+    _dropQuerySetProvenance(querySetId);
   }
 
   void callProcedure(
@@ -304,6 +307,8 @@ class SubscriptionManager {
     });
   }
 
+  bool _reconnectInFlight = false;
+
   Future<void> _onReconnected() async {
     if (_subscriptionsByQuerySetId.isNotEmpty) {
       final querySets = _subscriptionsByQuerySetId.values
@@ -311,15 +316,46 @@ class SubscriptionManager {
           .toList(growable: false);
       _subscriptionsByQuerySetId.clear();
 
-      SdkLogger.i('Re-subscribing to ${querySets.length} query sets...');
-      for (final queries in querySets) {
-        await subscribe(queries);
+      final oldKeysByTable = <String, Set<dynamic>>{
+        for (final table in cache.allTables)
+          if (table.hasPrimaryKey) table.tableName: table.primaryKeys,
+      };
+      _rowProvenance.clear();
+
+      _reconnectInFlight = true;
+      try {
+        SdkLogger.i('Re-subscribing to ${querySets.length} query sets...');
+        for (final queries in querySets) {
+          await subscribe(queries);
+        }
+      } finally {
+        _reconnectInFlight = false;
       }
+
+      _evictReconnectDeletes(oldKeysByTable);
     }
 
     if (_mutationSyncer != null) {
       SdkLogger.i('Syncing pending mutations after reconnect...');
       _mutationSyncer!.syncPendingMutations();
+    }
+  }
+
+  void _evictReconnectDeletes(Map<String, Set<dynamic>> oldKeysByTable) {
+    for (final entry in oldKeysByTable.entries) {
+      final tableName = entry.key;
+      final oldKeys = entry.value;
+      final tableProvenance = _rowProvenance[tableName] ?? const {};
+      final optimisticPKs = _optimisticState.optimisticPrimaryKeysForTable(
+        tableName,
+      );
+      final toEvict = <dynamic>[];
+      for (final pk in oldKeys) {
+        if (optimisticPKs.contains(pk)) continue;
+        final sets = tableProvenance[pk];
+        if (sets == null || sets.isEmpty) toEvict.add(pk);
+      }
+      _evict(tableName, toEvict);
     }
   }
 
@@ -424,6 +460,7 @@ class SubscriptionManager {
 
     if (queries.isEmpty) {
       _subscriptionsByQuerySetId.remove(message.querySetId);
+      _dropQuerySetProvenance(message.querySetId);
     } else {
       final resubscribe = SubscribeMessage(
         List.of(queries),
@@ -448,28 +485,48 @@ class SubscriptionManager {
         for (final match in fromRegex.allMatches(query)) match.group(1)!,
     };
 
+    final querySetId = message.querySetId;
     final serverTableNames =
         message.rows.tables.map((t) => t.tableName).toSet();
+
     for (final tableName in querySetTables) {
+      final table = cache.getTableByName(tableName);
+      if (table == null || table.hasPrimaryKey) continue;
       if (!serverTableNames.contains(tableName)) {
         _optimisticState.clearNonOptimisticRows(tableName);
       }
     }
 
+    final matchedByTable = <String, Set<dynamic>>{
+      for (final tableName in querySetTables) tableName: <dynamic>{},
+    };
     for (final single in message.rows.tables) {
       final table = cache.getTableByName(single.tableName);
       if (table == null) continue;
 
       SdkLogger.d('  Table "${single.tableName}": applying initial rows');
-      _optimisticState.clearNonOptimisticRows(single.tableName);
-      table.applyInitialData(
+      if (!table.hasPrimaryKey) {
+        _optimisticState.clearNonOptimisticRows(single.tableName);
+      }
+      final insertedPKs = table.applyInitialData(
         single.rows,
         context,
         protectedKeys: _optimisticState.optimisticPrimaryKeysForTable(
           single.tableName,
         ),
       );
+      if (table.hasPrimaryKey) matchedByTable[single.tableName] = insertedPKs;
       table.markSubscribed();
+    }
+
+    for (final tableName in querySetTables) {
+      final table = cache.getTableByName(tableName);
+      if (table == null || !table.hasPrimaryKey) continue;
+      _reconcileQuerySetProvenance(
+        tableName: tableName,
+        querySetId: querySetId,
+        nowMatching: matchedByTable[tableName] ?? const {},
+      );
     }
 
     for (final tableName in querySetTables) {
@@ -479,11 +536,89 @@ class SubscriptionManager {
     await _mutationSyncer?.persistTableSnapshots();
   }
 
+  void _untagAndEvict(
+    String tableName,
+    Map<dynamic, Set<int>> tableProvenance,
+    int tag,
+  ) {
+    final optimisticPKs = _optimisticState.optimisticPrimaryKeysForTable(
+      tableName,
+    );
+    final toEvict = <dynamic>[];
+    for (final entry in tableProvenance.entries.toList()) {
+      final pk = entry.key;
+      final sets = entry.value;
+      if (!sets.remove(tag)) continue;
+      if (sets.isEmpty) {
+        tableProvenance.remove(pk);
+        if (!optimisticPKs.contains(pk)) toEvict.add(pk);
+      }
+    }
+    _evict(tableName, toEvict);
+  }
+
+  void _evict(String tableName, List<dynamic> pks) {
+    if (pks.isEmpty) return;
+    final evictSet = pks.toSet();
+    cache.getTableByName(tableName)?.removeRowsWhere(evictSet.contains);
+  }
+
+  void _reconcileQuerySetProvenance({
+    required String tableName,
+    required int querySetId,
+    required Set<dynamic> nowMatching,
+  }) {
+    final tableProvenance = _rowProvenance.putIfAbsent(tableName, () => {});
+    final optimisticPKs = _optimisticState.optimisticPrimaryKeysForTable(
+      tableName,
+    );
+
+    final toEvict = <dynamic>[];
+    for (final entry in tableProvenance.entries.toList()) {
+      final pk = entry.key;
+      final sets = entry.value;
+      if (!sets.contains(querySetId)) continue;
+      if (nowMatching.contains(pk)) continue;
+      sets.remove(querySetId);
+      if (sets.isEmpty) {
+        tableProvenance.remove(pk);
+        if (!optimisticPKs.contains(pk)) toEvict.add(pk);
+      }
+    }
+
+    for (final pk in nowMatching) {
+      tableProvenance.putIfAbsent(pk, () => <int>{}).add(querySetId);
+    }
+
+    final table = cache.getTableByName(tableName);
+    if (table != null && !_reconnectInFlight) {
+      for (final row in table.iter().toList()) {
+        final pk = table.decoder.getPrimaryKey(row);
+        if (pk == null) continue;
+        if (nowMatching.contains(pk)) continue;
+        if (optimisticPKs.contains(pk)) continue;
+        final sets = tableProvenance[pk];
+        if (sets == null || sets.isEmpty) {
+          toEvict.add(pk);
+        }
+      }
+    }
+
+    _evict(tableName, toEvict);
+  }
+
+  void _dropQuerySetProvenance(int querySetId) {
+    for (final entry in _rowProvenance.entries) {
+      _untagAndEvict(entry.key, entry.value, querySetId);
+    }
+  }
+
   /// Apply the optional dropped-rows payload on `UnsubscribeApplied` as
   /// deletes against the local cache (slice 5). When `rows` is null, the
   /// server honoured `UnsubscribeFlags::Default` — no delete events fire.
   void _handleUnsubscribeApplied(UnsubscribeApplied message) {
     _subscriptionsByQuerySetId.remove(message.querySetId);
+    _dropQuerySetProvenance(message.querySetId);
 
     final rows = message.rows;
     if (rows == null) return;

@@ -172,6 +172,9 @@ class TableCache<T> {
     return hasPrimaryKey ? _rowsByPrimaryKey.values : _rows;
   }
 
+  Set<dynamic> get primaryKeys =>
+      hasPrimaryKey ? _rowsByPrimaryKey.keys.toSet() : const {};
+
   void applyDeletes(BsatnRowList deletes) {
     final rowBytes = deletes.getRows();
     for (final bytes in rowBytes) {
@@ -205,7 +208,7 @@ class TableCache<T> {
   ///
   /// Called when initial subscription data arrives. Emits events with
   /// SubscribeAppliedEvent so users can distinguish initial load from updates.
-  void applyInitialData(
+  Set<dynamic> applyInitialData(
     BsatnRowList inserts,
     EventContext context, {
     Set<dynamic>? protectedKeys,
@@ -217,6 +220,7 @@ class TableCache<T> {
       protectedKeys: protectedKeys,
     );
     _emitChanges(changes, context);
+    return changes.insertedPrimaryKeys;
   }
 
   void applyInserts(BsatnRowList inserts) {
@@ -541,6 +545,7 @@ class TableCache<T> {
           continue;
         }
         changes.touchedKeys.add(primaryKey);
+        changes.insertedPrimaryKeys.add(primaryKey);
         if (oldValues.containsKey(primaryKey)) {
           final old = oldValues[primaryKey] as T;
           if (!(reconcile && old == row)) {
@@ -579,6 +584,7 @@ class _RowChanges<T> {
   final List<T> deleted = [];
   final List<(T, T)> updated = [];
   final Set<dynamic> touchedKeys = {};
+  final Set<dynamic> insertedPrimaryKeys = {};
 }
 
 class _AutoDisposeNotifier<T> extends ValueNotifier<T> {
