@@ -108,11 +108,11 @@ class JsonFileStorage implements OfflineStorage {
       await _ensureInitialized();
       await _locks.mutations.synchronized(() async {
         await _ensureQueueLoadedUnsafe();
-        _queue.add(mutation);
         await _appendJournalUnsafe({
           'op': 'enqueue',
           'mutation': mutation.toJson(),
         });
+        _queue.add(mutation);
       });
     });
   }
@@ -132,8 +132,8 @@ class JsonFileStorage implements OfflineStorage {
       await _ensureInitialized();
       await _locks.mutations.synchronized(() async {
         await _ensureQueueLoadedUnsafe();
-        _queue.removeWhere((m) => m.requestId == requestId);
         await _appendJournalUnsafe({'op': 'dequeue', 'requestId': requestId});
+        _queue.removeWhere((m) => m.requestId == requestId);
         await _maybeCompactUnsafe();
       });
     });
