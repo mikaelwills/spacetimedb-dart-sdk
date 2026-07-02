@@ -45,6 +45,8 @@ class SubscriptionManager {
 
   final Map<String, Map<dynamic, Set<int>>> _rowProvenance = {};
 
+  final _subscribeWaiters = <int, Completer<void>>{};
+
   late final OptimisticStateManager _optimisticState;
   MutationSyncer? _mutationSyncer;
   bool _disposed = false;
@@ -141,7 +143,8 @@ class SubscriptionManager {
 
   /// Subscribe a new query set. Returns the assigned `querySetId`.
   /// Awaits the matching `SubscribeApplied` so initial rows are in the cache.
-  /// Resolves without throwing if the manager is disposed first.
+  /// Resolves without throwing if the manager is disposed, the connection
+  /// drops, or the server rejects the subscription before then.
   Future<int> subscribe(List<String> queries) async {
     final querySetId = _nextQuerySetId++;
     _subscriptionsByQuerySetId[querySetId] = List.of(queries);
@@ -149,12 +152,12 @@ class SubscriptionManager {
     final message = SubscribeMessage(queries, querySetId: querySetId);
     _connection.send(message.encode());
 
+    final waiter = Completer<void>();
+    _subscribeWaiters[querySetId] = waiter;
     try {
-      await onSubscribeApplied.firstWhere((m) => m.querySetId == querySetId);
-    } on StateError {
-      SdkLogger.d(
-        'subscribe($querySetId): manager disposed before SubscribeApplied',
-      );
+      await waiter.future;
+    } finally {
+      _subscribeWaiters.remove(querySetId);
     }
     return querySetId;
   }
@@ -274,6 +277,7 @@ class SubscriptionManager {
 
   Future<void> dispose() async {
     _disposed = true;
+    _completeAllSubscribeWaiters();
     _messageSubscription?.cancel();
     _connectionStatusSubscription?.cancel();
     _transactionUpdateController.close();
@@ -286,6 +290,21 @@ class SubscriptionManager {
     _procedureResultController.close();
     reducerEmitter.dispose();
     await _mutationSyncer?.dispose();
+  }
+
+  void _completeSubscribeWaiter(int querySetId) {
+    final waiter = _subscribeWaiters[querySetId];
+    if (waiter != null && !waiter.isCompleted) {
+      waiter.complete();
+    }
+  }
+
+  void _completeAllSubscribeWaiters() {
+    for (final waiter in _subscribeWaiters.values) {
+      if (!waiter.isCompleted) {
+        waiter.complete();
+      }
+    }
   }
 
   void _startConnectionMonitoring() {
@@ -303,6 +322,7 @@ class SubscriptionManager {
           state is AuthError) {
         _mutationSyncer?.cancelRetry();
         reducers.failAllPendingRequests(state.displayName);
+        _completeAllSubscribeWaiters();
       }
     });
   }
@@ -326,7 +346,13 @@ class SubscriptionManager {
       try {
         SdkLogger.i('Re-subscribing to ${querySets.length} query sets...');
         for (final queries in querySets) {
-          await subscribe(queries);
+          await subscribe(queries).timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              SdkLogger.e('subscribe($queries) timed out during reconnect');
+              return -1;
+            },
+          );
         }
       } finally {
         _reconnectInFlight = false;
@@ -396,6 +422,7 @@ class SubscriptionManager {
         _handleSubscribeApplied(message).then((_) {
           if (_disposed) return;
           _subscribeAppliedController.add(message);
+          _completeSubscribeWaiter(message.querySetId);
           SdkLogger.i('Syncing pending mutations after SubscribeApplied...');
           _mutationSyncer?.syncPendingMutations();
         });
@@ -424,6 +451,7 @@ class SubscriptionManager {
     ).firstMatch(message.error);
     if (tableNameMatch == null) {
       SdkLogger.e('Subscription error: ${message.error}');
+      _completeSubscribeWaiter(message.querySetId);
       return;
     }
 
@@ -433,11 +461,15 @@ class SubscriptionManager {
       SdkLogger.e(
         'Subscription error for unknown querySetId ${message.querySetId}: ${message.error}',
       );
+      _completeSubscribeWaiter(message.querySetId);
       return;
     }
 
     final badQuery = queries.firstWhere(
-      (q) => RegExp('FROM\\s+$badTable', caseSensitive: false).hasMatch(q),
+      (q) => RegExp(
+        'FROM\\s+[`"]?${RegExp.escape(badTable)}[`"]?',
+        caseSensitive: false,
+      ).hasMatch(q),
       orElse: () => '',
     );
 
@@ -445,6 +477,7 @@ class SubscriptionManager {
       SdkLogger.e(
         'Subscription error for unknown table "$badTable": ${message.error}',
       );
+      _completeSubscribeWaiter(message.querySetId);
       return;
     }
 
@@ -461,6 +494,7 @@ class SubscriptionManager {
     if (queries.isEmpty) {
       _subscriptionsByQuerySetId.remove(message.querySetId);
       _dropQuerySetProvenance(message.querySetId);
+      _completeSubscribeWaiter(message.querySetId);
     } else {
       final resubscribe = SubscribeMessage(
         List.of(queries),
@@ -478,7 +512,7 @@ class SubscriptionManager {
     final event = SubscribeAppliedEvent();
     final context = EventContext(myConnectionId: _connectionId, event: event);
 
-    final fromRegex = RegExp(r'FROM\s+(\w+)', caseSensitive: false);
+    final fromRegex = RegExp(r'FROM\s+[`"]?(\w+)[`"]?', caseSensitive: false);
     final queries = _subscriptionsByQuerySetId[message.querySetId] ?? const [];
     final querySetTables = <String>{
       for (final query in queries)
