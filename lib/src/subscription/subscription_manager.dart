@@ -777,6 +777,17 @@ class SubscriptionManager {
         final stillPending = _optimisticState.optimisticPrimaryKeysForTable(
           tableUpdate.tableName,
         );
+        void onProtectedKeyCommitted(
+          dynamic primaryKey,
+          Map<String, dynamic>? committedRowJson,
+        ) {
+          _optimisticState.stashCommittedState(
+            tableUpdate.tableName,
+            primaryKey,
+            committedRowJson,
+          );
+        }
+
         final touchedKeys = <dynamic>{};
         for (final rowGroup in tableUpdate.rows) {
           if (rowGroup is PersistentTableRows) {
@@ -787,6 +798,7 @@ class SubscriptionManager {
                 context,
                 protectedKeys: stillPending,
                 reconcile: true,
+                onProtectedKeyCommitted: onProtectedKeyCommitted,
               ),
             );
           } else if (rowGroup is EventTableRows) {
@@ -797,6 +809,7 @@ class SubscriptionManager {
                 context,
                 protectedKeys: stillPending,
                 reconcile: true,
+                onProtectedKeyCommitted: onProtectedKeyCommitted,
               ),
             );
           }

@@ -21,9 +21,16 @@ class OptimisticEntry {
   });
 }
 
+class _StashedCommit {
+  final Map<String, dynamic>? rowJson;
+
+  const _StashedCommit(this.rowJson);
+}
+
 class OptimisticStateManager {
   final ClientCache _cache;
   final Map<String, List<OptimisticEntry>> _entries = {};
+  final Map<String, Map<dynamic, _StashedCommit>> _committedStash = {};
 
   OptimisticStateManager(this._cache);
 
@@ -133,7 +140,11 @@ class OptimisticStateManager {
   }
 
   List<OptimisticEntry> confirmOptimisticChange(String requestId) {
-    return _entries.remove(requestId) ?? const [];
+    final entries = _entries.remove(requestId) ?? const [];
+    for (final entry in entries) {
+      _releaseStashIfNoLongerOptimistic(entry.tableName, entry.primaryKey);
+    }
+    return entries;
   }
 
   void confirmOrRollbackWithTouchedKeys(
@@ -155,11 +166,12 @@ class OptimisticStateManager {
 
       if (wasTouched) {
         SdkLogger.d('CONFIRMED (key was touched)');
-        continue;
+      } else {
+        SdkLogger.d('ROLLING BACK (key NOT in touchedKeys)');
+        _rollbackEntry(entry);
       }
 
-      SdkLogger.d('ROLLING BACK (key NOT in touchedKeys)');
-      _rollbackEntry(entry);
+      _releaseStashIfNoLongerOptimistic(entry.tableName, entry.primaryKey);
     }
   }
 
@@ -171,6 +183,7 @@ class OptimisticStateManager {
     for (final entry in entries.reversed) {
       _rollbackEntry(entry);
       touchedTables.add(entry.tableName);
+      _releaseStashIfNoLongerOptimistic(entry.tableName, entry.primaryKey);
     }
     return touchedTables;
   }
@@ -189,11 +202,62 @@ class OptimisticStateManager {
 
   void clear() {
     _entries.clear();
+    _committedStash.clear();
+  }
+
+  void stashCommittedState(
+    String tableName,
+    dynamic primaryKey,
+    Map<String, dynamic>? committedRowJson,
+  ) {
+    if (primaryKey == null) return;
+    (_committedStash[tableName] ??= {})[primaryKey] = _StashedCommit(
+      committedRowJson,
+    );
+  }
+
+  bool _isKeyStillOptimistic(String tableName, dynamic primaryKey) {
+    for (final entries in _entries.values) {
+      for (final entry in entries) {
+        if (entry.tableName == tableName && entry.primaryKey == primaryKey) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  void _releaseStashIfNoLongerOptimistic(String tableName, dynamic primaryKey) {
+    if (primaryKey == null) return;
+    if (_isKeyStillOptimistic(tableName, primaryKey)) return;
+    final tableStash = _committedStash[tableName];
+    if (tableStash == null) return;
+    tableStash.remove(primaryKey);
+    if (tableStash.isEmpty) _committedStash.remove(tableName);
   }
 
   void _rollbackEntry(OptimisticEntry entry) {
     final table = _cache.getTableByName(entry.tableName);
     if (table == null) return;
+
+    final tableStash = _committedStash[entry.tableName];
+    final hasStash =
+        entry.primaryKey != null &&
+        tableStash != null &&
+        tableStash.containsKey(entry.primaryKey);
+
+    if (hasStash) {
+      final stashed = tableStash[entry.primaryKey]!;
+      if (stashed.rowJson == null) {
+        table.deleteRow(entry.primaryKey);
+      } else {
+        final row = table.decoder.fromJson(stashed.rowJson!);
+        if (row != null) {
+          table.insertRow(row);
+        }
+      }
+      return;
+    }
 
     switch (entry.type) {
       case OptimisticChangeType.insert:

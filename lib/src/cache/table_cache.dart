@@ -120,12 +120,15 @@ class TableCache<T> {
     EventContext context, {
     Set<dynamic>? protectedKeys,
     bool reconcile = false,
+    void Function(dynamic primaryKey, Map<String, dynamic>? committedRowJson)?
+    onProtectedKeyCommitted,
   }) {
     final changes = _applyChanges(
       deletes,
       inserts,
       protectedKeys: protectedKeys,
       reconcile: reconcile,
+      onProtectedKeyCommitted: onProtectedKeyCommitted,
     );
     _emitChanges(changes, context);
 
@@ -504,10 +507,14 @@ class TableCache<T> {
     BsatnRowList inserts, {
     Set<dynamic>? protectedKeys,
     bool reconcile = false,
+    void Function(dynamic primaryKey, Map<String, dynamic>? committedRowJson)?
+    onProtectedKeyCommitted,
   }) {
     final changes = _RowChanges<T>();
     final oldValues = <dynamic, T>{};
     final pendingDeletes = <(dynamic, T)>[];
+    final protectedDeletedKeys = <dynamic>{};
+    final protectedInsertedRows = <dynamic, T>{};
 
     final deleteBytes = deletes.getRows();
     final insertBytes = inserts.getRows();
@@ -518,6 +525,7 @@ class TableCache<T> {
       final primaryKey = decoder.getPrimaryKey(row);
       if (primaryKey != null) {
         if (protectedKeys != null && protectedKeys.contains(primaryKey)) {
+          protectedDeletedKeys.add(primaryKey);
           continue;
         }
         changes.touchedKeys.add(primaryKey);
@@ -542,6 +550,7 @@ class TableCache<T> {
 
       if (primaryKey != null) {
         if (protectedKeys != null && protectedKeys.contains(primaryKey)) {
+          protectedInsertedRows[primaryKey] = row;
           continue;
         }
         changes.touchedKeys.add(primaryKey);
@@ -572,6 +581,16 @@ class TableCache<T> {
     for (final (primaryKey, deletedRow) in pendingDeletes) {
       if (!coalescedKeys.contains(primaryKey)) {
         changes.deleted.add(deletedRow);
+      }
+    }
+
+    if (onProtectedKeyCommitted != null) {
+      for (final entry in protectedInsertedRows.entries) {
+        onProtectedKeyCommitted(entry.key, decoder.toJson(entry.value));
+      }
+      for (final primaryKey in protectedDeletedKeys) {
+        if (protectedInsertedRows.containsKey(primaryKey)) continue;
+        onProtectedKeyCommitted(primaryKey, null);
       }
     }
 
