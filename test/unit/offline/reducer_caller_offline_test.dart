@@ -128,7 +128,63 @@ class MockMutationHandler implements MutationHandler {
   }
 }
 
+class ThrowingEnqueueStorage extends InMemoryOfflineStorage {
+  @override
+  Future<void> enqueueMutation(PendingMutation mutation) async {
+    throw StateError('disk full');
+  }
+}
+
 void main() {
+  group('ReducerCaller enqueue failure', () {
+    late MockOfflineConnection connection;
+    late ThrowingEnqueueStorage storage;
+    late MockMutationHandler handler;
+    late ReducerCaller caller;
+
+    setUp(() {
+      connection = MockOfflineConnection();
+      storage = ThrowingEnqueueStorage();
+      handler = MockMutationHandler();
+      caller = ReducerCaller(
+        connection,
+        offlineStorage: storage,
+        mutationHandler: handler,
+      );
+    });
+
+    tearDown(() async {
+      caller.dispose();
+      await connection.dispose();
+      await storage.dispose();
+    });
+
+    test(
+      'rolls back optimistic changes and rethrows when enqueue fails',
+      () async {
+        connection.setOffline();
+
+        await expectLater(
+          caller.call(
+            'create_note',
+            Uint8List.fromList([1, 2, 3]),
+            optimisticChanges: [
+              OptimisticChange.insert('notes', {'id': 1, 'title': 'Test'}),
+            ],
+          ),
+          throwsA(isA<StateError>()),
+        );
+
+        expect(handler.optimisticRequestIds, hasLength(1));
+        expect(
+          handler.rolledBackRequestIds,
+          equals(handler.optimisticRequestIds),
+        );
+        expect(handler.queuedRequestIds, isEmpty);
+      },
+    );
+  });
+
   group('ReducerCaller Offline Queue', () {
     late MockOfflineConnection connection;
     late InMemoryOfflineStorage storage;

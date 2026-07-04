@@ -244,7 +244,15 @@ class ReducerCaller {
       optimisticChanges: optimisticChanges,
     );
 
-    await _offlineStorage!.enqueueMutation(mutation);
+    try {
+      await _offlineStorage!.enqueueMutation(mutation);
+    } catch (e) {
+      SdkLogger.e('ENQUEUE_FAILED: $e — rolling back optimistic changes');
+      if (optimisticChanges != null && optimisticChanges.isNotEmpty) {
+        _mutationHandler?.onRollbackOptimistic(requestId);
+      }
+      rethrow;
+    }
     _mutationHandler?.onMutationQueued(requestId, optimisticChanges);
 
     if (_isOnline) {
