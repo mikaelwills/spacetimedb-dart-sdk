@@ -212,7 +212,14 @@ class MutationSyncer implements MutationHandler {
           if (_disposed) return;
 
           if (result.isSuccess) {
-            await _storage.dequeueMutation(mutation.requestId);
+            try {
+              await _storage.dequeueMutation(mutation.requestId);
+            } catch (e) {
+              throw SpacetimeDbStorageException(
+                'Failed to dequeue ${mutation.reducerName} after a successful '
+                'send (requestId=${mutation.requestId}): $e',
+              );
+            }
             _decrementPendingCount();
             SdkLogger.d('Synced mutation: ${mutation.reducerName}');
             if (!_disposed) {
@@ -265,6 +272,12 @@ class MutationSyncer implements MutationHandler {
         } on SpacetimeDbTimeoutException catch (e) {
           SdkLogger.w(
             'Timeout syncing ${mutation.reducerName}: $e. Keeping in queue for retry.',
+          );
+          break;
+        } on SpacetimeDbStorageException catch (e) {
+          SdkLogger.e(
+            'Storage error after sending ${mutation.reducerName}: $e. '
+            'Pausing queue; the mutation may re-send on the next cycle.',
           );
           break;
         } catch (e) {

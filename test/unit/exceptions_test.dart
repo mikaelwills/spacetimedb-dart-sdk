@@ -15,6 +15,7 @@ String classify(SpacetimeDbException e) => switch (e) {
   SpacetimeDbProtocolException() => 'protocol',
   SpacetimeDbSubscriptionException() => 'subscription',
   SpacetimeDbQueueFullException() => 'queue-full',
+  SpacetimeDbStorageException() => 'storage',
 };
 
 void main() {
@@ -48,6 +49,7 @@ void main() {
               tableName: 'note',
             ):
             'subscription',
+        SpacetimeDbStorageException('disk full'): 'storage',
       };
 
       for (final entry in cases.entries) {
@@ -71,6 +73,7 @@ void main() {
         SpacetimeDbSchemaException('s'),
         SpacetimeDbProtocolException('p'),
         SpacetimeDbSubscriptionException('sub'),
+        SpacetimeDbStorageException('st'),
       ];
 
       for (final e in exceptions) {

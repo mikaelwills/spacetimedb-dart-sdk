@@ -54,6 +54,10 @@ class SpacetimeDbProtocolException extends SpacetimeDbException {
   SpacetimeDbProtocolException(super.message);
 }
 
+class SpacetimeDbStorageException extends SpacetimeDbException {
+  SpacetimeDbStorageException(super.message);
+}
+
 class SpacetimeDbSubscriptionException extends SpacetimeDbException {
   final String? tableName;
 

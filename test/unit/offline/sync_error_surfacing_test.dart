@@ -265,5 +265,47 @@ void main() {
       expect(state.failedCount, equals(50));
       expect(state.recentFailures, hasLength(50));
     });
+
+    test(
+      'a dequeue failure after a successful send does not silently drop the '
+      'mutation or mislabel the storage error',
+      () async {
+        final connection = MockConnection();
+        connection.setStateSilently(const Connected());
+        final storage = _ThrowingDequeueStorage();
+        final sent = <String>[];
+        final syncer = MutationSyncer(
+          connection: connection,
+          storage: storage,
+          optimisticState: OptimisticStateManager(ClientCache()),
+          cache: ClientCache(),
+          send: (reducerName, args, {requestId}) async {
+            sent.add(reducerName);
+            return _committed(reducerName);
+          },
+        );
+        await storage.enqueueMutation(_mutation('r1', 'update_note'));
+
+        await syncer.syncPendingMutations();
+
+        expect(sent, equals(['update_note']));
+        expect(
+          await storage.getPendingMutations(),
+          hasLength(1),
+          reason:
+              'the send succeeded but the dequeue failed; the mutation stays '
+              'queued rather than being silently dropped, and the storage '
+              'error is not misreported as a network error',
+        );
+        syncer.cancelRetry();
+      },
+    );
   });
+}
+
+class _ThrowingDequeueStorage extends InMemoryOfflineStorage {
+  @override
+  Future<void> dequeueMutation(String requestId) async {
+    throw StateError('disk full on dequeue');
+  }
 }
