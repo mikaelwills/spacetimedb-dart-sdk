@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- **`TableCache.applyServerDelta` / `applySnapshot` / `dropQuerySet`** — new internal, `querySetId`-labeled apply methods used exclusively by `SubscriptionManager` for every server-sourced write to a primary-key table. Ownership of a row (which query sets currently have it in their result set) is now tracked per-row and derived only from these labeled wire deltas, closing a class of bugs where a row delivered outside the initial `SubscribeApplied` snapshot (a live `TransactionUpdate`, or a caller's own committed reducer result) could be silently evicted by an unrelated query set's later apply. Rows written through the pre-existing unlabeled methods (`applyTransactionUpdate`, `applyInitialData`, `applyTransactionUpdateAndCollectKeys` — unchanged, still released, still used for no-primary-key and event tables) get no ownership entry; they behave like any other offline-hydrated stray, pinned while optimistic, otherwise healed or evicted on the next covering `SubscribeApplied`.
+
+### Changed (observable, opt-out not available)
+
+- **A row visible to two or more overlapping query sets on the same table now fires exactly one insert event and exactly one delete event**, on the 0→1 and →0 ownership transitions respectively — matching the official SpacetimeDB SDKs' semantics. Previously such a row could double-fire insert/delete events once per owning query set. This is very likely a latent-bug fix for any consumer relying on `onInsert`/`onDelete`/`lastBatch` counts on a table subscribed via more than one overlapping query, but it is an observable behavior change and is called out here per house convention for released-behavior deltas.
+
 ## 2.2.0 - 2026-06-27
 
 Hardens the offline-first sync path: a configurable replay policy for the offline mutation queue, surfaced flush failures, append-only journal storage, and a cluster of reconnect-correctness fixes that stop offline edits being silently clobbered when a subscription rehydrates. All additive — existing consumers keep working unchanged.

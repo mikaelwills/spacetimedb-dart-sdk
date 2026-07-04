@@ -18,6 +18,12 @@ class TableCache<T> {
   final Map<dynamic, T> _rowsByPrimaryKey = {};
   final List<T> _rows = [];
 
+  final Map<dynamic, Set<int>> _rowOwners = {};
+
+  @visibleForTesting
+  int get ownershipImbalanceCount => _ownershipImbalanceCount;
+  int _ownershipImbalanceCount = 0;
+
   final Map<dynamic, _AutoDisposeNotifier<T?>> _rowNotifiers = {};
 
   final ValueNotifier<List<T>> rows = ValueNotifier<List<T>>([]);
@@ -140,6 +146,197 @@ class TableCache<T> {
     return changes.touchedKeys;
   }
 
+  Set<dynamic> applyServerDelta(
+    BsatnRowList deletes,
+    BsatnRowList inserts,
+    EventContext context, {
+    required int querySetId,
+    Set<dynamic>? protectedKeys,
+    bool reconcile = false,
+    bool trackImbalance = true,
+    void Function(dynamic primaryKey, Map<String, dynamic>? committedRowJson)?
+    onProtectedKeyCommitted,
+  }) {
+    final hadOwnersBefore = <dynamic>{
+      for (final pk in inserts.getRows().map(
+        (bytes) => decoder.getPrimaryKey(decoder.decode(BsatnDecoder(bytes))),
+      ))
+        if (pk != null && (_rowOwners[pk]?.isNotEmpty ?? false)) pk,
+    };
+
+    final changes = _applyChanges(
+      deletes,
+      inserts,
+      protectedKeys: protectedKeys,
+      reconcile: reconcile,
+      onProtectedKeyCommitted: onProtectedKeyCommitted,
+    );
+
+    for (final pk in changes.serverPresentKeys) {
+      _rowOwners.putIfAbsent(pk, () => <int>{}).add(querySetId);
+    }
+
+    final suppressInsertEvents = <dynamic>{};
+    for (final pk in changes.serverPresentKeys) {
+      if (hadOwnersBefore.contains(pk)) suppressInsertEvents.add(pk);
+    }
+    if (suppressInsertEvents.isNotEmpty) {
+      changes.inserted.removeWhere((row) {
+        final pk = decoder.getPrimaryKey(row);
+        return pk != null && suppressInsertEvents.contains(pk);
+      });
+    }
+
+    final deletedRowValues = <dynamic, T>{
+      for (final row in changes.deleted)
+        if (decoder.getPrimaryKey(row) != null) decoder.getPrimaryKey(row): row,
+    };
+
+    final toEvict = <dynamic>[];
+    final surviving = <dynamic>[];
+    for (final pk in changes.serverAbsentKeys) {
+      final owners = _rowOwners[pk];
+      if (owners == null) {
+        if (trackImbalance && deletedRowValues.containsKey(pk)) {
+          _ownershipImbalanceCount++;
+          SdkLogger.w(
+            'OWNERSHIP_IMBALANCE[$tableName]: querySetId=$querySetId '
+            'reported pk=$pk absent but it has no owner entry',
+          );
+        }
+        continue;
+      }
+      if (!owners.remove(querySetId) && trackImbalance) {
+        _ownershipImbalanceCount++;
+        SdkLogger.w(
+          'OWNERSHIP_IMBALANCE[$tableName]: querySetId=$querySetId '
+          'reported pk=$pk absent but was not among its owners $owners',
+        );
+      }
+      if (owners.isEmpty) {
+        _rowOwners.remove(pk);
+        toEvict.add(pk);
+      } else {
+        surviving.add(pk);
+      }
+    }
+
+    for (final pk in toEvict) {
+      if (protectedKeys != null && protectedKeys.contains(pk)) continue;
+      _evictRow(pk);
+    }
+
+    final suppressDeleteEvents = <dynamic>{};
+    for (final pk in surviving) {
+      final row = deletedRowValues[pk];
+      if (row != null) {
+        _rowsByPrimaryKey[pk] = row;
+        suppressDeleteEvents.add(pk);
+      }
+    }
+    if (suppressDeleteEvents.isNotEmpty) {
+      changes.deleted.removeWhere((row) {
+        final pk = decoder.getPrimaryKey(row);
+        return pk != null && suppressDeleteEvents.contains(pk);
+      });
+    }
+
+    _emitChanges(changes, context);
+
+    if (isEvent) {
+      _rowsByPrimaryKey.clear();
+      _rows.clear();
+    }
+
+    return changes.touchedKeys;
+  }
+
+  Set<dynamic> applySnapshot(
+    BsatnRowList inserts,
+    EventContext context, {
+    required int querySetId,
+    Set<dynamic>? protectedKeys,
+    bool reconnectInFlight = false,
+  }) {
+    final changes = _applyChanges(
+      BsatnRowList.empty(),
+      inserts,
+      protectedKeys: protectedKeys,
+    );
+
+    final snapshotKeys = changes.serverPresentKeys;
+
+    final toEvict = <dynamic>[];
+    for (final entry in _rowOwners.entries.toList()) {
+      final pk = entry.key;
+      final owners = entry.value;
+      if (!owners.contains(querySetId)) continue;
+      if (snapshotKeys.contains(pk)) continue;
+      owners.remove(querySetId);
+      if (owners.isEmpty) {
+        _rowOwners.remove(pk);
+        if (protectedKeys == null || !protectedKeys.contains(pk)) {
+          toEvict.add(pk);
+        }
+      }
+    }
+
+    for (final pk in snapshotKeys) {
+      _rowOwners.putIfAbsent(pk, () => <int>{}).add(querySetId);
+    }
+
+    if (!reconnectInFlight) {
+      for (final row in _rowsByPrimaryKey.values.toList()) {
+        final pk = decoder.getPrimaryKey(row);
+        if (pk == null) continue;
+        if (snapshotKeys.contains(pk)) continue;
+        if (protectedKeys != null && protectedKeys.contains(pk)) continue;
+        if (_rowOwners.containsKey(pk)) continue;
+        toEvict.add(pk);
+      }
+    }
+
+    for (final pk in toEvict) {
+      _evictRow(pk);
+    }
+
+    _emitChanges(changes, context);
+    if (toEvict.isNotEmpty) {
+      _refreshRowsNotifier();
+      _notifyRowListeners(toEvict);
+    }
+    return changes.insertedPrimaryKeys;
+  }
+
+  void dropQuerySet(int querySetId, {Set<dynamic>? protectedKeys}) {
+    final toEvict = <dynamic>[];
+    for (final entry in _rowOwners.entries.toList()) {
+      final pk = entry.key;
+      final owners = entry.value;
+      if (!owners.remove(querySetId)) continue;
+      if (owners.isEmpty) {
+        _rowOwners.remove(pk);
+        if (protectedKeys == null || !protectedKeys.contains(pk)) {
+          toEvict.add(pk);
+        }
+      }
+    }
+    for (final pk in toEvict) {
+      _evictRow(pk);
+    }
+    if (toEvict.isNotEmpty) {
+      _refreshRowsNotifier();
+      _notifyRowListeners(toEvict);
+    }
+  }
+
+  int get ownerEntryCount => _rowOwners.length;
+
+  void clearOwners() => _rowOwners.clear();
+
+  Set<dynamic> ownedKeys(dynamic primaryKey) =>
+      _rowOwners[primaryKey] ?? const {};
+
   /// Returns the number of rows in the cache
   ///
   /// Example:
@@ -185,7 +382,7 @@ class TableCache<T> {
       final row = decoder.decode(bsatnDecoder);
       final primaryKey = decoder.getPrimaryKey(row);
       if (primaryKey != null) {
-        _rowsByPrimaryKey.remove(primaryKey);
+        _evictRow(primaryKey);
       } else {
         _rows.remove(row);
       }
@@ -201,6 +398,7 @@ class TableCache<T> {
   void clear() {
     _rowsByPrimaryKey.clear();
     _rows.clear();
+    _rowOwners.clear();
     _refreshRowsNotifier();
     if (_rowNotifiers.isNotEmpty) {
       _notifyRowListeners(_rowNotifiers.keys.toList());
@@ -265,6 +463,7 @@ class TableCache<T> {
     }
     _rowsByPrimaryKey.clear();
     _rows.clear();
+    _rowOwners.clear();
     for (final json in jsonRows) {
       final row = decoder.fromJson(json);
       if (row == null) {
@@ -401,7 +600,11 @@ class TableCache<T> {
         if (test(key)) touchedKeys.add(key);
       }
     }
-    _rowsByPrimaryKey.removeWhere((key, _) => test(key));
+    final matchedKeys = _rowsByPrimaryKey.keys.where(test).toList();
+    for (final key in matchedKeys) {
+      _rowsByPrimaryKey.remove(key);
+      _rowOwners.remove(key);
+    }
     _rows.removeWhere((row) {
       final pk = decoder.getPrimaryKey(row);
       return test(pk);
@@ -515,9 +718,27 @@ class TableCache<T> {
     final pendingDeletes = <(dynamic, T)>[];
     final protectedDeletedKeys = <dynamic>{};
     final protectedInsertedRows = <dynamic, T>{};
+    final alreadyGoneKeys = <dynamic>{};
 
     final deleteBytes = deletes.getRows();
     final insertBytes = inserts.getRows();
+
+    final insertedKeysRaw = <dynamic>{};
+    for (final bytes in insertBytes) {
+      final primaryKey = decoder.getPrimaryKey(
+        decoder.decode(BsatnDecoder(bytes)),
+      );
+      if (primaryKey != null) insertedKeysRaw.add(primaryKey);
+    }
+    for (final bytes in deleteBytes) {
+      final primaryKey = decoder.getPrimaryKey(
+        decoder.decode(BsatnDecoder(bytes)),
+      );
+      if (primaryKey != null && !insertedKeysRaw.contains(primaryKey)) {
+        changes.serverAbsentKeys.add(primaryKey);
+      }
+    }
+    changes.serverPresentKeys.addAll(insertedKeysRaw);
 
     for (final bytes in deleteBytes) {
       final bsatnDecoder = BsatnDecoder(bytes);
@@ -535,6 +756,8 @@ class TableCache<T> {
           pendingDeletes.add((primaryKey, old));
         } else if (!reconcile) {
           pendingDeletes.add((primaryKey, row));
+        } else {
+          alreadyGoneKeys.add(primaryKey);
         }
       } else {
         _rows.remove(row);
@@ -555,6 +778,7 @@ class TableCache<T> {
         }
         changes.touchedKeys.add(primaryKey);
         changes.insertedPrimaryKeys.add(primaryKey);
+        alreadyGoneKeys.remove(primaryKey);
         if (oldValues.containsKey(primaryKey)) {
           final old = oldValues[primaryKey] as T;
           if (!(reconcile && old == row)) {
@@ -565,11 +789,15 @@ class TableCache<T> {
           final existing = _rowsByPrimaryKey[primaryKey];
           if (existing == null) {
             changes.inserted.add(row);
+            changes.freshInsertedPrimaryKeys.add(primaryKey);
           } else if (existing != row) {
             changes.updated.add((existing, row));
           }
         } else {
           changes.inserted.add(row);
+          if (!_rowsByPrimaryKey.containsKey(primaryKey)) {
+            changes.freshInsertedPrimaryKeys.add(primaryKey);
+          }
         }
         _rowsByPrimaryKey[primaryKey] = row;
       } else {
@@ -581,8 +809,10 @@ class TableCache<T> {
     for (final (primaryKey, deletedRow) in pendingDeletes) {
       if (!coalescedKeys.contains(primaryKey)) {
         changes.deleted.add(deletedRow);
+        changes.removedPrimaryKeys.add(primaryKey);
       }
     }
+    changes.removedPrimaryKeys.addAll(alreadyGoneKeys);
 
     if (onProtectedKeyCommitted != null) {
       for (final entry in protectedInsertedRows.entries) {
@@ -596,6 +826,11 @@ class TableCache<T> {
 
     return changes;
   }
+
+  void _evictRow(dynamic primaryKey) {
+    _rowsByPrimaryKey.remove(primaryKey);
+    _rowOwners.remove(primaryKey);
+  }
 }
 
 class _RowChanges<T> {
@@ -604,6 +839,10 @@ class _RowChanges<T> {
   final List<(T, T)> updated = [];
   final Set<dynamic> touchedKeys = {};
   final Set<dynamic> insertedPrimaryKeys = {};
+  final Set<dynamic> freshInsertedPrimaryKeys = {};
+  final Set<dynamic> removedPrimaryKeys = {};
+  final Set<dynamic> serverPresentKeys = {};
+  final Set<dynamic> serverAbsentKeys = {};
 }
 
 class _AutoDisposeNotifier<T> extends ValueNotifier<T> {

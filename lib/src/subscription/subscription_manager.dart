@@ -43,8 +43,6 @@ class SubscriptionManager {
   final Map<int, List<String>> _subscriptionsByQuerySetId = {};
   int _nextQuerySetId = 1;
 
-  final Map<String, Map<dynamic, Set<int>>> _rowProvenance = {};
-
   final _subscribeWaiters = <int, Completer<void>>{};
 
   late final OptimisticStateManager _optimisticState;
@@ -120,6 +118,10 @@ class SubscriptionManager {
   @visibleForTesting
   Set<String> get activeSubscriptionQueries =>
       _subscriptionsByQuerySetId.values.expand((q) => q).toSet();
+
+  @visibleForTesting
+  int rowProvenanceCountForTable(String tableName) =>
+      cache.getTableByName(tableName)?.ownerEntryCount ?? 0;
 
   Stream<TransactionUpdateMessage> get onTransactionUpdate =>
       _transactionUpdateController.stream;
@@ -231,7 +233,7 @@ class SubscriptionManager {
     );
     _connection.send(message.encode());
     _subscriptionsByQuerySetId.remove(querySetId);
-    _dropQuerySetProvenance(querySetId);
+    _dropQuerySetEverywhere(querySetId);
   }
 
   void callProcedure(
@@ -340,7 +342,9 @@ class SubscriptionManager {
         for (final table in cache.allTables)
           if (table.hasPrimaryKey) table.tableName: table.primaryKeys,
       };
-      _rowProvenance.clear();
+      for (final table in cache.allTables) {
+        if (table.hasPrimaryKey) table.clearOwners();
+      }
 
       _reconnectInFlight = true;
       try {
@@ -371,15 +375,15 @@ class SubscriptionManager {
     for (final entry in oldKeysByTable.entries) {
       final tableName = entry.key;
       final oldKeys = entry.value;
-      final tableProvenance = _rowProvenance[tableName] ?? const {};
+      final table = cache.getTableByName(tableName);
+      if (table == null) continue;
       final optimisticPKs = _optimisticState.optimisticPrimaryKeysForTable(
         tableName,
       );
       final toEvict = <dynamic>[];
       for (final pk in oldKeys) {
         if (optimisticPKs.contains(pk)) continue;
-        final sets = tableProvenance[pk];
-        if (sets == null || sets.isEmpty) toEvict.add(pk);
+        if (table.ownedKeys(pk).isEmpty) toEvict.add(pk);
       }
       _evict(tableName, toEvict);
     }
@@ -493,7 +497,7 @@ class SubscriptionManager {
 
     if (queries.isEmpty) {
       _subscriptionsByQuerySetId.remove(message.querySetId);
-      _dropQuerySetProvenance(message.querySetId);
+      _dropQuerySetEverywhere(message.querySetId);
       _completeSubscribeWaiter(message.querySetId);
     } else {
       final resubscribe = SubscribeMessage(
@@ -512,83 +516,72 @@ class SubscriptionManager {
     final event = SubscribeAppliedEvent();
     final context = EventContext(myConnectionId: _connectionId, event: event);
 
-    final fromRegex = RegExp(r'FROM\s+[`"]?(\w+)[`"]?', caseSensitive: false);
-    final queries = _subscriptionsByQuerySetId[message.querySetId] ?? const [];
-    final querySetTables = <String>{
-      for (final query in queries)
-        for (final match in fromRegex.allMatches(query)) match.group(1)!,
-    };
-
     final querySetId = message.querySetId;
-    final serverTableNames =
-        message.rows.tables.map((t) => t.tableName).toSet();
-
-    for (final tableName in querySetTables) {
-      final table = cache.getTableByName(tableName);
-      if (table == null || table.hasPrimaryKey) continue;
-      if (!serverTableNames.contains(tableName)) {
-        _optimisticState.clearNonOptimisticRows(tableName);
-      }
-    }
-
-    final matchedByTable = <String, Set<dynamic>>{
-      for (final tableName in querySetTables) tableName: <dynamic>{},
-    };
+    final rowsByTable = <String, BsatnRowList>{};
     for (final single in message.rows.tables) {
-      final table = cache.getTableByName(single.tableName);
+      final existing = rowsByTable[single.tableName];
+      rowsByTable[single.tableName] = existing == null
+          ? single.rows
+          : _mergeRowLists(existing, single.rows);
+    }
+    final tablesToApply = <String>{
+      ...rowsByTable.keys,
+      ..._tablesForQuerySetId(querySetId),
+    };
+
+    for (final tableName in tablesToApply) {
+      final table = cache.getTableByName(tableName);
       if (table == null) continue;
 
-      SdkLogger.d('  Table "${single.tableName}": applying initial rows');
-      if (!table.hasPrimaryKey) {
-        _optimisticState.clearNonOptimisticRows(single.tableName);
+      SdkLogger.d('  Table "$tableName": applying initial rows');
+      final protectedKeys = _optimisticState.optimisticPrimaryKeysForTable(
+        tableName,
+      );
+      final merged = rowsByTable[tableName];
+      final inserts = merged ?? BsatnRowList.empty();
+
+      if (table.hasPrimaryKey) {
+        table.applySnapshot(
+          inserts,
+          context,
+          querySetId: querySetId,
+          protectedKeys: protectedKeys,
+          reconnectInFlight: _reconnectInFlight,
+        );
+      } else {
+        _optimisticState.clearNonOptimisticRows(tableName);
+        if (merged != null) {
+          table.applyInitialData(
+            inserts,
+            context,
+            protectedKeys: protectedKeys,
+          );
+        }
       }
-      final insertedPKs = table.applyInitialData(
-        single.rows,
-        context,
-        protectedKeys: _optimisticState.optimisticPrimaryKeysForTable(
-          single.tableName,
-        ),
-      );
-      if (table.hasPrimaryKey) matchedByTable[single.tableName] = insertedPKs;
       table.markSubscribed();
-    }
-
-    for (final tableName in querySetTables) {
-      final table = cache.getTableByName(tableName);
-      if (table == null || !table.hasPrimaryKey) continue;
-      _reconcileQuerySetProvenance(
-        tableName: tableName,
-        querySetId: querySetId,
-        nowMatching: matchedByTable[tableName] ?? const {},
-      );
-    }
-
-    for (final tableName in querySetTables) {
-      cache.getTableByName(tableName)?.markSubscribed();
     }
 
     await _mutationSyncer?.persistTableSnapshots();
   }
 
-  void _untagAndEvict(
-    String tableName,
-    Map<dynamic, Set<int>> tableProvenance,
-    int tag,
-  ) {
-    final optimisticPKs = _optimisticState.optimisticPrimaryKeysForTable(
-      tableName,
-    );
-    final toEvict = <dynamic>[];
-    for (final entry in tableProvenance.entries.toList()) {
-      final pk = entry.key;
-      final sets = entry.value;
-      if (!sets.remove(tag)) continue;
-      if (sets.isEmpty) {
-        tableProvenance.remove(pk);
-        if (!optimisticPKs.contains(pk)) toEvict.add(pk);
-      }
+  BsatnRowList _mergeRowLists(BsatnRowList a, BsatnRowList b) {
+    final rows = [...a.getRows(), ...b.getRows()];
+    final offsets = <int>[];
+    var offset = 0;
+    for (final row in rows) {
+      offsets.add(offset);
+      offset += row.length;
     }
-    _evict(tableName, toEvict);
+    final merged = Uint8List(offset);
+    var writeOffset = 0;
+    for (final row in rows) {
+      merged.setRange(writeOffset, writeOffset + row.length, row);
+      writeOffset += row.length;
+    }
+    return BsatnRowList(
+      sizeHint: RowSizeHint.rowOffsets(offsets),
+      rowsData: merged,
+    );
   }
 
   void _evict(String tableName, List<dynamic> pks) {
@@ -597,62 +590,35 @@ class SubscriptionManager {
     cache.getTableByName(tableName)?.removeRowsWhere(evictSet.contains);
   }
 
-  void _reconcileQuerySetProvenance({
-    required String tableName,
-    required int querySetId,
-    required Set<dynamic> nowMatching,
-  }) {
-    final tableProvenance = _rowProvenance.putIfAbsent(tableName, () => {});
-    final optimisticPKs = _optimisticState.optimisticPrimaryKeysForTable(
-      tableName,
-    );
-
-    final toEvict = <dynamic>[];
-    for (final entry in tableProvenance.entries.toList()) {
-      final pk = entry.key;
-      final sets = entry.value;
-      if (!sets.contains(querySetId)) continue;
-      if (nowMatching.contains(pk)) continue;
-      sets.remove(querySetId);
-      if (sets.isEmpty) {
-        tableProvenance.remove(pk);
-        if (!optimisticPKs.contains(pk)) toEvict.add(pk);
-      }
-    }
-
-    for (final pk in nowMatching) {
-      tableProvenance.putIfAbsent(pk, () => <int>{}).add(querySetId);
-    }
-
-    final table = cache.getTableByName(tableName);
-    if (table != null && !_reconnectInFlight) {
-      for (final row in table.iter().toList()) {
-        final pk = table.decoder.getPrimaryKey(row);
-        if (pk == null) continue;
-        if (nowMatching.contains(pk)) continue;
-        if (optimisticPKs.contains(pk)) continue;
-        final sets = tableProvenance[pk];
-        if (sets == null || sets.isEmpty) {
-          toEvict.add(pk);
-        }
-      }
-    }
-
-    _evict(tableName, toEvict);
-  }
-
-  void _dropQuerySetProvenance(int querySetId) {
-    for (final entry in _rowProvenance.entries) {
-      _untagAndEvict(entry.key, entry.value, querySetId);
+  void _dropQuerySetEverywhere(int querySetId) {
+    for (final table in cache.allTables) {
+      if (!table.hasPrimaryKey) continue;
+      table.dropQuerySet(
+        querySetId,
+        protectedKeys: _optimisticState.optimisticPrimaryKeysForTable(
+          table.tableName,
+        ),
+      );
     }
   }
 
-  /// Apply the optional dropped-rows payload on `UnsubscribeApplied` as
-  /// deletes against the local cache (slice 5). When `rows` is null, the
-  /// server honoured `UnsubscribeFlags::Default` — no delete events fire.
+  static final _fromRegex = RegExp(
+    r'FROM\s+[`"]?(\w+)[`"]?',
+    caseSensitive: false,
+  );
+
+  Set<String> _tablesForQuerySetId(int querySetId) {
+    final queries = _subscriptionsByQuerySetId[querySetId] ?? const [];
+    return <String>{
+      for (final query in queries)
+        for (final match in _fromRegex.allMatches(query)) match.group(1)!,
+    };
+  }
+
   void _handleUnsubscribeApplied(UnsubscribeApplied message) {
-    _subscriptionsByQuerySetId.remove(message.querySetId);
-    _dropQuerySetProvenance(message.querySetId);
+    final querySetId = message.querySetId;
+    _subscriptionsByQuerySetId.remove(querySetId);
+    _dropQuerySetEverywhere(querySetId);
 
     final rows = message.rows;
     if (rows == null) return;
@@ -665,7 +631,20 @@ class SubscriptionManager {
     for (final single in rows.tables) {
       final table = cache.getTableByName(single.tableName);
       if (table == null) continue;
-      table.applyTransactionUpdate(single.rows, BsatnRowList.empty(), context);
+      if (table.hasPrimaryKey) {
+        table.applyServerDelta(
+          single.rows,
+          BsatnRowList.empty(),
+          context,
+          querySetId: querySetId,
+          protectedKeys: _optimisticState.optimisticPrimaryKeysForTable(
+            single.tableName,
+          ),
+          trackImbalance: false,
+        );
+      } else {
+        table.applyTransactionUpdate(single.rows, BsatnRowList.empty(), context);
+      }
     }
   }
 
@@ -680,34 +659,40 @@ class SubscriptionManager {
       event: UnknownTransactionEvent(),
     );
 
-    final tableUpdates = message.querySets
-        .expand((qs) => qs.tables)
-        .toList(growable: false);
+    final touchedTables = <String>{};
 
-    for (final tableUpdate in tableUpdates) {
-      final table = cache.getTableByName(tableUpdate.tableName);
-      if (table == null) continue;
+    for (final querySet in message.querySets) {
+      if (!_subscriptionsByQuerySetId.containsKey(querySet.querySetId)) {
+        continue;
+      }
+      for (final tableUpdate in querySet.tables) {
+        final table = cache.getTableByName(tableUpdate.tableName);
+        if (table == null) continue;
+        touchedTables.add(tableUpdate.tableName);
 
-      for (final rowGroup in tableUpdate.rows) {
-        if (rowGroup is PersistentTableRows) {
-          table.applyTransactionUpdate(
-            rowGroup.deletes,
-            rowGroup.inserts,
-            context,
-          );
-        } else if (rowGroup is EventTableRows) {
-          table.applyTransactionUpdate(
-            BsatnRowList.empty(),
-            rowGroup.events,
-            context,
-          );
+        for (final rowGroup in tableUpdate.rows) {
+          if (rowGroup is PersistentTableRows) {
+            table.applyServerDelta(
+              rowGroup.deletes,
+              rowGroup.inserts,
+              context,
+              querySetId: querySet.querySetId,
+              protectedKeys: _optimisticState.optimisticPrimaryKeysForTable(
+                tableUpdate.tableName,
+              ),
+            );
+          } else if (rowGroup is EventTableRows) {
+            table.applyTransactionUpdate(
+              BsatnRowList.empty(),
+              rowGroup.events,
+              context,
+            );
+          }
         }
       }
     }
 
-    _mutationSyncer?.persistTableSnapshots(
-      onlyTables: tableUpdates.map((tu) => tu.tableName).toSet(),
-    );
+    _mutationSyncer?.persistTableSnapshots(onlyTables: touchedTables);
   }
 
   /// Caller's own reducer result (v2 `ReducerResult`).
@@ -766,74 +751,88 @@ class SubscriptionManager {
         effectiveRequestId,
       );
 
-      final shortCircuitUpdates = message.querySets
-          .expand((qs) => qs.tables)
-          .toList(growable: false);
+      final touchedTables = <String>{};
+      final touchedKeysByTable = <String, Set<dynamic>>{};
 
-      for (final tableUpdate in shortCircuitUpdates) {
-        final table = cache.getTableByName(tableUpdate.tableName);
-        if (table == null) continue;
+      for (final querySet in message.querySets) {
+        if (!_subscriptionsByQuerySetId.containsKey(querySet.querySetId)) {
+          continue;
+        }
+        for (final tableUpdate in querySet.tables) {
+          final table = cache.getTableByName(tableUpdate.tableName);
+          if (table == null) continue;
+          touchedTables.add(tableUpdate.tableName);
 
-        final stillPending = _optimisticState.optimisticPrimaryKeysForTable(
-          tableUpdate.tableName,
-        );
-        void onProtectedKeyCommitted(
-          dynamic primaryKey,
-          Map<String, dynamic>? committedRowJson,
-        ) {
-          _optimisticState.stashCommittedState(
+          final stillPending = _optimisticState.optimisticPrimaryKeysForTable(
             tableUpdate.tableName,
-            primaryKey,
-            committedRowJson,
           );
-        }
-
-        final touchedKeys = <dynamic>{};
-        for (final rowGroup in tableUpdate.rows) {
-          if (rowGroup is PersistentTableRows) {
-            touchedKeys.addAll(
-              table.applyTransactionUpdateAndCollectKeys(
-                rowGroup.deletes,
-                rowGroup.inserts,
-                context,
-                protectedKeys: stillPending,
-                reconcile: true,
-                onProtectedKeyCommitted: onProtectedKeyCommitted,
-              ),
-            );
-          } else if (rowGroup is EventTableRows) {
-            touchedKeys.addAll(
-              table.applyTransactionUpdateAndCollectKeys(
-                BsatnRowList.empty(),
-                rowGroup.events,
-                context,
-                protectedKeys: stillPending,
-                reconcile: true,
-                onProtectedKeyCommitted: onProtectedKeyCommitted,
-              ),
+          void onProtectedKeyCommitted(
+            dynamic primaryKey,
+            Map<String, dynamic>? committedRowJson,
+          ) {
+            _optimisticState.stashCommittedState(
+              tableUpdate.tableName,
+              primaryKey,
+              committedRowJson,
             );
           }
-        }
 
-        // An optimistic insert whose key the commit never touched is a
-        // phantom (the server assigned a different id); the committed row
-        // applied above is the real one, so drop the placeholder.
-        for (final entry in confirmedEntries) {
-          if (entry.tableName != tableUpdate.tableName) continue;
-          if (entry.type != OptimisticChangeType.insert) continue;
-          final pk = entry.primaryKey;
-          if (pk == null ||
-              touchedKeys.contains(pk) ||
-              stillPending.contains(pk)) {
-            continue;
+          final touchedKeys = touchedKeysByTable.putIfAbsent(
+            tableUpdate.tableName,
+            () => <dynamic>{},
+          );
+          for (final rowGroup in tableUpdate.rows) {
+            if (rowGroup is PersistentTableRows) {
+              touchedKeys.addAll(
+                table.applyServerDelta(
+                  rowGroup.deletes,
+                  rowGroup.inserts,
+                  context,
+                  querySetId: querySet.querySetId,
+                  protectedKeys: stillPending,
+                  reconcile: true,
+                  onProtectedKeyCommitted: onProtectedKeyCommitted,
+                ),
+              );
+            } else if (rowGroup is EventTableRows) {
+              touchedKeys.addAll(
+                table.applyTransactionUpdateAndCollectKeys(
+                  BsatnRowList.empty(),
+                  rowGroup.events,
+                  context,
+                  protectedKeys: stillPending,
+                  reconcile: true,
+                  onProtectedKeyCommitted: onProtectedKeyCommitted,
+                ),
+              );
+            }
           }
-          table.deleteRow(pk);
         }
       }
 
-      _mutationSyncer?.persistTableSnapshots(
-        onlyTables: shortCircuitUpdates.map((tu) => tu.tableName).toSet(),
-      );
+      for (final entry in confirmedEntries) {
+        final pk = entry.primaryKey;
+        if (pk == null) continue;
+        final tableName = entry.tableName;
+        final table = cache.getTableByName(tableName);
+        if (table == null) continue;
+        final stillPending = _optimisticState.optimisticPrimaryKeysForTable(
+          tableName,
+        );
+        if (stillPending.contains(pk)) continue;
+        final touchedKeys = touchedKeysByTable[tableName] ?? const {};
+        switch (entry.type) {
+          case OptimisticChangeType.insert:
+            if (!touchedKeys.contains(pk)) {
+              table.deleteRow(pk);
+            }
+          case OptimisticChangeType.delete:
+          case OptimisticChangeType.update:
+            break;
+        }
+      }
+
+      _mutationSyncer?.persistTableSnapshots(onlyTables: touchedTables);
       reducers.completeRequest(numericRequestId, result);
       if (event is ReducerEvent) {
         reducerEmitter.emit(event.reducerName, context);
@@ -842,34 +841,40 @@ class SubscriptionManager {
     }
 
     // Dispatch the nested TransactionUpdate tables to the cache.
-    final tableUpdates = message.querySets
-        .expand((qs) => qs.tables)
-        .toList(growable: false);
-
     final touchedKeysByTable = <String, Set<dynamic>>{};
-    for (final tableUpdate in tableUpdates) {
-      final table = cache.getTableByName(tableUpdate.tableName);
-      if (table == null) continue;
+    for (final querySet in message.querySets) {
+      if (!_subscriptionsByQuerySetId.containsKey(querySet.querySetId)) {
+        continue;
+      }
+      for (final tableUpdate in querySet.tables) {
+        final table = cache.getTableByName(tableUpdate.tableName);
+        if (table == null) continue;
 
-      final touchedKeys = <dynamic>{};
-      for (final rowGroup in tableUpdate.rows) {
-        if (rowGroup is PersistentTableRows) {
-          final keys = table.applyTransactionUpdateAndCollectKeys(
-            rowGroup.deletes,
-            rowGroup.inserts,
-            context,
-          );
-          touchedKeys.addAll(keys);
-        } else if (rowGroup is EventTableRows) {
-          final keys = table.applyTransactionUpdateAndCollectKeys(
-            BsatnRowList.empty(),
-            rowGroup.events,
-            context,
-          );
-          touchedKeys.addAll(keys);
+        final touchedKeys = touchedKeysByTable.putIfAbsent(
+          tableUpdate.tableName,
+          () => <dynamic>{},
+        );
+        for (final rowGroup in tableUpdate.rows) {
+          if (rowGroup is PersistentTableRows) {
+            touchedKeys.addAll(
+              table.applyServerDelta(
+                rowGroup.deletes,
+                rowGroup.inserts,
+                context,
+                querySetId: querySet.querySetId,
+              ),
+            );
+          } else if (rowGroup is EventTableRows) {
+            touchedKeys.addAll(
+              table.applyTransactionUpdateAndCollectKeys(
+                BsatnRowList.empty(),
+                rowGroup.events,
+                context,
+              ),
+            );
+          }
         }
       }
-      touchedKeysByTable[tableUpdate.tableName] = touchedKeys;
     }
 
     if (isCommitted) {
@@ -882,7 +887,7 @@ class SubscriptionManager {
     }
 
     _mutationSyncer?.persistTableSnapshots(
-      onlyTables: tableUpdates.map((tu) => tu.tableName).toSet(),
+      onlyTables: touchedKeysByTable.keys.toSet(),
     );
 
     reducers.completeRequest(numericRequestId, result);
