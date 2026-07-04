@@ -436,13 +436,20 @@ class SubscriptionManager {
                 .join();
         _initialConnectionController.add(message);
       case SubscribeApplied():
-        _handleSubscribeApplied(message).then((_) {
-          if (_disposed) return;
-          _subscribeAppliedController.add(message);
-          _completeSubscribeWaiter(message.querySetId);
-          SdkLogger.i('Syncing pending mutations after SubscribeApplied...');
-          _mutationSyncer?.syncPendingMutations();
-        });
+        _handleSubscribeApplied(message)
+            .then((_) {
+              if (_disposed) return;
+              _subscribeAppliedController.add(message);
+              SdkLogger.i('Syncing pending mutations after SubscribeApplied...');
+              _mutationSyncer?.syncPendingMutations();
+            })
+            .catchError((Object e, StackTrace st) {
+              SdkLogger.e('SUBSCRIBE_APPLIED_FAILED: $e\n$st');
+            })
+            .whenComplete(() {
+              if (_disposed) return;
+              _completeSubscribeWaiter(message.querySetId);
+            });
       case TransactionUpdateMessage():
         _handleTransactionUpdate(message);
         _transactionUpdateController.add(message);

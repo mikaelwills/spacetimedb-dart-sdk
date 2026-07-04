@@ -187,6 +187,14 @@ class _StringDecoder extends RowDecoder<String> {
   dynamic getPrimaryKey(String row) => row;
 }
 
+class _ThrowingDecoder extends RowDecoder<String> {
+  @override
+  String decode(BsatnDecoder decoder) => throw StateError('decode boom');
+
+  @override
+  dynamic getPrimaryKey(String row) => row;
+}
+
 Uint8List _encodeStrRowsData(List<String> rows) {
   final encoder = BsatnEncoder();
   for (final row in rows) {
@@ -1406,6 +1414,50 @@ void main() {
         expect(
           subscriptionManager.rowProvenanceCountForTable('folder'),
           equals(baselineCount - 1),
+        );
+      },
+    );
+  });
+
+  group('SubscribeApplied handler failure must not hang subscribe()', () {
+    late MockConnection mockConnection;
+    late SubscriptionManager subscriptionManager;
+
+    setUp(() {
+      mockConnection = MockConnection();
+      subscriptionManager = SubscriptionManager(mockConnection);
+      subscriptionManager.cache.registerDecoder<String>(
+        'live_table',
+        _ThrowingDecoder(),
+      );
+    });
+
+    tearDown(() async {
+      await subscriptionManager.dispose();
+    });
+
+    test(
+      'subscribe() completes even when _handleSubscribeApplied throws while '
+      'decoding the snapshot rows',
+      () async {
+        mockConnection.mockState = const Connected();
+
+        final subscribeFuture = subscriptionManager.subscribe([
+          'SELECT * FROM live_table WHERE a',
+        ]);
+        mockConnection.simulateIncoming(
+          _createStrSubscribeApplied(
+            requestId: 0,
+            querySetId: 1,
+            rowsByTable: {
+              'live_table': ['will-throw-on-decode'],
+            },
+          ),
+        );
+
+        await expectLater(
+          subscribeFuture.timeout(_timeout),
+          completes,
         );
       },
     );
