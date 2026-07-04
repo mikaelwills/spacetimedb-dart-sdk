@@ -347,22 +347,35 @@ class SubscriptionManager {
       }
 
       _reconnectInFlight = true;
+      var allResubscribed = true;
       try {
         SdkLogger.i('Re-subscribing to ${querySets.length} query sets...');
         for (final queries in querySets) {
-          await subscribe(queries).timeout(
+          if (!_connection.isConnected) {
+            allResubscribed = false;
+            break;
+          }
+          final querySetId = await subscribe(queries).timeout(
             const Duration(seconds: 30),
             onTimeout: () {
               SdkLogger.e('subscribe($queries) timed out during reconnect');
               return -1;
             },
           );
+          if (querySetId < 0) allResubscribed = false;
         }
       } finally {
         _reconnectInFlight = false;
       }
 
-      _evictReconnectDeletes(oldKeysByTable);
+      if (allResubscribed && _connection.isConnected) {
+        _evictReconnectDeletes(oldKeysByTable);
+      } else {
+        SdkLogger.w(
+          'Skipping reconnect eviction: resubscribe did not fully complete '
+          '(connection dropped mid-reconnect); retaining cached rows',
+        );
+      }
     }
 
     if (_mutationSyncer != null) {

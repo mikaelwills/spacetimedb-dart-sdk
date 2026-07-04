@@ -1411,6 +1411,68 @@ void main() {
     );
   });
 
+  group('disconnect mid-reconnect must not wipe the cache', () {
+    late MockConnection mockConnection;
+    late SubscriptionManager subscriptionManager;
+
+    setUp(() {
+      mockConnection = MockConnection();
+      subscriptionManager = SubscriptionManager(mockConnection);
+      subscriptionManager.cache.registerDecoder<String>(
+        'live_table',
+        _StringDecoder(),
+      );
+    });
+
+    tearDown(() async {
+      await subscriptionManager.dispose();
+    });
+
+    test(
+      'a second disconnect before the resubscribes are answered retains '
+      'cached rows instead of evicting them all',
+      () async {
+        mockConnection.mockState = const Connected();
+
+        final subscribeA = subscriptionManager.subscribe([
+          'SELECT * FROM live_table WHERE a',
+        ]);
+        mockConnection.simulateIncoming(
+          _createStrSubscribeApplied(
+            requestId: 0,
+            querySetId: 1,
+            rowsByTable: {
+              'live_table': ['seed-a', 'seed-b'],
+            },
+          ),
+        );
+        await subscribeA.timeout(_timeout);
+
+        final table = subscriptionManager.cache.getTableByName('live_table');
+        if (table == null) fail('live_table was not registered');
+        expect(table.iter(), containsAll(['seed-a', 'seed-b']));
+
+        mockConnection.mockState = const Disconnected();
+        await pumpEventQueue();
+        mockConnection.mockState = const Connected();
+        await pumpEventQueue();
+
+        mockConnection.mockState = const Disconnected();
+        await pumpEventQueue();
+
+        expect(
+          table.iter(),
+          containsAll(['seed-a', 'seed-b']),
+          reason:
+              'the resubscribe never got a SubscribeApplied because the '
+              'connection dropped again mid-reconnect; the eviction sweep '
+              'must be skipped so the offline-first cache retains its rows '
+              'rather than blanking them',
+        );
+      },
+    );
+  });
+
   group('provenance tagging across a reconnect window', () {
     late MockConnection mockConnection;
     late SubscriptionManager subscriptionManager;
