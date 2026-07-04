@@ -726,6 +726,103 @@ void main() {
     );
   });
 
+  group('non-self ReducerResult must not clobber a pending optimistic overlay', () {
+    late MockConnection mockConnection;
+    late SubscriptionManager subscriptionManager;
+
+    setUp(() {
+      mockConnection = MockConnection();
+      subscriptionManager = SubscriptionManager(
+        mockConnection,
+        offlineStorage: InMemoryOfflineStorage(),
+      );
+      subscriptionManager.cache.registerDecoder<Folder>(
+        'folder',
+        FolderDecoder(),
+      );
+    });
+
+    tearDown(() async {
+      await subscriptionManager.dispose();
+    });
+
+    test(
+      "a committed ReducerResult from another request carrying a delta for a "
+      "pk we hold optimistically must not overwrite our unsynced value",
+      () async {
+        mockConnection.mockState = const Connected();
+
+        final seedFolder = Folder(
+          path: '/a/target',
+          name: 'Server Name',
+          createdAt: Int64(0),
+        );
+
+        final subscribeA = subscriptionManager.subscribe([
+          "SELECT * FROM folder WHERE path LIKE '/a/%'",
+        ]);
+        mockConnection.simulateIncoming(
+          _createSubscribeApplied(
+            requestId: 0,
+            querySetId: 1,
+            rowsByTable: {
+              'folder': [seedFolder],
+            },
+          ),
+        );
+        await subscribeA.timeout(_timeout);
+
+        final localEdit = Folder(
+          path: '/a/target',
+          name: 'My Unsynced Edit',
+          createdAt: Int64(0),
+        );
+        unawaited(
+          subscriptionManager.reducers.call(
+            'rename_folder',
+            Uint8List(0),
+            optimisticChanges: [
+              OptimisticChange.update(
+                'folder',
+                seedFolder.toJson(),
+                localEdit.toJson(),
+              ),
+            ],
+          ),
+        );
+        await pumpEventQueue();
+
+        final table = subscriptionManager.cache.getTableByName('folder');
+        if (table == null) fail('folder table was not registered');
+        expect(table.iter().map((f) => f.name), contains('My Unsynced Edit'));
+
+        final otherClientVersion = Folder(
+          path: '/a/target',
+          name: 'Other Client Wrote This',
+          createdAt: Int64(0),
+        );
+        mockConnection.simulateIncoming(
+          _createReducerResultCommitted(
+            requestId: 999,
+            querySetId: 1,
+            tableName: 'folder',
+            inserts: [otherClientVersion],
+          ),
+        );
+        await pumpEventQueue();
+
+        expect(
+          table.iter().map((f) => f.name),
+          contains('My Unsynced Edit'),
+          reason:
+              'a ReducerResult from a different request (not ours, no '
+              'optimistic state) must respect protectedKeys and not clobber '
+              'the pending optimistic overlay on the same pk',
+        );
+      },
+    );
+  });
+
   group('T3 — protected-delete ownership trace', () {
     late MockConnection mockConnection;
     late SubscriptionManager subscriptionManager;

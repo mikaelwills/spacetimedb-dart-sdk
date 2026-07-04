@@ -882,6 +882,9 @@ class SubscriptionManager {
                 rowGroup.inserts,
                 context,
                 querySetId: querySet.querySetId,
+                protectedKeys: _optimisticState.optimisticPrimaryKeysForTable(
+                  tableUpdate.tableName,
+                ),
               ),
             );
           } else if (rowGroup is EventTableRows) {
