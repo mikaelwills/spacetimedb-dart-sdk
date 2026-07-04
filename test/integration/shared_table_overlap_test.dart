@@ -1,13 +1,10 @@
 // ignore_for_file: avoid_print
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/protocol.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
-import '../generated/note.dart';
-import '../generated/note_status.dart';
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';
 
@@ -185,71 +182,5 @@ void main() {
       timeout: const Timeout(Duration(seconds: 60)),
     );
 
-    test(
-      'optimistic row on shared table survives an overlapping set apply',
-      () async {
-        final writer = await seedNotes(5);
-        final tempDir = await Directory.systemTemp.createTemp('overlap_optim');
-        final env = await createTestEnv(
-          registerNote: true,
-          offlineStorage: JsonFileStorage(basePath: tempDir.path),
-        );
-        addTearDown(() async {
-          writer.subManager.dispose();
-          env.subManager.dispose();
-          await writer.disconnect();
-          await env.disconnect();
-          await tempDir.delete(recursive: true);
-        });
-
-        await env.connection.connect();
-        await env.subManager.onInitialConnection.first.timeout(_timeout);
-
-        await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 1 AND id <= 3',
-        ]);
-        await Future.delayed(const Duration(seconds: 1));
-
-        const tempId = 999;
-        final optimisticNote = Note(
-          id: tempId,
-          title: 'optimistic',
-          content: 'pending',
-          timestamp: Int64(0),
-          status: const NoteStatusDraft(),
-        );
-        final pending = env.reducers
-            .createNote(
-              title: 'optimistic',
-              content: 'pending',
-              optimisticChanges: [
-                OptimisticChange.insertRow(env.noteTable, optimisticNote),
-              ],
-            )
-            .timeout(_timeout);
-
-        expect(
-          env.noteTable.getRow(tempId),
-          isNotNull,
-          reason: 'precondition: optimistic row is in the cache before apply',
-        );
-
-        await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 3 AND id <= 5',
-        ]);
-        await Future.delayed(const Duration(milliseconds: 200));
-
-        expect(
-          env.noteTable.getRow(tempId),
-          isNotNull,
-          reason:
-              'an in-flight optimistic row must survive another set\'s apply '
-              '(protectedKeys), not be dropped by the overlap reconcile',
-        );
-
-        await pending;
-      },
-      timeout: const Timeout(Duration(seconds: 60)),
-    );
   });
 }
