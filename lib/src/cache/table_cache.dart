@@ -70,6 +70,8 @@ class TableCache<T> {
   /// ```
   Future<void> get subscribed => _subscribedCompleter.future;
 
+  bool get isSubscribed => _subscribedCompleter.isCompleted;
+
   TableCache({
     required this.tableName,
     required this.decoder,

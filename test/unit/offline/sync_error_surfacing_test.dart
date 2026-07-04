@@ -5,6 +5,23 @@ import 'package:spacetimedb_sdk/codegen.dart';
 
 import '../../mocks/mock_connection.dart';
 
+class _MapDecoder extends RowDecoder<Map<String, dynamic>> {
+  @override
+  Map<String, dynamic> decode(BsatnDecoder decoder) => {};
+
+  @override
+  dynamic getPrimaryKey(Map<String, dynamic> row) => row['id'];
+
+  @override
+  bool get supportsJsonSerialization => true;
+
+  @override
+  Map<String, dynamic>? toJson(Map<String, dynamic> row) => row;
+
+  @override
+  Map<String, dynamic>? fromJson(Map<String, dynamic> json) => json;
+}
+
 TransactionResult _committed(String reducerName) {
   return TransactionResult(
     status: Committed(),
@@ -185,33 +202,142 @@ void main() {
       );
     });
 
-    test('timeout is not an error and mutation stays queued', () async {
-      final harness = _Harness(respond: (name) => _committed(name));
-      final timeoutSyncer = MutationSyncer(
-        connection: harness.connection,
-        storage: harness.storage,
-        optimisticState: OptimisticStateManager(ClientCache()),
-        cache: ClientCache(),
-        send: (reducerName, args, {requestId}) async {
-          throw SpacetimeDbTimeoutException(
-            'Reducer "$reducerName" timed out',
-            elapsed: const Duration(seconds: 10),
-          );
-        },
-      );
-      await harness.storage.enqueueMutation(_mutation('r1', 'update_note'));
+    test(
+      'a timeout with unverifiable outcome (no optimistic changes) is '
+      'discarded, not silently retried',
+      () async {
+        final harness = _Harness(respond: (name) => _committed(name));
+        final timeoutSyncer = MutationSyncer(
+          connection: harness.connection,
+          storage: harness.storage,
+          optimisticState: OptimisticStateManager(ClientCache()),
+          cache: ClientCache(),
+          send: (reducerName, args, {requestId}) async {
+            throw SpacetimeDbTimeoutException(
+              'Reducer "$reducerName" timed out',
+              elapsed: const Duration(seconds: 10),
+            );
+          },
+        );
+        await harness.storage.enqueueMutation(_mutation('r1', 'update_note'));
 
-      await timeoutSyncer.syncPendingMutations();
+        await timeoutSyncer.syncPendingMutations();
 
-      expect(timeoutSyncer.syncState.failedCount, equals(0));
-      expect(timeoutSyncer.syncState.hasError, isFalse);
-      expect(
-        await harness.storage.getPendingMutations(),
-        hasLength(1),
-        reason: 'timeouts are transient and must stay queued for retry',
-      );
-      timeoutSyncer.cancelRetry();
-    });
+        expect(
+          await harness.storage.getPendingMutations(),
+          isEmpty,
+          reason:
+              'the outcome cannot be verified from the cache, so the mutation '
+              'is discarded rather than blindly retried (which would risk a '
+              'duplicate server execution)',
+        );
+        expect(timeoutSyncer.syncState.failedCount, equals(1));
+        timeoutSyncer.cancelRetry();
+      },
+    );
+
+    test(
+      'a timed-out UPDATE whose effect is already in the cache is confirmed, '
+      'not re-sent',
+      () async {
+        final connection = MockConnection();
+        connection.setStateSilently(const Connected());
+        final storage = InMemoryOfflineStorage();
+        final cache = ClientCache();
+        cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
+        final noteTable = cache.getTableByName('note')!;
+        noteTable.markSubscribed();
+        noteTable.insertRow({'id': 1, 'content': 'new'});
+
+        final optimisticState = OptimisticStateManager(cache);
+        var sends = 0;
+        final syncer = MutationSyncer(
+          connection: connection,
+          storage: storage,
+          optimisticState: optimisticState,
+          cache: cache,
+          send: (reducerName, args, {requestId}) async {
+            sends++;
+            throw SpacetimeDbTimeoutException(
+              'timed out',
+              elapsed: const Duration(seconds: 10),
+            );
+          },
+        );
+
+        await storage.enqueueMutation(
+          PendingMutation(
+            requestId: 'u1',
+            reducerName: 'update_note',
+            encodedArgs: Uint8List(0),
+            createdAt: DateTime.now(),
+            optimisticChanges: [
+              OptimisticChange.update(
+                'note',
+                {'id': 1, 'content': 'old'},
+                {'id': 1, 'content': 'new'},
+              ),
+            ],
+          ),
+        );
+
+        await syncer.syncPendingMutations();
+
+        expect(sends, equals(1));
+        expect(
+          await storage.getPendingMutations(),
+          isEmpty,
+          reason:
+              'the cache already shows the update\'s post-state, so the '
+              'timed-out mutation is confirmed and dequeued rather than '
+              're-sent (which would re-run the reducer server-side)',
+        );
+        syncer.cancelRetry();
+      },
+    );
+
+    test(
+      'a reducer that timed out client-side but ran server-side is not sent '
+      'a second time on retry',
+      () async {
+        final connection = MockConnection();
+        connection.setStateSilently(const Connected());
+        final storage = InMemoryOfflineStorage();
+        final sendCount = <String, int>{};
+        final syncer = MutationSyncer(
+          connection: connection,
+          storage: storage,
+          optimisticState: OptimisticStateManager(ClientCache()),
+          cache: ClientCache(),
+          send: (reducerName, args, {requestId}) async {
+            sendCount[requestId ?? reducerName] =
+                (sendCount[requestId ?? reducerName] ?? 0) + 1;
+            if (sendCount[requestId ?? reducerName] == 1) {
+              throw SpacetimeDbTimeoutException(
+                'Reducer "$reducerName" timed out',
+                elapsed: const Duration(seconds: 10),
+              );
+            }
+            return _committed(reducerName);
+          },
+        );
+        await storage.enqueueMutation(_mutation('r1', 'update_note'));
+
+        await syncer.syncPendingMutations();
+        await syncer.syncPendingMutations();
+
+        expect(
+          sendCount['r1'],
+          equals(1),
+          reason:
+              'the first send timed out client-side but the server may have '
+              'executed it; retrying re-runs the reducer on the server. A '
+              'timed-out mutation must not be blindly re-sent without an '
+              'idempotency guard',
+        );
+        syncer.cancelRetry();
+      },
+    );
 
     test('retained failures default to the most recent 20', () async {
       final harness = _Harness(respond: (name) => _rejected(name, 'denied'));

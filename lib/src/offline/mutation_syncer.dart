@@ -270,9 +270,46 @@ class MutationSyncer implements MutationHandler {
             _mutationSyncResultController.add(failure);
           }
         } on SpacetimeDbTimeoutException catch (e) {
-          SdkLogger.w(
-            'Timeout syncing ${mutation.reducerName}: $e. Keeping in queue for retry.',
-          );
+          final outcome = _resolveTimedOutMutation(mutation);
+          switch (outcome) {
+            case _TimeoutOutcome.landed:
+              SdkLogger.w(
+                'Timeout syncing ${mutation.reducerName}: $e. Effect already '
+                'present in cache; confirming instead of re-sending.',
+              );
+              _optimisticState.confirmOptimisticChange(mutation.requestId);
+              await _storage.dequeueMutation(mutation.requestId);
+              _decrementPendingCount();
+              if (!_disposed) {
+                _mutationSyncResultController.add(
+                  MutationSyncResult(
+                    requestId: mutation.requestId,
+                    reducerName: mutation.reducerName,
+                    success: true,
+                  ),
+                );
+              }
+              continue;
+            case _TimeoutOutcome.notLanded:
+              SdkLogger.w(
+                'Timeout syncing ${mutation.reducerName}: $e. Effect not '
+                'present; keeping in queue for retry.',
+              );
+              break;
+            case _TimeoutOutcome.undetectable:
+              SdkLogger.w(
+                'Timeout syncing ${mutation.reducerName}: $e. Outcome cannot '
+                'be verified (insert or unsubscribed table); discarding to '
+                'avoid duplicate execution.',
+              );
+              await _discardMutation(
+                mutation,
+                'timed out with unverifiable outcome; not retried to avoid '
+                'duplicate server execution',
+                cycleFailures,
+              );
+              continue;
+          }
           break;
         } on SpacetimeDbStorageException catch (e) {
           SdkLogger.e(
@@ -454,6 +491,62 @@ class MutationSyncer implements MutationHandler {
     await _storage.dispose();
   }
 
+  _TimeoutOutcome _resolveTimedOutMutation(PendingMutation mutation) {
+    final changes = mutation.optimisticChanges;
+    if (changes == null || changes.isEmpty) {
+      return _TimeoutOutcome.undetectable;
+    }
+
+    var allLanded = true;
+    for (final change in changes) {
+      final table = _cache.getTableByName(change.tableName);
+      if (table == null ||
+          !table.isSubscribed ||
+          !table.decoder.supportsJsonSerialization) {
+        return _TimeoutOutcome.undetectable;
+      }
+
+      switch (change.type) {
+        case OptimisticChangeType.insert:
+          return _TimeoutOutcome.undetectable;
+        case OptimisticChangeType.update:
+          final expected = table.decoder.fromJson(change.newRowJson!);
+          if (expected == null) return _TimeoutOutcome.undetectable;
+          final pk = table.decoder.getPrimaryKey(expected);
+          final current = table.getRow(pk);
+          if (current == null) return _TimeoutOutcome.undetectable;
+          final currentJson = table.decoder.toJson(current);
+          if (!_jsonEquals(currentJson, change.newRowJson)) {
+            allLanded = false;
+          }
+        case OptimisticChangeType.delete:
+          final target = table.decoder.fromJson(change.oldRowJson!);
+          if (target == null) return _TimeoutOutcome.undetectable;
+          final pk = table.decoder.getPrimaryKey(target);
+          if (table.getRow(pk) != null) {
+            allLanded = false;
+          }
+      }
+    }
+    return allLanded ? _TimeoutOutcome.landed : _TimeoutOutcome.notLanded;
+  }
+
+  bool _jsonEquals(Map<String, dynamic>? a, Map<String, dynamic>? b) {
+    if (a == null || b == null) return a == b;
+    if (a.length != b.length) return false;
+    for (final key in a.keys) {
+      if (!b.containsKey(key)) return false;
+      final av = a[key];
+      final bv = b[key];
+      if (av is Map<String, dynamic> && bv is Map<String, dynamic>) {
+        if (!_jsonEquals(av, bv)) return false;
+      } else if (av.toString() != bv.toString()) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   Future<void> _discardMutation(
     PendingMutation mutation,
     String reason,
@@ -536,3 +629,5 @@ class MutationSyncer implements MutationHandler {
     });
   }
 }
+
+enum _TimeoutOutcome { landed, notLanded, undetectable }
