@@ -237,6 +237,42 @@ void main() {
     );
 
     test(
+      'a timeout while the connection is down keeps the mutation queued '
+      'instead of discarding it (the reducer never reached the server)',
+      () async {
+        final connection = MockConnection();
+        connection.setStateSilently(const Connected());
+        final storage = InMemoryOfflineStorage();
+        final syncer = MutationSyncer(
+          connection: connection,
+          storage: storage,
+          optimisticState: OptimisticStateManager(ClientCache()),
+          cache: ClientCache(),
+          send: (reducerName, args, {requestId}) async {
+            connection.setStateSilently(const Disconnected());
+            throw SpacetimeDbTimeoutException(
+              'Reducer "$reducerName" timed out',
+              elapsed: const Duration(seconds: 10),
+            );
+          },
+        );
+        await storage.enqueueMutation(_mutation('r1', 'push_message'));
+
+        await syncer.syncPendingMutations();
+
+        expect(
+          await storage.getPendingMutations(),
+          hasLength(1),
+          reason:
+              'the connection dropped during the send, so the reducer almost '
+              'certainly never ran; the mutation must stay queued for retry '
+              'rather than being discarded and lost',
+        );
+        syncer.cancelRetry();
+      },
+    );
+
+    test(
       'a timed-out UPDATE whose effect is already in the cache is confirmed, '
       'not re-sent',
       () async {

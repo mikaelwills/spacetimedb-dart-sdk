@@ -297,15 +297,23 @@ class MutationSyncer implements MutationHandler {
               );
               break;
             case _TimeoutOutcome.undetectable:
+              if (_connection.state is! Connected) {
+                SdkLogger.w(
+                  'Timeout syncing ${mutation.reducerName}: $e. Connection is '
+                  'down, so the reducer almost certainly never ran; keeping '
+                  'in queue for retry.',
+                );
+                break;
+              }
               SdkLogger.w(
-                'Timeout syncing ${mutation.reducerName}: $e. Outcome cannot '
-                'be verified (insert or unsubscribed table); discarding to '
-                'avoid duplicate execution.',
+                'Timeout syncing ${mutation.reducerName}: $e. Still connected '
+                'but outcome cannot be verified (insert or unsubscribed '
+                'table); discarding to avoid duplicate execution.',
               );
               await _discardMutation(
                 mutation,
-                'timed out with unverifiable outcome; not retried to avoid '
-                'duplicate server execution',
+                'timed out with unverifiable outcome while connected; not '
+                'retried to avoid duplicate server execution',
                 cycleFailures,
               );
               continue;
