@@ -617,6 +617,26 @@ class TableCache<T> {
     }
   }
 
+  void removeNoPkRow(Map<String, dynamic> rowJson) {
+    if (hasPrimaryKey) return;
+    for (var i = 0; i < _rows.length; i++) {
+      final asJson = decoder.toJson(_rows[i]);
+      if (asJson != null && _jsonEquals(asJson, rowJson)) {
+        _rows.removeAt(i);
+        _refreshRowsNotifier();
+        return;
+      }
+    }
+  }
+
+  bool _jsonEquals(Map<String, dynamic> a, Map<String, dynamic> b) {
+    if (a.length != b.length) return false;
+    for (final entry in a.entries) {
+      if (!b.containsKey(entry.key) || b[entry.key] != entry.value) return false;
+    }
+    return true;
+  }
+
   void _refreshRowsNotifier() {
     rows.value =
         hasPrimaryKey

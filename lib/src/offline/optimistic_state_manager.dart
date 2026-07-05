@@ -261,7 +261,13 @@ class OptimisticStateManager {
 
     switch (entry.type) {
       case OptimisticChangeType.insert:
-        table.deleteRow(entry.primaryKey);
+        if (!table.hasPrimaryKey) {
+          if (entry.newRowJson != null) {
+            table.removeNoPkRow(entry.newRowJson!);
+          }
+        } else {
+          table.deleteRow(entry.primaryKey);
+        }
       case OptimisticChangeType.update:
         if (entry.oldRowJson != null) {
           final oldRow = table.decoder.fromJson(entry.oldRowJson!);

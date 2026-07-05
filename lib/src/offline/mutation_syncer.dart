@@ -344,44 +344,48 @@ class MutationSyncer implements MutationHandler {
       return;
     }
 
-    final remaining = await _storage.getPendingMutations();
-    _cachedPendingCount = remaining.length;
-    SdkLogger.d(
-      'syncPendingMutations: remaining=$_cachedPendingCount, '
-      'failures=${cycleFailures.length}, setting idle',
-    );
+    try {
+      final remaining = await _storage.getPendingMutations();
+      _cachedPendingCount = remaining.length;
+      SdkLogger.d(
+        'syncPendingMutations: remaining=$_cachedPendingCount, '
+        'failures=${cycleFailures.length}, setting idle',
+      );
 
-    int failedCount;
-    List<MutationSyncResult> recentFailures;
-    if (cycleFailures.isNotEmpty) {
-      failedCount = _currentSyncState.failedCount + cycleFailures.length;
-      recentFailures = _capFailures([
-        ..._currentSyncState.recentFailures,
-        ...cycleFailures,
-      ]);
-    } else if (remaining.isEmpty) {
-      failedCount = 0;
-      recentFailures = const [];
-    } else {
-      failedCount = _currentSyncState.failedCount;
-      recentFailures = _currentSyncState.recentFailures;
-    }
+      int failedCount;
+      List<MutationSyncResult> recentFailures;
+      if (cycleFailures.isNotEmpty) {
+        failedCount = _currentSyncState.failedCount + cycleFailures.length;
+        recentFailures = _capFailures([
+          ..._currentSyncState.recentFailures,
+          ...cycleFailures,
+        ]);
+      } else if (remaining.isEmpty) {
+        failedCount = 0;
+        recentFailures = const [];
+      } else {
+        failedCount = _currentSyncState.failedCount;
+        recentFailures = _currentSyncState.recentFailures;
+      }
 
-    _updateSyncState(
-      _currentSyncState.copyWith(
-        status: SyncStatus.idle,
-        pendingCount: _cachedPendingCount,
-        lastSyncTime: DateTime.now(),
-        failedCount: failedCount,
-        recentFailures: recentFailures,
-      ),
-    );
+      _updateSyncState(
+        _currentSyncState.copyWith(
+          status: SyncStatus.idle,
+          pendingCount: _cachedPendingCount,
+          lastSyncTime: DateTime.now(),
+          failedCount: failedCount,
+          recentFailures: recentFailures,
+        ),
+      );
 
-    if (remaining.isNotEmpty && _connection.state is Connected) {
-      _scheduleRetry();
-    } else if (remaining.isEmpty) {
-      cancelRetry();
-      _retryAttempt = 0;
+      if (remaining.isNotEmpty && _connection.state is Connected) {
+        _scheduleRetry();
+      } else if (remaining.isEmpty) {
+        cancelRetry();
+        _retryAttempt = 0;
+      }
+    } catch (e) {
+      SdkLogger.e('syncPendingMutations: post-sync state update failed: $e');
     }
   }
 
