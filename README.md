@@ -21,7 +21,7 @@ Built for collaborative editors, real-time games, multi-device sync, presence, c
 - **Watch one row, not the whole table.** `rowNotifier(playerId)` fires only when *that* row changes. 1000 on-screen entities each watching their own row cost `O(rows_touched)` per transaction, not `O(listeners × events)`.
 - **Collaborative editing primitives built in.** `event.context.isMyTransaction` tells you whether you caused a change or someone else did. `isOptimistic` tells you if it's local-only or confirmed. Skip your own echoes, merge other users' writes, no CRDT library required.
 - **Reactive primitives that match intent.** `ValueNotifier` for held state (`rows`, `lastBatch`, `rowNotifier`), `Stream` for transient events (`onInsert`, `onUpdate`, `onDelete`). One catches "what's there now," the other catches "what just happened."
-- **Auto-reconnect that's part of the API, not an afterthought.** The SDK reconnects on drops, re-subscribes, re-queues. `client.connection.onStateChanged` is a sealed type (`Connecting` / `Reconnecting` / `FatalError`) so your banner logic is one switch statement.
+- **Auto-reconnect that's part of the API, not an afterthought.** The SDK reconnects on drops, re-subscribes, re-queues. `client.connection.onStateChanged` is a sealed type (`Connecting` / `Reconnecting` / `FatalError`) so your banner logic is one switch statement — and `client.subscriptions.subscriptionsReady` tells you when the re-subscribe has actually landed, so your "connected" indicator never lies.
 - **Offline-first when you want it.** Flip on `JsonFileStorage` and cached reads work airplane-mode, writes queue locally, replay on reconnect. No separate offline SDK, no conflict resolution; the optimistic model handles it.
 - **One catch block for every SDK error.** `on SpacetimeDbException catch (e)` covers reducer failures, connection drops, timeouts, protocol errors, everything. Narrow to specific subtypes only when you need to.
 - **Types flow through the whole stack.** Rust `struct` becomes a Dart class. Rust `enum` becomes a sealed class with exhaustive `switch`. Rust `Vec<u64>` becomes `List<Int64>`. Refactor a column in Rust, Dart compiler points at every call site.
@@ -486,6 +486,36 @@ client.connection.onStateChanged.listen((state) {
 ```
 
 For "resolve when connected" use `await client.connection.onStateChanged.firstWhere((s) => s is Connected)`.
+
+### Connected is not the same as usable
+
+`Connected` means the WebSocket is open — it does **not** mean your subscriptions have been applied and your cache is populated. On a reconnect there is a window where the socket is back but the SDK is still re-subscribing your query sets; reads are stale and reducer calls made in this window can time out because the server hasn't re-registered your subscriptions yet. This is the classic false-positive: a "connected" indicator that lies, and a send that fails while everything looks green.
+
+`client.subscriptions.subscriptionsReady` closes that gap. It's a `ValueListenable<bool>` that is `true` only when the socket is open **and** every active query set has had its `SubscribeApplied` fully applied to the cache. It latches back to `false` the instant the socket drops or a reconnect begins re-subscribing, and returns to `true` when the re-subscribe completes.
+
+```dart
+// A connection pill that only goes green when the connection is genuinely usable.
+ValueListenableBuilder<bool>(
+  valueListenable: client.subscriptions.subscriptionsReady,
+  builder: (context, ready, _) {
+    return StreamBuilder<ConnectionState>(
+      stream: client.connection.onStateChanged,
+      initialData: client.connection.state,
+      builder: (context, snap) {
+        final connected = snap.data is Connected;
+        final color = (connected && ready)
+            ? Colors.blue        // socket open AND subscriptions applied — safe to send
+            : connected
+                ? Colors.amber   // socket open but re-subscribe still in flight
+                : Colors.red;    // disconnected
+        return Icon(Icons.circle, color: color);
+      },
+    );
+  },
+);
+```
+
+Gate anything that must reach the server on `subscriptionsReady`, not on `Connected`. `await client.subscriptions.subscriptionsReady.firstWhere((v) => v)` (via the [reactive helpers](#reactive-helpers)) resolves once the connection is truly ready to use.
 
 ## Authentication
 
