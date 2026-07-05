@@ -46,7 +46,6 @@ class ReducerCaller {
   final _uuid = const Uuid();
 
   final Map<int, _PendingRequest> _pendingRequests = {};
-  final Map<String, int> _requestIdByUuid = {};
 
   Duration defaultTimeout = const Duration(seconds: 10);
 
@@ -96,10 +95,6 @@ class ReducerCaller {
     SdkLogger.d(
       'callWithBytes: $reducerName, numericId=$numericRequestId, uuidId=$requestId',
     );
-    if (requestId != null) {
-      _requestIdByUuid[requestId] = numericRequestId;
-    }
-
     final completer = Completer<TransactionResult>();
     final effectiveTimeout = timeout ?? defaultTimeout;
 
@@ -152,9 +147,6 @@ class ReducerCaller {
     }
 
     pending.dispose();
-    if (pending.uuidRequestId != null) {
-      _requestIdByUuid.remove(pending.uuidRequestId);
-    }
 
     if (result.isSuccess) {
       pending.completer.complete(result);
@@ -186,7 +178,6 @@ class ReducerCaller {
       );
     }
     _pendingRequests.clear();
-    _requestIdByUuid.clear();
   }
 
   void dispose() {
@@ -194,7 +185,6 @@ class ReducerCaller {
       pending.dispose();
     }
     _pendingRequests.clear();
-    _requestIdByUuid.clear();
   }
 
   bool get _isOnline => _connection.state is Connected;
@@ -314,9 +304,6 @@ class ReducerCaller {
   void _timeoutRequest(int requestId, String reducerName, Duration timeout) {
     final pending = _pendingRequests.remove(requestId);
     if (pending != null) {
-      if (pending.uuidRequestId != null) {
-        _requestIdByUuid.remove(pending.uuidRequestId);
-      }
       if (pending.hasOptimisticChanges) {
         _mutationHandler?.onRollbackOptimistic(requestId.toString());
       }

@@ -426,11 +426,6 @@ class TableCache<T> {
     return changes.insertedPrimaryKeys;
   }
 
-  void applyInserts(BsatnRowList inserts) {
-    _decodeAndStoreRows(inserts);
-    _refreshRowsNotifier();
-  }
-
   void dispose() {
     if (!_subscribedCompleter.isCompleted) {
       _subscribedCompleter.complete();
@@ -722,22 +717,6 @@ class TableCache<T> {
 
     if (events.isNotEmpty) {
       lastBatch.value = TransactionBatch<T>(context, events);
-    }
-  }
-
-  void _decodeAndStoreRows(BsatnRowList rowList) {
-    final rowBytes = rowList.getRows();
-
-    for (final bytes in rowBytes) {
-      final bsatnDecoder = BsatnDecoder(bytes);
-      final row = decoder.decode(bsatnDecoder);
-
-      final primaryKey = decoder.getPrimaryKey(row);
-      if (primaryKey != null) {
-        _rowsByPrimaryKey[primaryKey] = row;
-      } else {
-        _rows.add(row);
-      }
     }
   }
 

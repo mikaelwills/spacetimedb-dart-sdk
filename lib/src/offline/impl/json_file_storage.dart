@@ -65,40 +65,45 @@ class JsonFileStorage implements OfflineStorage {
   Future<List<Map<String, dynamic>>?> loadTableSnapshot(
     String tableName,
   ) async {
-    return _locks.getTableLock(tableName).synchronized(() async {
-      final file = _tableFile(tableName);
-      final content = await _fileStore.readWithFallback(file);
-      if (content == null) return null;
+    return _tracked(() async {
+      await _ensureInitialized();
+      return _locks.getTableLock(tableName).synchronized(() async {
+        final file = _tableFile(tableName);
+        final content = await _fileStore.readWithFallback(file);
+        if (content == null) return null;
 
-      try {
-        final data = jsonDecode(content);
-        if (data is! List) {
-          throw FormatException('Expected JSON list, got ${data.runtimeType}');
-        }
-        await _fileStore.cleanupBackup(file);
-        return data.cast<Map<String, dynamic>>();
-      } catch (e) {
-        SdkLogger.e('Failed to parse table snapshot for "$tableName": $e');
-        final backupFile = File('${file.path}.bak');
-        if (await backupFile.exists()) {
-          try {
-            final backupContent = await backupFile.readAsString();
-            final data = jsonDecode(backupContent);
-            if (data is! List) {
-              throw FormatException(
-                'Expected JSON list in backup, got ${data.runtimeType}',
+        try {
+          final data = jsonDecode(content);
+          if (data is! List) {
+            throw FormatException('Expected JSON list, got ${data.runtimeType}');
+          }
+          await _fileStore.cleanupBackup(file);
+          return data.cast<Map<String, dynamic>>();
+        } catch (e) {
+          SdkLogger.e('Failed to parse table snapshot for "$tableName": $e');
+          final backupFile = File('${file.path}.bak');
+          if (await backupFile.exists()) {
+            try {
+              final backupContent = await backupFile.readAsString();
+              final data = jsonDecode(backupContent);
+              if (data is! List) {
+                throw FormatException(
+                  'Expected JSON list in backup, got ${data.runtimeType}',
+                );
+              }
+              SdkLogger.i(
+                'Recovered table snapshot for "$tableName" from backup',
+              );
+              return data.cast<Map<String, dynamic>>();
+            } catch (backupError) {
+              SdkLogger.e(
+                'Backup also corrupted for "$tableName": $backupError',
               );
             }
-            SdkLogger.i(
-              'Recovered table snapshot for "$tableName" from backup',
-            );
-            return data.cast<Map<String, dynamic>>();
-          } catch (backupError) {
-            SdkLogger.e('Backup also corrupted for "$tableName": $backupError');
           }
+          return null;
         }
-        return null;
-      }
+      });
     });
   }
 
