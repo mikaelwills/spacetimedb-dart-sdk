@@ -50,6 +50,20 @@ class OptimisticStateManager {
     return keys;
   }
 
+  List<Map<String, dynamic>> optimisticInsertRowsForTable(String tableName) {
+    final rows = <Map<String, dynamic>>[];
+    for (final entries in _entries.values) {
+      for (final entry in entries) {
+        if (entry.tableName == tableName &&
+            entry.type == OptimisticChangeType.insert &&
+            entry.newRowJson != null) {
+          rows.add(entry.newRowJson!);
+        }
+      }
+    }
+    return rows;
+  }
+
   void applyOptimisticChanges(
     String requestId,
     List<OptimisticChange>? changes,
@@ -256,6 +270,7 @@ class OptimisticStateManager {
           table.insertRow(row);
         }
       }
+      _reapplyNewestSurvivingOverlay(table, entry.tableName, entry.primaryKey);
       return;
     }
 
@@ -282,6 +297,35 @@ class OptimisticStateManager {
             table.insertRow(oldRow);
           }
         }
+    }
+
+    _reapplyNewestSurvivingOverlay(table, entry.tableName, entry.primaryKey);
+  }
+
+  void _reapplyNewestSurvivingOverlay(
+    dynamic table,
+    String tableName,
+    dynamic primaryKey,
+  ) {
+    if (primaryKey == null || !table.hasPrimaryKey) return;
+    OptimisticEntry? newest;
+    for (final entries in _entries.values) {
+      for (final entry in entries) {
+        if (entry.tableName == tableName && entry.primaryKey == primaryKey) {
+          newest = entry;
+        }
+      }
+    }
+    if (newest == null) return;
+    switch (newest.type) {
+      case OptimisticChangeType.insert:
+      case OptimisticChangeType.update:
+        if (newest.newRowJson != null) {
+          final row = table.decoder.fromJson(newest.newRowJson!);
+          if (row != null) table.updateRow(row);
+        }
+      case OptimisticChangeType.delete:
+        table.deleteRow(primaryKey);
     }
   }
 }

@@ -446,14 +446,28 @@ class TableCache<T> {
     _onDeleteController.close();
   }
 
-  List<Map<String, dynamic>> toSerializable() {
+  List<Map<String, dynamic>> toSerializable({
+    List<Map<String, dynamic>> excludeRows = const [],
+  }) {
     if (!decoder.supportsJsonSerialization) {
       throw UnsupportedError(
         'Table "$tableName" decoder does not support JSON serialization. '
         'Implement toJson() and fromJson() in your RowDecoder.',
       );
     }
-    return iter().map((row) => decoder.toJson(row)!).toList();
+    final all = iter().map((row) => decoder.toJson(row)!);
+    if (excludeRows.isEmpty) return all.toList();
+    final remaining = List<Map<String, dynamic>>.of(excludeRows);
+    final out = <Map<String, dynamic>>[];
+    for (final row in all) {
+      final matchIndex = remaining.indexWhere((e) => _jsonEquals(e, row));
+      if (matchIndex >= 0) {
+        remaining.removeAt(matchIndex);
+      } else {
+        out.add(row);
+      }
+    }
+    return out;
   }
 
   void loadFromSerializable(List<Map<String, dynamic>> jsonRows) {
