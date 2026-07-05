@@ -1,7 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 
-import 'package:meta/meta.dart';
+import 'package:flutter/foundation.dart';
 import 'package:spacetimedb_sdk/src/cache/client_cache.dart';
 import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 
@@ -44,6 +43,8 @@ class SubscriptionManager {
   int _nextQuerySetId = 1;
 
   final _subscribeWaiters = <int, Completer<void>>{};
+
+  final ValueNotifier<bool> _subscriptionsReady = ValueNotifier<bool>(false);
 
   late final OptimisticStateManager _optimisticState;
   MutationSyncer? _mutationSyncer;
@@ -109,6 +110,14 @@ class SubscriptionManager {
       _mutationSyncer?.onMutationSyncResult ?? const Stream.empty();
   SyncState get syncState => _mutationSyncer?.syncState ?? const SyncState();
   bool get hasOfflineStorage => _mutationSyncer != null;
+
+  /// True only when the connection is open AND every active query set has had
+  /// its `SubscribeApplied` fully applied to the cache — i.e. the connection is
+  /// genuinely usable, not merely socket-open. Latches back to false the moment
+  /// the socket drops or a reconnect begins resubscribing, and returns to true
+  /// when the resubscribe completes. Consumers should treat "connected but not
+  /// ready" as still-connecting.
+  ValueListenable<bool> get subscriptionsReady => _subscriptionsReady;
 
   @visibleForTesting
   Map<int, List<String>> get subscriptionsByQuerySetId =>
@@ -295,6 +304,7 @@ class SubscriptionManager {
     _reducerResultController.close();
     _procedureResultController.close();
     reducerEmitter.dispose();
+    _subscriptionsReady.dispose();
     await _mutationSyncer?.dispose();
   }
 
@@ -326,6 +336,7 @@ class SubscriptionManager {
       } else if (state is Disconnected ||
           state is FatalError ||
           state is AuthError) {
+        _subscriptionsReady.value = false;
         _mutationSyncer?.cancelRetry();
         reducers.failAllPendingRequests(state.displayName);
         _completeAllSubscribeWaiters();
@@ -337,6 +348,7 @@ class SubscriptionManager {
 
   Future<void> _onReconnected() async {
     if (_subscriptionsByQuerySetId.isNotEmpty) {
+      _subscriptionsReady.value = false;
       final querySets = _subscriptionsByQuerySetId.values
           .map((q) => List<String>.of(q))
           .toList(growable: false);
@@ -374,6 +386,7 @@ class SubscriptionManager {
 
       if (allResubscribed && _connection.isConnected) {
         _evictReconnectDeletes(oldKeysByTable);
+        _subscriptionsReady.value = true;
       } else {
         SdkLogger.w(
           'Skipping reconnect eviction: resubscribe did not fully complete '
@@ -443,6 +456,9 @@ class SubscriptionManager {
         _handleSubscribeApplied(message)
             .then((_) {
               if (_disposed) return;
+              if (!_reconnectInFlight && _connection.isConnected) {
+                _subscriptionsReady.value = true;
+              }
               _subscribeAppliedController.add(message);
               SdkLogger.i('Syncing pending mutations after SubscribeApplied...');
               _mutationSyncer?.syncPendingMutations();
