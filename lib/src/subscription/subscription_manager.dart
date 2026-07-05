@@ -291,6 +291,7 @@ class SubscriptionManager {
   // --- Lifecycle ---
 
   Future<void> dispose() async {
+    if (_disposed) return;
     _disposed = true;
     _completeAllSubscribeWaiters();
     _messageSubscription?.cancel();
@@ -327,6 +328,7 @@ class SubscriptionManager {
     bool hasConnectedBefore = false;
 
     _connectionStatusSubscription = _connection.onStateChanged.listen((state) {
+      if (_disposed) return;
       if (state is Connected) {
         if (hasConnectedBefore) {
           _mutationSyncer?.resetRetryAttempts();
