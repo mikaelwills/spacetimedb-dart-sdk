@@ -368,7 +368,7 @@ final connection = SpacetimeDbConnection(
   ssl: ssl,
   config: config,
 );
-final subscriptionManager = SubscriptionManager(connection, offlineStorage: offlineStorage);
+final subscriptionManager = SubscriptionManager(connection, offlineStorage: offlineStorage, queuePolicy: queuePolicy);
 
 $registerTables
 $registerViews
@@ -429,6 +429,14 @@ return client;
                       ..name = 'offlineStorage'
                       ..named = true
                       ..type = refer('OfflineStorage?'),
+              ),
+              Parameter(
+                (p) =>
+                    p
+                      ..name = 'queuePolicy'
+                      ..named = true
+                      ..defaultTo = const Code('const OfflineQueuePolicy()')
+                      ..type = refer('OfflineQueuePolicy'),
               ),
               Parameter(
                 (p) =>
