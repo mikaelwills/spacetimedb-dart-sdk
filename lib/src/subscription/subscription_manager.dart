@@ -123,6 +123,10 @@ class SubscriptionManager {
   int rowProvenanceCountForTable(String tableName) =>
       cache.getTableByName(tableName)?.ownerEntryCount ?? 0;
 
+  @visibleForTesting
+  Set<dynamic> optimisticKeysFor(String tableName) =>
+      _optimisticState.optimisticPrimaryKeysForTable(tableName);
+
   Stream<TransactionUpdateMessage> get onTransactionUpdate =>
       _transactionUpdateController.stream;
   Stream<InitialConnectionMessage> get onInitialConnection =>
@@ -690,6 +694,17 @@ class SubscriptionManager {
         if (table == null) continue;
         touchedTables.add(tableUpdate.tableName);
 
+        void onProtectedKeyCommitted(
+          dynamic primaryKey,
+          Map<String, dynamic>? committedRowJson,
+        ) {
+          _optimisticState.stashCommittedState(
+            tableUpdate.tableName,
+            primaryKey,
+            committedRowJson,
+          );
+        }
+
         for (final rowGroup in tableUpdate.rows) {
           if (rowGroup is PersistentTableRows) {
             table.applyServerDelta(
@@ -700,6 +715,8 @@ class SubscriptionManager {
               protectedKeys: _optimisticState.optimisticPrimaryKeysForTable(
                 tableUpdate.tableName,
               ),
+              reconcile: true,
+              onProtectedKeyCommitted: onProtectedKeyCommitted,
             );
           } else if (rowGroup is EventTableRows) {
             table.applyTransactionUpdate(

@@ -846,7 +846,7 @@ void main() {
     test(
       'a remote labeled delete for pk P while an optimistic update pends on '
       'P removes ownership and pins the row; a failed update rolls back to '
-      'unowned and a committed update re-owns it',
+      'the stashed server delete (row honored gone, not resurrected)',
       () async {
         mockConnection.mockState = const Connected();
 
@@ -924,7 +924,14 @@ void main() {
         );
         await pumpEventQueue();
 
-        expect(table.iter().map((f) => f.path), contains('/a/target'));
+        expect(
+          table.iter().map((f) => f.path),
+          isNot(contains('/a/target')),
+          reason:
+              'the remote delete was stashed when protection skipped it; a '
+              'failed optimistic update must roll back to that server truth '
+              '(row gone), not resurrect the stale pre-optimistic row',
+        );
         expect(
           subscriptionManager.rowProvenanceCountForTable('folder'),
           equals(0),
