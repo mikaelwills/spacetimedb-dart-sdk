@@ -485,9 +485,13 @@ class MutationSyncer implements MutationHandler {
         if (_cache.isEventTable(tableName)) continue;
         final table = _cache.getTableByName(tableName);
         if (table != null && table.decoder.supportsJsonSerialization) {
-          final optimisticInserts = _optimisticState
-              .optimisticInsertRowsForTable(tableName);
-          final rows = table.toSerializable(excludeRows: optimisticInserts);
+          final rows = table.toSerializable(
+            excludeRows: _optimisticState.optimisticPkInsertRowsForTable(
+              tableName,
+            ),
+            excludeRequestIds: _optimisticState
+                .optimisticNoPkInsertRequestIdsForTable(tableName),
+          );
           await _storage.saveTableSnapshot(tableName, rows);
           await _storage.setLastSyncTime(tableName, DateTime.now());
         }

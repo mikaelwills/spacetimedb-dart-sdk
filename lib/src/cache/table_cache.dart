@@ -16,7 +16,7 @@ class TableCache<T> {
   final bool hasPrimaryKey;
 
   final Map<dynamic, T> _rowsByPrimaryKey = {};
-  final List<T> _rows = [];
+  final List<_CachedRow<T>> _rows = [];
 
   final Map<dynamic, Set<int>> _rowOwners = {};
 
@@ -371,7 +371,9 @@ class TableCache<T> {
   /// }
   /// ```
   Iterable<T> iter() {
-    return hasPrimaryKey ? _rowsByPrimaryKey.values : _rows;
+    return hasPrimaryKey
+        ? _rowsByPrimaryKey.values
+        : _rows.map((e) => e.row);
   }
 
   Set<dynamic> get primaryKeys =>
@@ -386,7 +388,7 @@ class TableCache<T> {
       if (primaryKey != null) {
         _evictRow(primaryKey);
       } else {
-        _rows.remove(row);
+        _removeUntaggedNoPkRow(row);
       }
     }
   }
@@ -443,6 +445,7 @@ class TableCache<T> {
 
   List<Map<String, dynamic>> toSerializable({
     List<Map<String, dynamic>> excludeRows = const [],
+    Set<String> excludeRequestIds = const {},
   }) {
     if (!decoder.supportsJsonSerialization) {
       throw UnsupportedError(
@@ -450,7 +453,17 @@ class TableCache<T> {
         'Implement toJson() and fromJson() in your RowDecoder.',
       );
     }
-    final all = iter().map((row) => decoder.toJson(row)!);
+    final Iterable<Map<String, dynamic>> all;
+    if (hasPrimaryKey) {
+      all = _rowsByPrimaryKey.values.map((row) => decoder.toJson(row)!);
+    } else {
+      all = _rows
+          .where(
+            (e) => e.requestId == null ||
+                !excludeRequestIds.contains(e.requestId),
+          )
+          .map((e) => decoder.toJson(e.row)!);
+    }
     if (excludeRows.isEmpty) return all.toList();
     final remaining = List<Map<String, dynamic>>.of(excludeRows);
     final out = <Map<String, dynamic>>[];
@@ -485,7 +498,7 @@ class TableCache<T> {
       if (primaryKey != null) {
         _rowsByPrimaryKey[primaryKey] = row;
       } else {
-        _rows.add(row);
+        _rows.add(_CachedRow(row));
       }
     }
     _refreshRowsNotifier();
@@ -494,12 +507,12 @@ class TableCache<T> {
     }
   }
 
-  void insertRow(T row) {
+  void insertRow(T row, {String? requestId}) {
     final primaryKey = decoder.getPrimaryKey(row);
     if (primaryKey != null) {
       _rowsByPrimaryKey[primaryKey] = row;
     } else {
-      _rows.add(row);
+      _rows.add(_CachedRow(row, requestId: requestId));
     }
     _refreshRowsNotifier();
     if (primaryKey != null && _rowNotifiers.containsKey(primaryKey)) {
@@ -616,8 +629,8 @@ class TableCache<T> {
       _rowsByPrimaryKey.remove(key);
       _rowOwners.remove(key);
     }
-    _rows.removeWhere((row) {
-      final pk = decoder.getPrimaryKey(row);
+    _rows.removeWhere((entry) {
+      final pk = decoder.getPrimaryKey(entry.row);
       return test(pk);
     });
     _refreshRowsNotifier();
@@ -626,16 +639,43 @@ class TableCache<T> {
     }
   }
 
-  void removeNoPkRow(Map<String, dynamic> rowJson) {
+  void removeNoPkRow(Map<String, dynamic> rowJson, {String? requestId}) {
     if (hasPrimaryKey) return;
+    if (requestId != null) {
+      final i = _rows.indexWhere((e) => e.requestId == requestId);
+      if (i >= 0) {
+        _rows.removeAt(i);
+        _refreshRowsNotifier();
+      }
+      return;
+    }
     for (var i = 0; i < _rows.length; i++) {
-      final asJson = decoder.toJson(_rows[i]);
+      final asJson = decoder.toJson(_rows[i].row);
       if (asJson != null && _jsonEquals(asJson, rowJson)) {
         _rows.removeAt(i);
         _refreshRowsNotifier();
         return;
       }
     }
+  }
+
+  void clearNoPkRequestTag(String requestId) {
+    if (hasPrimaryKey) return;
+    for (final entry in _rows) {
+      if (entry.requestId == requestId) entry.requestId = null;
+    }
+  }
+
+  void clearUntaggedNoPkRows() {
+    if (hasPrimaryKey) return;
+    final before = _rows.length;
+    _rows.removeWhere((e) => e.requestId == null);
+    if (_rows.length != before) _refreshRowsNotifier();
+  }
+
+  void _removeUntaggedNoPkRow(T row) {
+    final i = _rows.indexWhere((e) => e.requestId == null && e.row == row);
+    if (i >= 0) _rows.removeAt(i);
   }
 
   bool _jsonEquals(Map<String, dynamic> a, Map<String, dynamic> b) {
@@ -650,7 +690,7 @@ class TableCache<T> {
     rows.value =
         hasPrimaryKey
             ? List<T>.of(_rowsByPrimaryKey.values)
-            : List<T>.of(_rows);
+            : _rows.map((e) => e.row).toList();
   }
 
   void _removeRowNotifier(dynamic primaryKey) {
@@ -775,7 +815,7 @@ class TableCache<T> {
           alreadyGoneKeys.add(primaryKey);
         }
       } else {
-        _rows.remove(row);
+        _removeUntaggedNoPkRow(row);
         changes.deleted.add(row);
       }
     }
@@ -817,7 +857,7 @@ class TableCache<T> {
         _rowsByPrimaryKey[primaryKey] = row;
       } else {
         changes.inserted.add(row);
-        _rows.add(row);
+        _rows.add(_CachedRow(row));
       }
     }
 
@@ -846,6 +886,12 @@ class TableCache<T> {
     _rowsByPrimaryKey.remove(primaryKey);
     _rowOwners.remove(primaryKey);
   }
+}
+
+class _CachedRow<T> {
+  _CachedRow(this.row, {this.requestId});
+  final T row;
+  String? requestId;
 }
 
 class _RowChanges<T> {

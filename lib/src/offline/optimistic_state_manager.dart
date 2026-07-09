@@ -64,6 +64,35 @@ class OptimisticStateManager {
     return rows;
   }
 
+  List<Map<String, dynamic>> optimisticPkInsertRowsForTable(String tableName) {
+    final rows = <Map<String, dynamic>>[];
+    for (final entries in _entries.values) {
+      for (final entry in entries) {
+        if (entry.tableName == tableName &&
+            entry.type == OptimisticChangeType.insert &&
+            entry.primaryKey != null &&
+            entry.newRowJson != null) {
+          rows.add(entry.newRowJson!);
+        }
+      }
+    }
+    return rows;
+  }
+
+  Set<String> optimisticNoPkInsertRequestIdsForTable(String tableName) {
+    final ids = <String>{};
+    for (final mapEntry in _entries.entries) {
+      for (final entry in mapEntry.value) {
+        if (entry.tableName == tableName &&
+            entry.type == OptimisticChangeType.insert &&
+            entry.primaryKey == null) {
+          ids.add(mapEntry.key);
+        }
+      }
+    }
+    return ids;
+  }
+
   void applyOptimisticChanges(
     String requestId,
     List<OptimisticChange>? changes,
@@ -97,7 +126,7 @@ class OptimisticStateManager {
                 newRowJson: change.newRowJson,
               ),
             );
-            table.insertRow(row);
+            table.insertRow(row, requestId: pk == null ? requestId : null);
             (specsByTable[change.tableName] ??= []).add(
               TableEventSpec.insert(row),
             );
@@ -156,6 +185,10 @@ class OptimisticStateManager {
   List<OptimisticEntry> confirmOptimisticChange(String requestId) {
     final entries = _entries.remove(requestId) ?? const [];
     for (final entry in entries) {
+      if (entry.type == OptimisticChangeType.insert &&
+          entry.primaryKey == null) {
+        _cache.getTableByName(entry.tableName)?.clearNoPkRequestTag(requestId);
+      }
       _releaseStashIfNoLongerOptimistic(entry.tableName, entry.primaryKey);
     }
     return entries;
@@ -182,7 +215,7 @@ class OptimisticStateManager {
         SdkLogger.d('CONFIRMED (key was touched)');
       } else {
         SdkLogger.d('ROLLING BACK (key NOT in touchedKeys)');
-        _rollbackEntry(entry);
+        _rollbackEntry(entry, requestId);
       }
 
       _releaseStashIfNoLongerOptimistic(entry.tableName, entry.primaryKey);
@@ -195,7 +228,7 @@ class OptimisticStateManager {
 
     final touchedTables = <String>{};
     for (final entry in entries.reversed) {
-      _rollbackEntry(entry);
+      _rollbackEntry(entry, requestId);
       touchedTables.add(entry.tableName);
       _releaseStashIfNoLongerOptimistic(entry.tableName, entry.primaryKey);
     }
@@ -206,6 +239,10 @@ class OptimisticStateManager {
     final table = _cache.getTableByName(tableName);
     if (table == null) return;
 
+    if (!table.hasPrimaryKey) {
+      table.clearUntaggedNoPkRows();
+      return;
+    }
     final optimisticPKs = optimisticPrimaryKeysForTable(tableName);
     if (optimisticPKs.isEmpty) {
       table.clear();
@@ -250,7 +287,7 @@ class OptimisticStateManager {
     if (tableStash.isEmpty) _committedStash.remove(tableName);
   }
 
-  void _rollbackEntry(OptimisticEntry entry) {
+  void _rollbackEntry(OptimisticEntry entry, String requestId) {
     final table = _cache.getTableByName(entry.tableName);
     if (table == null) return;
 
@@ -278,7 +315,7 @@ class OptimisticStateManager {
       case OptimisticChangeType.insert:
         if (!table.hasPrimaryKey) {
           if (entry.newRowJson != null) {
-            table.removeNoPkRow(entry.newRowJson!);
+            table.removeNoPkRow(entry.newRowJson!, requestId: requestId);
           }
         } else {
           table.deleteRow(entry.primaryKey);
