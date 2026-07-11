@@ -333,6 +333,351 @@ void main() {
     );
 
     test(
+      'a timed-out INSERT whose row is SERVER-OWNED under its PK is confirmed, '
+      'not discarded (createdAt differs; presence-by-ownership not equality)',
+      () async {
+        final connection = MockConnection();
+        connection.setStateSilently(const Connected());
+        final storage = InMemoryOfflineStorage();
+        final cache = ClientCache();
+        cache.registerDecoder<Map<String, dynamic>>('message', _MapDecoder());
+        final messageTable = cache.getTableByName('message')!;
+        messageTable.markSubscribed();
+        messageTable.insertServerOwnedRow({
+          'id': 'u1783708620109-3',
+          'text': 'hello',
+          'created_at': 'SERVER-2026-07-10T18:37:00',
+        });
+
+        final optimisticState = OptimisticStateManager(cache);
+        var sends = 0;
+        final syncer = MutationSyncer(
+          connection: connection,
+          storage: storage,
+          optimisticState: optimisticState,
+          cache: cache,
+          send: (reducerName, args, {requestId}) async {
+            sends++;
+            throw SpacetimeDbTimeoutException(
+              'timed out',
+              elapsed: const Duration(seconds: 10),
+            );
+          },
+        );
+
+        final results = <MutationSyncResult>[];
+        final sub = syncer.onMutationSyncResult.listen(results.add);
+
+        await storage.enqueueMutation(
+          PendingMutation(
+            requestId: 'u1783708620109-3',
+            reducerName: 'push_message',
+            encodedArgs: Uint8List(0),
+            createdAt: DateTime.now(),
+            optimisticChanges: [
+              OptimisticChange.insert('message', {
+                'id': 'u1783708620109-3',
+                'text': 'hello',
+                'created_at': 'CLIENT-1783708620109',
+              }),
+            ],
+          ),
+        );
+
+        await syncer.syncPendingMutations();
+        await Future<void>.delayed(Duration.zero);
+        await sub.cancel();
+
+        expect(sends, equals(1), reason: 'must not re-send (would abort on PK)');
+        expect(
+          await storage.getPendingMutations(),
+          isEmpty,
+          reason:
+              'the row is server-owned under its PK, so the timed-out insert '
+              'is confirmed and dequeued, not discarded',
+        );
+        expect(
+          results.where((r) => !r.success),
+          isEmpty,
+          reason: 'no success:false discard result may be emitted',
+        );
+        expect(
+          results.where((r) => r.success).map((r) => r.requestId),
+          contains('u1783708620109-3'),
+          reason: 'a success:true confirmation must be emitted',
+        );
+        expect(
+          messageTable.getRow('u1783708620109-3'),
+          isNotNull,
+          reason: 'the optimistic row must NOT be rolled back',
+        );
+        syncer.cancelRetry();
+      },
+    );
+
+    test(
+      'a timed-out INSERT whose PK is present only as an UNCONFIRMED optimistic '
+      'row (no server owner) must NOT be confirmed — guards the lost write',
+      () async {
+        final connection = MockConnection();
+        connection.setStateSilently(const Connected());
+        final storage = InMemoryOfflineStorage();
+        final cache = ClientCache();
+        cache.registerDecoder<Map<String, dynamic>>('message', _MapDecoder());
+        final messageTable = cache.getTableByName('message')!;
+        messageTable.markSubscribed();
+        messageTable.insertRow({
+          'id': 'u1783708620109-9',
+          'text': 'hello',
+          'created_at': 'CLIENT-1783708620109',
+        });
+
+        final optimisticState = OptimisticStateManager(cache);
+        var sends = 0;
+        final syncer = MutationSyncer(
+          connection: connection,
+          storage: storage,
+          optimisticState: optimisticState,
+          cache: cache,
+          send: (reducerName, args, {requestId}) async {
+            sends++;
+            throw SpacetimeDbTimeoutException(
+              'timed out',
+              elapsed: const Duration(seconds: 10),
+            );
+          },
+        );
+
+        final results = <MutationSyncResult>[];
+        final sub = syncer.onMutationSyncResult.listen(results.add);
+
+        await storage.enqueueMutation(
+          PendingMutation(
+            requestId: 'u1783708620109-9',
+            reducerName: 'push_message',
+            encodedArgs: Uint8List(0),
+            createdAt: DateTime.now(),
+            optimisticChanges: [
+              OptimisticChange.insert('message', {
+                'id': 'u1783708620109-9',
+                'text': 'hello',
+                'created_at': 'CLIENT-1783708620109',
+              }),
+            ],
+          ),
+        );
+
+        await syncer.syncPendingMutations();
+        await Future<void>.delayed(Duration.zero);
+        await sub.cancel();
+
+        expect(sends, equals(1), reason: 'one timed-out send this cycle');
+        expect(
+          results.where((r) => r.success).map((r) => r.requestId),
+          isNot(contains('u1783708620109-9')),
+          reason:
+              'the row is present only as the client optimistic row (no server '
+              'owner), so the insert is NOT proven landed and must not be '
+              'confirmed as success — that would mask a lost write',
+        );
+        syncer.cancelRetry();
+      },
+    );
+
+    test(
+      'an INSERT reducer that ABORTS on replay but whose row is server-owned '
+      'is confirmed (unique-collision on the already-committed row), not failed',
+      () async {
+        final connection = MockConnection();
+        connection.setStateSilently(const Connected());
+        final storage = InMemoryOfflineStorage();
+        final cache = ClientCache();
+        cache.registerDecoder<Map<String, dynamic>>('message', _MapDecoder());
+        final messageTable = cache.getTableByName('message')!;
+        messageTable.markSubscribed();
+        messageTable.insertServerOwnedRow({
+          'id': 'a1',
+          'text': 'hi',
+          'created_at': 'SERVER',
+        });
+
+        final syncer = MutationSyncer(
+          connection: connection,
+          storage: storage,
+          optimisticState: OptimisticStateManager(cache),
+          cache: cache,
+          send: (reducerName, args, {requestId}) async {
+            throw SpacetimeDbReducerException(
+              reducerName: reducerName,
+              message: 'The instance encountered a fatal error.',
+              result: _rejected(reducerName, 'fatal'),
+            );
+          },
+        );
+
+        final results = <MutationSyncResult>[];
+        final sub = syncer.onMutationSyncResult.listen(results.add);
+        await storage.enqueueMutation(
+          PendingMutation(
+            requestId: 'a1',
+            reducerName: 'push_message',
+            encodedArgs: Uint8List(0),
+            createdAt: DateTime.now(),
+            optimisticChanges: [
+              OptimisticChange.insert('message', {
+                'id': 'a1',
+                'text': 'hi',
+                'created_at': 'CLIENT',
+              }),
+            ],
+          ),
+        );
+
+        await syncer.syncPendingMutations();
+        await Future<void>.delayed(Duration.zero);
+        await sub.cancel();
+
+        expect(await storage.getPendingMutations(), isEmpty);
+        expect(results.where((r) => !r.success), isEmpty);
+        expect(
+          results.where((r) => r.success).map((r) => r.requestId),
+          contains('a1'),
+        );
+        syncer.cancelRetry();
+      },
+    );
+
+    test(
+      'an INSERT reducer that aborts on replay while NOT yet server-owned is '
+      'kept queued, then confirmed once ownership hydrates',
+      () async {
+        final connection = MockConnection();
+        connection.setStateSilently(const Connected());
+        final storage = InMemoryOfflineStorage();
+        final cache = ClientCache();
+        cache.registerDecoder<Map<String, dynamic>>('message', _MapDecoder());
+        final messageTable = cache.getTableByName('message')!;
+        messageTable.markSubscribed();
+        messageTable.insertRow({'id': 'a2', 'text': 'hi', 'created_at': 'C'});
+
+        final syncer = MutationSyncer(
+          connection: connection,
+          storage: storage,
+          optimisticState: OptimisticStateManager(cache),
+          cache: cache,
+          send: (reducerName, args, {requestId}) async {
+            throw SpacetimeDbReducerException(
+              reducerName: reducerName,
+              message: 'The instance encountered a fatal error.',
+              result: _rejected(reducerName, 'fatal'),
+            );
+          },
+        );
+
+        final results = <MutationSyncResult>[];
+        final sub = syncer.onMutationSyncResult.listen(results.add);
+        await storage.enqueueMutation(
+          PendingMutation(
+            requestId: 'a2',
+            reducerName: 'push_message',
+            encodedArgs: Uint8List(0),
+            createdAt: DateTime.now(),
+            optimisticChanges: [
+              OptimisticChange.insert('message', {
+                'id': 'a2',
+                'text': 'hi',
+                'created_at': 'C',
+              }),
+            ],
+          ),
+        );
+
+        await syncer.syncPendingMutations();
+        expect(
+          await storage.getPendingMutations(),
+          isNotEmpty,
+          reason: 'not server-owned yet → kept queued, not failed',
+        );
+        expect(results.where((r) => !r.success), isEmpty);
+
+        messageTable.insertServerOwnedRow({
+          'id': 'a2',
+          'text': 'hi',
+          'created_at': 'SERVER',
+        });
+        await syncer.syncPendingMutations();
+        await Future<void>.delayed(Duration.zero);
+        await sub.cancel();
+
+        expect(await storage.getPendingMutations(), isEmpty);
+        expect(
+          results.where((r) => r.success).map((r) => r.requestId),
+          contains('a2'),
+        );
+        syncer.cancelRetry();
+      },
+    );
+
+    test(
+      'an INSERT reducer that aborts on replay and never becomes server-owned '
+      'falls back to a terminal failure after the bounded re-check budget',
+      () async {
+        final connection = MockConnection();
+        connection.setStateSilently(const Connected());
+        final storage = InMemoryOfflineStorage();
+        final cache = ClientCache();
+        cache.registerDecoder<Map<String, dynamic>>('message', _MapDecoder());
+        cache.getTableByName('message')!.markSubscribed();
+
+        final syncer = MutationSyncer(
+          connection: connection,
+          storage: storage,
+          optimisticState: OptimisticStateManager(cache),
+          cache: cache,
+          send: (reducerName, args, {requestId}) async {
+            throw SpacetimeDbReducerException(
+              reducerName: reducerName,
+              message: 'The instance encountered a fatal error.',
+              result: _rejected(reducerName, 'fatal'),
+            );
+          },
+        );
+
+        final results = <MutationSyncResult>[];
+        final sub = syncer.onMutationSyncResult.listen(results.add);
+        await storage.enqueueMutation(
+          PendingMutation(
+            requestId: 'a3',
+            reducerName: 'push_message',
+            encodedArgs: Uint8List(0),
+            createdAt: DateTime.now(),
+            optimisticChanges: [
+              OptimisticChange.insert('message', {'id': 'a3', 'text': 'hi'}),
+            ],
+          ),
+        );
+
+        for (var i = 0; i < 5; i++) {
+          await syncer.syncPendingMutations();
+        }
+        await Future<void>.delayed(Duration.zero);
+        await sub.cancel();
+
+        expect(
+          await storage.getPendingMutations(),
+          isEmpty,
+          reason: 'terminal failure after the bounded budget → dequeued',
+        );
+        expect(
+          results.where((r) => !r.success).map((r) => r.requestId),
+          contains('a3'),
+          reason: 'a genuinely-failing insert must eventually surface failure',
+        );
+        syncer.cancelRetry();
+      },
+    );
+
+    test(
       'a reducer that timed out client-side but ran server-side is not sent '
       'a second time on retry',
       () async {

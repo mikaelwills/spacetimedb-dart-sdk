@@ -40,6 +40,9 @@ class MutationSyncer implements MutationHandler {
   static const Duration _initialRetryDelay = Duration(seconds: 5);
   static const Duration _maxRetryDelay = Duration(seconds: 60);
 
+  final Map<String, int> _abortRecheckCount = {};
+  static const int _maxAbortRecheck = 3;
+
   final StreamController<SyncState> _syncStateController =
       StreamController<SyncState>.broadcast();
   final StreamController<MutationSyncResult> _mutationSyncResultController =
@@ -212,6 +215,7 @@ class MutationSyncer implements MutationHandler {
           if (_disposed) return;
 
           if (result.isSuccess) {
+            _abortRecheckCount.remove(mutation.requestId);
             try {
               await _storage.dequeueMutation(mutation.requestId);
             } catch (e) {
@@ -252,6 +256,47 @@ class MutationSyncer implements MutationHandler {
             }
           }
         } on SpacetimeDbReducerException catch (e) {
+          if (_resolveTimedOutMutation(mutation) == _TimeoutOutcome.landed) {
+            SdkLogger.w(
+              'Reducer ${mutation.reducerName} aborted on replay but its '
+              'effect is server-owned in cache; the abort is a unique-key '
+              'collision on the already-committed row. Confirming instead of '
+              'failing.',
+            );
+            _abortRecheckCount.remove(mutation.requestId);
+            _optimisticState.confirmOptimisticChange(mutation.requestId);
+            await _storage.dequeueMutation(mutation.requestId);
+            _decrementPendingCount();
+            if (!_disposed) {
+              _mutationSyncResultController.add(
+                MutationSyncResult(
+                  requestId: mutation.requestId,
+                  reducerName: mutation.reducerName,
+                  success: true,
+                ),
+              );
+            }
+            continue;
+          }
+          if (_isPureInsert(mutation)) {
+            final rechecks = _abortRecheckCount[mutation.requestId] ?? 0;
+            if (rechecks < _maxAbortRecheck) {
+              _abortRecheckCount[mutation.requestId] = rechecks + 1;
+              SdkLogger.w(
+                'Reducer ${mutation.reducerName} aborted on replay; its '
+                'insert is not yet server-owned in cache. Keeping in queue to '
+                're-check after resubscribe hydrates ownership '
+                '(${rechecks + 1}/$_maxAbortRecheck).',
+              );
+              break;
+            }
+            SdkLogger.w(
+              'Reducer ${mutation.reducerName} aborted on replay '
+              '$_maxAbortRecheck times without becoming server-owned; treating '
+              'as a genuine failure.',
+            );
+          }
+          _abortRecheckCount.remove(mutation.requestId);
           _optimisticState.rollbackOptimisticChanges(mutation.requestId);
           await _storage.dequeueMutation(mutation.requestId);
           _decrementPendingCount();
@@ -277,6 +322,7 @@ class MutationSyncer implements MutationHandler {
                 'Timeout syncing ${mutation.reducerName}: $e. Effect already '
                 'present in cache; confirming instead of re-sending.',
               );
+              _abortRecheckCount.remove(mutation.requestId);
               _optimisticState.confirmOptimisticChange(mutation.requestId);
               await _storage.dequeueMutation(mutation.requestId);
               _decrementPendingCount();
@@ -509,6 +555,12 @@ class MutationSyncer implements MutationHandler {
     await _storage.dispose();
   }
 
+  bool _isPureInsert(PendingMutation mutation) {
+    final changes = mutation.optimisticChanges;
+    if (changes == null || changes.isEmpty) return false;
+    return changes.every((c) => c.type == OptimisticChangeType.insert);
+  }
+
   _TimeoutOutcome _resolveTimedOutMutation(PendingMutation mutation) {
     final changes = mutation.optimisticChanges;
     if (changes == null || changes.isEmpty) {
@@ -526,7 +578,12 @@ class MutationSyncer implements MutationHandler {
 
       switch (change.type) {
         case OptimisticChangeType.insert:
-          return _TimeoutOutcome.undetectable;
+          final expected = table.decoder.fromJson(change.newRowJson!);
+          if (expected == null) return _TimeoutOutcome.undetectable;
+          final pk = table.decoder.getPrimaryKey(expected);
+          if (table.ownedKeys(pk).isEmpty) {
+            allLanded = false;
+          }
         case OptimisticChangeType.update:
           final expected = table.decoder.fromJson(change.newRowJson!);
           if (expected == null) return _TimeoutOutcome.undetectable;
@@ -577,6 +634,7 @@ class MutationSyncer implements MutationHandler {
     if (touched.isNotEmpty) {
       await persistTableSnapshots(onlyTables: touched);
     }
+    _abortRecheckCount.remove(mutation.requestId);
     await _storage.dequeueMutation(mutation.requestId);
     _decrementPendingCount();
     SdkLogger.w('Discarding mutation ${mutation.reducerName}: $reason');

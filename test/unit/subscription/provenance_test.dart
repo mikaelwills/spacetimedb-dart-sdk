@@ -512,14 +512,14 @@ void main() {
         await pumpEventQueue();
 
         expect(
-          subscriptionManager.subscriptionsByQuerySetId.containsKey(2),
+          subscriptionManager.subscriptionsByQuerySetId.containsKey(1),
           isTrue,
         );
 
         mockConnection.simulateIncoming(
           _createSubscribeApplied(
             requestId: 0,
-            querySetId: 2,
+            querySetId: 1,
             rowsByTable: {
               'folder': [oldFolder],
             },
@@ -533,7 +533,7 @@ void main() {
         mockConnection.simulateIncoming(
           _createReducerResultCommitted(
             requestId: numericRequestId,
-            querySetId: 2,
+            querySetId: 1,
             tableName: 'folder',
             inserts: [newFolder],
           ),
@@ -546,7 +546,7 @@ void main() {
           "SELECT * FROM folder WHERE path = '/does/not/match'",
         ]);
         mockConnection.simulateIncoming(
-          _createSubscribeApplied(requestId: 0, querySetId: 3),
+          _createSubscribeApplied(requestId: 0, querySetId: 2),
         );
         await subscribeB.timeout(_timeout);
 
@@ -615,14 +615,14 @@ void main() {
         await pumpEventQueue();
 
         expect(
-          subscriptionManager.subscriptionsByQuerySetId.containsKey(3),
+          subscriptionManager.subscriptionsByQuerySetId.containsKey(1),
           isTrue,
         );
 
         mockConnection.simulateIncoming(
           _createReducerResultCommitted(
             requestId: numericRequestId,
-            querySetId: 3,
+            querySetId: 1,
             tableName: 'folder',
             inserts: [newFolder],
           ),
@@ -634,7 +634,7 @@ void main() {
         expect(table.iter().map((f) => f.name), contains('New Name'));
 
         mockConnection.simulateIncoming(
-          _createSubscribeApplied(requestId: 0, querySetId: 4),
+          _createSubscribeApplied(requestId: 0, querySetId: 2),
         );
         await pumpEventQueue();
 
@@ -1692,14 +1692,14 @@ void main() {
         await pumpEventQueue();
 
         expect(
-          subscriptionManager.subscriptionsByQuerySetId.containsKey(3),
+          subscriptionManager.subscriptionsByQuerySetId.containsKey(1),
           isTrue,
         );
 
         mockConnection.simulateIncoming(
           _createStrSubscribeApplied(
             requestId: 0,
-            querySetId: 3,
+            querySetId: 1,
             rowsByTable: {
               'live_table': ['seed-a'],
             },
@@ -1708,13 +1708,13 @@ void main() {
         await pumpEventQueue();
 
         expect(
-          subscriptionManager.subscriptionsByQuerySetId.containsKey(4),
+          subscriptionManager.subscriptionsByQuerySetId.containsKey(2),
           isTrue,
         );
 
         mockConnection.simulateIncoming(
           _createStrTransactionUpdate(
-            querySetId: 3,
+            querySetId: 1,
             tableName: 'live_table',
             inserts: ['mid-reconnect-insert'],
           ),
@@ -1726,7 +1726,7 @@ void main() {
         mockConnection.simulateIncoming(
           _createStrSubscribeApplied(
             requestId: 0,
-            querySetId: 4,
+            querySetId: 2,
             rowsByTable: {
               'live_table': ['seed-b'],
             },
@@ -1742,7 +1742,7 @@ void main() {
         mockConnection.simulateIncoming(
           _createStrSubscribeApplied(
             requestId: 0,
-            querySetId: 5,
+            querySetId: 3,
             rowsByTable: const {'live_table': []},
           ),
         );

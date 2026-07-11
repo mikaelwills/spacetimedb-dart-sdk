@@ -163,7 +163,14 @@ class SubscriptionManager {
   Future<int> subscribe(List<String> queries) async {
     final querySetId = _nextQuerySetId++;
     _subscriptionsByQuerySetId[querySetId] = List.of(queries);
+    await _sendSubscribeAndWait(querySetId, _subscriptionsByQuerySetId[querySetId]!);
+    return querySetId;
+  }
 
+  Future<void> _sendSubscribeAndWait(
+    int querySetId,
+    List<String> queries,
+  ) async {
     final message = SubscribeMessage(queries, querySetId: querySetId);
     _connection.send(message.encode());
 
@@ -174,7 +181,6 @@ class SubscriptionManager {
     } finally {
       _subscribeWaiters.remove(querySetId);
     }
-    return querySetId;
   }
 
   void oneOffQuery(String query, {int requestId = 0}) {
@@ -351,10 +357,6 @@ class SubscriptionManager {
   Future<void> _onReconnected() async {
     if (_subscriptionsByQuerySetId.isNotEmpty) {
       _subscriptionsReady.value = false;
-      final querySets = _subscriptionsByQuerySetId.values
-          .map((q) => List<String>.of(q))
-          .toList(growable: false);
-      _subscriptionsByQuerySetId.clear();
 
       final oldKeysByTable = <String, Set<dynamic>>{
         for (final table in cache.allTables)
@@ -367,20 +369,27 @@ class SubscriptionManager {
       _reconnectInFlight = true;
       var allResubscribed = true;
       try {
-        SdkLogger.i('Re-subscribing to ${querySets.length} query sets...');
-        for (final queries in querySets) {
+        final entries = _subscriptionsByQuerySetId.entries.toList();
+        SdkLogger.i('Re-subscribing to ${entries.length} query sets in place...');
+        for (final entry in entries) {
           if (!_connection.isConnected) {
             allResubscribed = false;
             break;
           }
-          final querySetId = await subscribe(queries).timeout(
-            const Duration(seconds: 30),
-            onTimeout: () {
-              SdkLogger.e('subscribe($queries) timed out during reconnect');
-              return -1;
-            },
-          );
-          if (querySetId < 0) allResubscribed = false;
+          final ok = await _sendSubscribeAndWait(entry.key, entry.value)
+              .then((_) => true)
+              .timeout(
+                const Duration(seconds: 30),
+                onTimeout: () {
+                  SdkLogger.e(
+                    'subscribe(${entry.value}) timed out during reconnect '
+                    '(querySetId=${entry.key}); retaining it for the next '
+                    'reconnect',
+                  );
+                  return false;
+                },
+              );
+          if (!ok) allResubscribed = false;
         }
       } finally {
         _reconnectInFlight = false;
@@ -392,7 +401,8 @@ class SubscriptionManager {
       } else {
         SdkLogger.w(
           'Skipping reconnect eviction: resubscribe did not fully complete '
-          '(connection dropped mid-reconnect); retaining cached rows',
+          '(connection dropped mid-reconnect); retaining cached rows and '
+          'subscription map for the next reconnect',
         );
       }
     }

@@ -520,6 +520,15 @@ class TableCache<T> {
     }
   }
 
+  @visibleForTesting
+  void insertServerOwnedRow(T row, {int querySetId = 0}) {
+    final primaryKey = decoder.getPrimaryKey(row);
+    insertRow(row);
+    if (primaryKey != null) {
+      _rowOwners.putIfAbsent(primaryKey, () => <int>{}).add(querySetId);
+    }
+  }
+
   void updateRow(T row) {
     if (!hasPrimaryKey) {
       throw StateError(
