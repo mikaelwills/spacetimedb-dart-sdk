@@ -12,12 +12,20 @@ class OptimisticEntry {
   final Map<String, dynamic>? oldRowJson;
   final Map<String, dynamic>? newRowJson;
 
+  /// True iff, at the moment this change was applied, the row it displaces was
+  /// a real committed row (no pending optimistic entry already sat on this
+  /// table+pk). When false, the "base" this entry would restore on rollback is
+  /// itself another uncommitted overlay — restoring it would resurrect a
+  /// phantom, so the rollback must drop the pk instead.
+  final bool baseCommitted;
+
   OptimisticEntry({
     required this.tableName,
     required this.type,
     required this.primaryKey,
     this.oldRowJson,
     this.newRowJson,
+    this.baseCommitted = true,
   });
 }
 
@@ -93,6 +101,20 @@ class OptimisticStateManager {
     return ids;
   }
 
+  /// True iff no pending optimistic entry already sits on (tableName, pk) — i.e.
+  /// the row currently at that pk is a committed row, not another overlay.
+  bool _pkHasCommittedBase(String tableName, dynamic pk) {
+    if (pk == null) return true;
+    for (final entries in _entries.values) {
+      for (final entry in entries) {
+        if (entry.tableName == tableName && entry.primaryKey == pk) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
   void applyOptimisticChanges(
     String requestId,
     List<OptimisticChange>? changes,
@@ -136,6 +158,7 @@ class OptimisticStateManager {
           final newRow = table.decoder.fromJson(change.newRowJson!);
           if (oldRow != null && newRow != null) {
             final pk = table.decoder.getPrimaryKey(newRow);
+            final oldPk = table.decoder.getPrimaryKey(oldRow);
             entries.add(
               OptimisticEntry(
                 tableName: change.tableName,
@@ -143,6 +166,8 @@ class OptimisticStateManager {
                 primaryKey: pk,
                 oldRowJson: change.oldRowJson,
                 newRowJson: change.newRowJson,
+                baseCommitted:
+                    _pkHasCommittedBase(change.tableName, oldPk),
               ),
             );
             table.updateRow(newRow);
@@ -160,6 +185,7 @@ class OptimisticStateManager {
                 type: OptimisticChangeType.delete,
                 primaryKey: pk,
                 oldRowJson: change.oldRowJson,
+                baseCommitted: _pkHasCommittedBase(change.tableName, pk),
               ),
             );
             table.deleteRow(pk);
@@ -311,6 +337,7 @@ class OptimisticStateManager {
       return;
     }
 
+    var rolledBackUncommittedInsert = false;
     switch (entry.type) {
       case OptimisticChangeType.insert:
         if (!table.hasPrimaryKey) {
@@ -319,16 +346,24 @@ class OptimisticStateManager {
           }
         } else {
           table.deleteRow(entry.primaryKey);
+          rolledBackUncommittedInsert = true;
         }
       case OptimisticChangeType.update:
-        if (entry.oldRowJson != null) {
+        // Only restore the old row if it was a committed base. If the base was
+        // itself an uncommitted overlay, restoring oldRowJson would resurrect a
+        // phantom — drop the pk instead (a surviving overlay is re-applied
+        // below).
+        if (entry.baseCommitted && entry.oldRowJson != null) {
           final oldRow = table.decoder.fromJson(entry.oldRowJson!);
           if (oldRow != null) {
             table.updateRow(oldRow);
           }
+        } else if (!entry.baseCommitted) {
+          table.deleteRow(entry.primaryKey);
         }
       case OptimisticChangeType.delete:
-        if (entry.oldRowJson != null) {
+        // Same guard: only re-insert the old row if it was committed.
+        if (entry.baseCommitted && entry.oldRowJson != null) {
           final oldRow = table.decoder.fromJson(entry.oldRowJson!);
           if (oldRow != null) {
             table.insertRow(oldRow);
@@ -336,24 +371,43 @@ class OptimisticStateManager {
         }
     }
 
-    _reapplyNewestSurvivingOverlay(table, entry.tableName, entry.primaryKey);
+    _reapplyNewestSurvivingOverlay(
+      table,
+      entry.tableName,
+      entry.primaryKey,
+      rolledBackUncommittedInsert: rolledBackUncommittedInsert,
+    );
   }
 
   void _reapplyNewestSurvivingOverlay(
     dynamic table,
     String tableName,
-    dynamic primaryKey,
-  ) {
+    dynamic primaryKey, {
+    bool rolledBackUncommittedInsert = false,
+  }) {
     if (primaryKey == null || !table.hasPrimaryKey) return;
     OptimisticEntry? newest;
+    var hasSurvivingInsert = false;
     for (final entries in _entries.values) {
       for (final entry in entries) {
         if (entry.tableName == tableName && entry.primaryKey == primaryKey) {
           newest = entry;
+          if (entry.type == OptimisticChangeType.insert) {
+            hasSurvivingInsert = true;
+          }
         }
       }
     }
     if (newest == null) return;
+    // When we just rolled back an uncommitted insert (no committed row under
+    // it), a surviving UPDATE overlay has no real base to sit on — re-applying
+    // it would resurrect a phantom. Skip it UNLESS a surviving INSERT entry
+    // still provides a base at this pk (stacked-insert / delete-recreate).
+    if (rolledBackUncommittedInsert &&
+        newest.type == OptimisticChangeType.update &&
+        !hasSurvivingInsert) {
+      return;
+    }
     switch (newest.type) {
       case OptimisticChangeType.insert:
       case OptimisticChangeType.update:
