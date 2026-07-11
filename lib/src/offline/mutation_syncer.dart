@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:meta/meta.dart';
+
 import 'package:spacetimedb_sdk/src/cache/client_cache.dart';
 import 'package:spacetimedb_sdk/src/connection/spacetimedb_connection.dart';
 import 'package:spacetimedb_sdk/src/connection/connection_state.dart';
@@ -343,26 +345,26 @@ class MutationSyncer implements MutationHandler {
               );
               break;
             case _TimeoutOutcome.undetectable:
-              if (_connection.state is! Connected) {
-                SdkLogger.w(
-                  'Timeout syncing ${mutation.reducerName}: $e. Connection is '
-                  'down, so the reducer almost certainly never ran; keeping '
-                  'in queue for retry.',
-                );
-                break;
-              }
+              // At-least-once policy: an unverifiable timeout is kept queued
+              // and retried, never discarded — loss is the worse failure than
+              // duplicate execution, and there is no wire idempotency key to do
+              // better. This holds whether the socket is down (reducer likely
+              // never ran) or still connected (it may have run but we can't
+              // confirm). No MutationSyncResult is emitted — the row is still
+              // pending, not failed.
+              //
+              // Honest cost: with no idempotency key, a slow-acking reducer may
+              // be re-executed once PER retry cycle (N duplicates, not just 2 —
+              // trySyncNow drives extra cycles on every user write); and a
+              // mutation the server never acks blocks the FIFO queue behind it
+              // indefinitely while SyncState still reads idle/failed=0. Consumers
+              // bound both with maxMutationAge (expiry) and onBeforeReplay (veto).
               SdkLogger.w(
-                'Timeout syncing ${mutation.reducerName}: $e. Still connected '
-                'but outcome cannot be verified (insert or unsubscribed '
-                'table); discarding to avoid duplicate execution.',
+                'Timeout syncing ${mutation.reducerName}: $e. Outcome cannot '
+                'be verified; keeping in queue for retry (at-least-once — the '
+                'server may or may not have executed it).',
               );
-              await _discardMutation(
-                mutation,
-                'timed out with unverifiable outcome while connected; not '
-                'retried to avoid duplicate server execution',
-                cycleFailures,
-              );
-              continue;
+              break;
           }
           break;
         } on SpacetimeDbStorageException catch (e) {
@@ -682,14 +684,28 @@ class MutationSyncer implements MutationHandler {
     );
   }
 
+  @visibleForTesting
+  Duration retryDelayForAttempt(int attempt) {
+    // Clamp the shift exponent BEFORE the multiply: `1 << attempt` overflows
+    // 64-bit int arithmetic past attempt ~50 and the delay collapses to 0
+    // (permanently from ~63), turning a persistently-stuck mutation into a
+    // send-every-10s hot loop. The exponent that reaches _maxRetryDelay is
+    // small (5s * 2^4 = 80s > 60s cap), so cap it there.
+    final maxShift =
+        (_maxRetryDelay.inMilliseconds ~/ _initialRetryDelay.inMilliseconds)
+            .bitLength;
+    final exponent = attempt < maxShift ? attempt : maxShift;
+    return Duration(
+      milliseconds: (_initialRetryDelay.inMilliseconds * (1 << exponent))
+          .clamp(0, _maxRetryDelay.inMilliseconds),
+    );
+  }
+
   void _scheduleRetry() {
     if (_disposed) return;
     _retryTimer?.cancel();
 
-    final delay = Duration(
-      milliseconds: (_initialRetryDelay.inMilliseconds * (1 << _retryAttempt))
-          .clamp(0, _maxRetryDelay.inMilliseconds),
-    );
+    final delay = retryDelayForAttempt(_retryAttempt);
     _retryAttempt++;
 
     SdkLogger.d(

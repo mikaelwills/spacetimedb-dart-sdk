@@ -203,8 +203,9 @@ void main() {
     });
 
     test(
-      'a timeout with unverifiable outcome (no optimistic changes) is '
-      'discarded, not silently retried',
+      'a timeout with unverifiable outcome (no optimistic changes) while '
+      'connected is kept queued for retry, not discarded (at-least-once — '
+      'loss is the worse failure)',
       () async {
         final harness = _Harness(respond: (name) => _committed(name));
         final timeoutSyncer = MutationSyncer(
@@ -225,13 +226,19 @@ void main() {
 
         expect(
           await harness.storage.getPendingMutations(),
-          isEmpty,
+          hasLength(1),
           reason:
-              'the outcome cannot be verified from the cache, so the mutation '
-              'is discarded rather than blindly retried (which would risk a '
-              'duplicate server execution)',
+              'the outcome cannot be verified but the connection is up, so the '
+              'reducer may or may not have run; keep it queued for retry '
+              'rather than discarding and risking a lost write',
         );
-        expect(timeoutSyncer.syncState.failedCount, equals(1));
+        expect(
+          timeoutSyncer.syncState.failedCount,
+          equals(0),
+          reason:
+              'a kept-queued mutation is not a failure — no MutationSyncResult '
+              'is emitted for it (avoids double-counting the still-pending row)',
+        );
         timeoutSyncer.cancelRetry();
       },
     );
@@ -678,8 +685,8 @@ void main() {
     );
 
     test(
-      'a reducer that timed out client-side but ran server-side is not sent '
-      'a second time on retry',
+      'a no-optimistic mutation that times out while connected stays queued '
+      'and is retried on the next cycle (at-least-once)',
       () async {
         final connection = MockConnection();
         connection.setStateSilently(const Connected());
@@ -709,12 +716,53 @@ void main() {
 
         expect(
           sendCount['r1'],
-          equals(1),
+          equals(2),
           reason:
-              'the first send timed out client-side but the server may have '
-              'executed it; retrying re-runs the reducer on the server. A '
-              'timed-out mutation must not be blindly re-sent without an '
-              'idempotency guard',
+              'the first send timed out while connected — outcome unverifiable, '
+              'so the mutation is kept queued and re-sent next cycle. Loss is '
+              'the worse failure; duplicate execution is the accepted '
+              'at-least-once tradeoff (no idempotency key exists at the wire)',
+        );
+        expect(
+          await storage.getPendingMutations(),
+          isEmpty,
+          reason: 'the second send committed, so the mutation dequeues',
+        );
+        syncer.cancelRetry();
+      },
+    );
+
+    test(
+      'retry backoff never collapses to zero at high attempt counts '
+      '(overflow guard) and saturates at the max delay',
+      () async {
+        final syncer = MutationSyncer(
+          connection: MockConnection()..setStateSilently(const Connected()),
+          storage: InMemoryOfflineStorage(),
+          optimisticState: OptimisticStateManager(ClientCache()),
+          cache: ClientCache(),
+          send: (name, args, {requestId}) async => _committed(name),
+        );
+
+        for (final attempt in [0, 1, 4, 51, 63, 200]) {
+          final d = syncer.retryDelayForAttempt(attempt);
+          expect(
+            d.inMilliseconds,
+            greaterThan(0),
+            reason:
+                'attempt $attempt must not collapse to a zero-delay hot loop '
+                '(the pre-fix 1<<attempt overflowed negative past ~50)',
+          );
+          expect(
+            d.inMilliseconds,
+            lessThanOrEqualTo(60000),
+            reason: 'attempt $attempt must not exceed the 60s max delay',
+          );
+        }
+        expect(
+          syncer.retryDelayForAttempt(51).inMilliseconds,
+          equals(60000),
+          reason: 'high attempts saturate at the max, not overflow to 0',
         );
         syncer.cancelRetry();
       },
