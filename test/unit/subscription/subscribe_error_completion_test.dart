@@ -172,6 +172,48 @@ void main() {
 
       await expectLater(future, completion(equals(1))).timeout(_timeout);
     });
+
+    test(
+      'dispose during the reconnect resubscribe loop does not touch the '
+      'disposed subscriptionsReady notifier',
+      () async {
+        final subscribeFuture = subscriptionManager.subscribe([
+          'SELECT * FROM notes',
+        ]);
+        await mockConnection.connect();
+        mockConnection.simulateIncoming(
+          _createSubscribeApplied(requestId: 0, querySetId: 1),
+        );
+        await expectLater(
+          subscribeFuture,
+          completion(equals(1)),
+        ).timeout(_timeout);
+
+        await mockConnection.disconnect();
+
+        Object? escaped;
+        await runZonedGuarded(
+          () async {
+            await mockConnection.connect();
+            await pumpEventQueue();
+
+            await subscriptionManager.dispose();
+            await pumpEventQueue();
+          },
+          (error, stack) {
+            escaped = error;
+          },
+        );
+
+        expect(
+          escaped,
+          isNull,
+          reason:
+              'dispose() landing while _onReconnected awaits the resubscribe '
+              'loop must not write subscriptionsReady after it is disposed',
+        );
+      },
+    );
   });
 
   group('provenance regex tolerates quoted table names', () {

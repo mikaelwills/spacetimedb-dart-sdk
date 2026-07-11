@@ -395,6 +395,7 @@ class SubscriptionManager {
         _reconnectInFlight = false;
       }
 
+      if (_disposed) return;
       if (allResubscribed && _connection.isConnected) {
         _evictReconnectDeletes(oldKeysByTable);
         _subscriptionsReady.value = true;
