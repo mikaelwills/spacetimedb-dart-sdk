@@ -5,11 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 2.3.0 - 2026-07-12
+
+Offline-first correctness hardening. This release closes several silent data-loss and data-integrity gaps on the offline mutation and reconnect paths, adds a `subscriptionsReady` readiness signal so consumers can tell a genuinely-usable connection from a merely socket-open one, and makes the previously-dead `queuePolicy` reachable from generated clients. All additive — existing consumers keep working unchanged.
 
 ### Added
 
+- **`subscriptionsReady` (`ValueListenable<bool>`)** on `SubscriptionManager` / generated clients. True only when the connection is open AND *every* active query set has had its `SubscribeApplied` applied to the cache; latches back to false the moment the socket drops or a reconnect begins resubscribing, and returns to true only after all query sets re-apply. `Connected` is socket-open, not usable — gate sends/reads on `subscriptionsReady` to avoid a false-positive connected state.
+- **`queuePolicy` reachable from generated `create()`.** The `OfflineQueuePolicy` knob (TTL, queue bounds, `onBeforeReplay` veto) is now threaded through the generated `create()` into `SubscriptionManager` — previously it was unreachable and inert for consumers.
+- **`SpacetimeDbStorageException`** — post-send dequeue/storage failures are now classified as storage errors instead of being mislabeled as network errors.
 - **`TableCache.applyServerDelta` / `applySnapshot` / `dropQuerySet`** — new internal, `querySetId`-labeled apply methods used exclusively by `SubscriptionManager` for every server-sourced write to a primary-key table. Ownership of a row (which query sets currently have it in their result set) is now tracked per-row and derived only from these labeled wire deltas, closing a class of bugs where a row delivered outside the initial `SubscribeApplied` snapshot (a live `TransactionUpdate`, or a caller's own committed reducer result) could be silently evicted by an unrelated query set's later apply. Rows written through the pre-existing unlabeled methods (`applyTransactionUpdate`, `applyInitialData`, `applyTransactionUpdateAndCollectKeys` — unchanged, still released, still used for no-primary-key and event tables) get no ownership entry; they behave like any other offline-hydrated stray, pinned while optimistic, otherwise healed or evicted on the next covering `SubscribeApplied`.
+
+### Fixed
+
+- **Timed-out UPDATE/DELETE no longer false-confirmed on a flaky link.** A queued UPDATE/DELETE whose send timed out while the reducer never ran on the server was previously confirmed against the client's *own* optimistic overlay in the cache and silently dropped from the durable queue — a lost write. Confirmation now uses server provenance; an unverifiable timeout keeps the mutation queued for at-least-once retry.
+- **Stacked cross-request UPDATE no longer deletes a committed row on rollback.** When several offline edits stacked on the same primary key and one failed, older-first rollback could delete a row that actually sat on a committed server value. Rollback now restores the true committed base at rollback time and re-applies surviving overlays on top.
+- **No-primary-key rows no longer duplicate on restart or phantom on rollback.** No-PK optimistic rows are tracked by request id rather than content-equality, fixing nested-column snapshot duplication, rollback phantoms, and identical-row ambiguity; optimistic overlays are excluded from persisted snapshots.
+- **Reducer-timeout reconciliation.** On timeout the SDK reconciles against the cache before retrying (confirm if landed, keep queued if unverifiable) to prevent duplicate server execution; an unverifiable timeout is only discarded while still connected, and kept when the connection dropped so a flaky link can't lose writes. The retry backoff is clamped so it can't overflow to a zero-delay hot loop.
+- **Cross-client overlay protection.** A cross-client committed row is now stashed when protection is skipped, so a later optimistic rollback restores server truth instead of resurrecting a stale pre-optimistic snapshot; another client's commit can't clobber a pending optimistic overlay.
+- **Reconnect resubscribes in place** without dropping the query set; reconnect eviction is skipped when resubscribe is interrupted so a mid-reconnect disconnect can't wipe the cache.
+- **`subscribe()` never hangs.** It completes on subscription error, disconnect, and dispose; the subscribe waiter always completes even if `SubscribeApplied` handling throws. `dispose()` is idempotent and ignores connection-state events (and the reconnect resubscribe tail) after dispose, so teardown never writes the disposed `subscriptionsReady` notifier.
+- **Journal-append-before-mutate ordering** so append failures can't diverge queue state or resurrect confirmed mutations; optimistic changes roll back when an enqueue write fails so a failed queue write can't leave phantom rows.
 
 ### Changed (observable, opt-out not available)
 
