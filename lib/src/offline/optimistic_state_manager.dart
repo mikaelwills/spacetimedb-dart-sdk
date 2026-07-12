@@ -39,6 +39,7 @@ class OptimisticStateManager {
   final ClientCache _cache;
   final Map<String, List<OptimisticEntry>> _entries = {};
   final Map<String, Map<dynamic, _StashedCommit>> _committedStash = {};
+  final Map<String, Map<String, Set<dynamic>>> _confirmedOverlayKeys = {};
 
   OptimisticStateManager(this._cache);
 
@@ -215,9 +216,32 @@ class OptimisticStateManager {
           entry.primaryKey == null) {
         _cache.getTableByName(entry.tableName)?.clearNoPkRequestTag(requestId);
       }
+      if ((entry.type == OptimisticChangeType.update ||
+              entry.type == OptimisticChangeType.delete) &&
+          entry.primaryKey != null) {
+        ((_confirmedOverlayKeys[requestId] ??= {})[entry.tableName] ??= {})
+            .add(entry.primaryKey);
+      }
       _releaseStashIfNoLongerOptimistic(entry.tableName, entry.primaryKey);
     }
     return entries;
+  }
+
+  bool hasPendingEntryForKey(String tableName, dynamic primaryKey) {
+    return _isKeyStillOptimistic(tableName, primaryKey);
+  }
+
+  bool wasOverlayConfirmedForKey(
+    String requestId,
+    String tableName,
+    dynamic primaryKey,
+  ) {
+    return _confirmedOverlayKeys[requestId]?[tableName]?.contains(primaryKey) ??
+        false;
+  }
+
+  void clearConfirmedOverlay(String requestId) {
+    _confirmedOverlayKeys.remove(requestId);
   }
 
   void confirmOrRollbackWithTouchedKeys(
@@ -280,6 +304,7 @@ class OptimisticStateManager {
   void clear() {
     _entries.clear();
     _committedStash.clear();
+    _confirmedOverlayKeys.clear();
   }
 
   void stashCommittedState(

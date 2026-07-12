@@ -855,6 +855,142 @@ void main() {
         syncer.cancelRetry();
       },
     );
+
+    test(
+      'a timed-out UPDATE reads its own optimistic overlay and is '
+      'FALSE-confirmed (lost write): the reducer never ran server-side, so it '
+      'must stay queued',
+      () async {
+        final connection = MockConnection();
+        connection.setStateSilently(const Connected());
+        final storage = InMemoryOfflineStorage();
+        final cache = ClientCache();
+        cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
+        final noteTable = cache.getTableByName('note')!;
+        noteTable.markSubscribed();
+        noteTable.insertServerOwnedRow({'id': 1, 'content': 'old'});
+
+        final optimisticState = OptimisticStateManager(cache);
+        final syncer = MutationSyncer(
+          connection: connection,
+          storage: storage,
+          optimisticState: optimisticState,
+          cache: cache,
+          send: (reducerName, args, {requestId}) async {
+            throw SpacetimeDbTimeoutException(
+              'timed out',
+              elapsed: const Duration(seconds: 10),
+            );
+          },
+        );
+
+        final results = <MutationSyncResult>[];
+        final sub = syncer.onMutationSyncResult.listen(results.add);
+
+        final changes = [
+          OptimisticChange.update(
+            'note',
+            {'id': 1, 'content': 'old'},
+            {'id': 1, 'content': 'new'},
+          ),
+        ];
+        syncer.onOptimisticChanges('u1', changes);
+        await storage.enqueueMutation(
+          PendingMutation(
+            requestId: 'u1',
+            reducerName: 'update_note',
+            encodedArgs: Uint8List(0),
+            createdAt: DateTime.now(),
+            optimisticChanges: changes,
+          ),
+        );
+
+        await syncer.syncPendingMutations();
+        await Future<void>.delayed(Duration.zero);
+        await sub.cancel();
+
+        expect(
+          await storage.getPendingMutations(),
+          hasLength(1),
+          reason:
+              'the server never ran the reducer (send timed out); the '
+              'post-state in the cache is the client\'s own optimistic '
+              'overlay, not server provenance, so the update must stay queued '
+              'for at-least-once retry',
+        );
+        expect(
+          results.where((r) => r.success).map((r) => r.requestId),
+          isNot(contains('u1')),
+        );
+        syncer.cancelRetry();
+      },
+    );
+
+    test(
+      'a timed-out DELETE reads its own optimistic overlay (row removed) and '
+      'is FALSE-confirmed (lost write): must stay queued for at-least-once '
+      'retry',
+      () async {
+        final connection = MockConnection();
+        connection.setStateSilently(const Connected());
+        final storage = InMemoryOfflineStorage();
+        final cache = ClientCache();
+        cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
+        final noteTable = cache.getTableByName('note')!;
+        noteTable.markSubscribed();
+        noteTable.insertServerOwnedRow({'id': 1, 'content': 'old'});
+
+        final optimisticState = OptimisticStateManager(cache);
+        final syncer = MutationSyncer(
+          connection: connection,
+          storage: storage,
+          optimisticState: optimisticState,
+          cache: cache,
+          send: (reducerName, args, {requestId}) async {
+            throw SpacetimeDbTimeoutException(
+              'timed out',
+              elapsed: const Duration(seconds: 10),
+            );
+          },
+        );
+
+        final results = <MutationSyncResult>[];
+        final sub = syncer.onMutationSyncResult.listen(results.add);
+
+        final changes = [
+          OptimisticChange.delete('note', {'id': 1, 'content': 'old'}),
+        ];
+        syncer.onOptimisticChanges('d1', changes);
+        await storage.enqueueMutation(
+          PendingMutation(
+            requestId: 'd1',
+            reducerName: 'delete_note',
+            encodedArgs: Uint8List(0),
+            createdAt: DateTime.now(),
+            optimisticChanges: changes,
+          ),
+        );
+
+        await syncer.syncPendingMutations();
+        await Future<void>.delayed(Duration.zero);
+        await sub.cancel();
+
+        expect(
+          await storage.getPendingMutations(),
+          hasLength(1),
+          reason:
+              'the server never ran the delete reducer; the row\'s absence in '
+              'the cache is the client\'s own optimistic overlay (deleteRow), '
+              'not server confirmation, so the delete must stay queued for '
+              'retry',
+        );
+        expect(
+          results.where((r) => r.success).map((r) => r.requestId),
+          isNot(contains('d1')),
+        );
+        syncer.cancelRetry();
+      },
+    );
   });
 }
 

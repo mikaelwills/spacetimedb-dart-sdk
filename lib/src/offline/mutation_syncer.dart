@@ -218,6 +218,7 @@ class MutationSyncer implements MutationHandler {
 
           if (result.isSuccess) {
             _abortRecheckCount.remove(mutation.requestId);
+            _optimisticState.clearConfirmedOverlay(mutation.requestId);
             try {
               await _storage.dequeueMutation(mutation.requestId);
             } catch (e) {
@@ -240,6 +241,7 @@ class MutationSyncer implements MutationHandler {
           } else {
             final errorMsg = result.errorMessage ?? 'Unknown error';
             _optimisticState.rollbackOptimisticChanges(mutation.requestId);
+            _optimisticState.clearConfirmedOverlay(mutation.requestId);
             await _storage.dequeueMutation(mutation.requestId);
             _decrementPendingCount();
             SdkLogger.e(
@@ -258,7 +260,8 @@ class MutationSyncer implements MutationHandler {
             }
           }
         } on SpacetimeDbReducerException catch (e) {
-          if (_resolveTimedOutMutation(mutation) == _TimeoutOutcome.landed) {
+          if (_resolveTimedOutMutation(mutation, overlayIsProof: true) ==
+              _TimeoutOutcome.landed) {
             SdkLogger.w(
               'Reducer ${mutation.reducerName} aborted on replay but its '
               'effect is server-owned in cache; the abort is a unique-key '
@@ -267,6 +270,7 @@ class MutationSyncer implements MutationHandler {
             );
             _abortRecheckCount.remove(mutation.requestId);
             _optimisticState.confirmOptimisticChange(mutation.requestId);
+            _optimisticState.clearConfirmedOverlay(mutation.requestId);
             await _storage.dequeueMutation(mutation.requestId);
             _decrementPendingCount();
             if (!_disposed) {
@@ -300,6 +304,7 @@ class MutationSyncer implements MutationHandler {
           }
           _abortRecheckCount.remove(mutation.requestId);
           _optimisticState.rollbackOptimisticChanges(mutation.requestId);
+          _optimisticState.clearConfirmedOverlay(mutation.requestId);
           await _storage.dequeueMutation(mutation.requestId);
           _decrementPendingCount();
           SdkLogger.e(
@@ -326,6 +331,7 @@ class MutationSyncer implements MutationHandler {
               );
               _abortRecheckCount.remove(mutation.requestId);
               _optimisticState.confirmOptimisticChange(mutation.requestId);
+              _optimisticState.clearConfirmedOverlay(mutation.requestId);
               await _storage.dequeueMutation(mutation.requestId);
               _decrementPendingCount();
               if (!_disposed) {
@@ -448,6 +454,7 @@ class MutationSyncer implements MutationHandler {
     if (touched.isNotEmpty) {
       await persistTableSnapshots(onlyTables: touched);
     }
+    _optimisticState.clearConfirmedOverlay(mutation.requestId);
     await _storage.dequeueMutation(mutation.requestId);
     _decrementPendingCount();
     SdkLogger.w('Dropping queued mutation ${mutation.reducerName}: $reason');
@@ -478,6 +485,7 @@ class MutationSyncer implements MutationHandler {
   }
 
   Future<void> clearPendingMutation(String requestId) async {
+    _optimisticState.clearConfirmedOverlay(requestId);
     await _storage.dequeueMutation(requestId);
     await updatePendingCount();
   }
@@ -563,7 +571,10 @@ class MutationSyncer implements MutationHandler {
     return changes.every((c) => c.type == OptimisticChangeType.insert);
   }
 
-  _TimeoutOutcome _resolveTimedOutMutation(PendingMutation mutation) {
+  _TimeoutOutcome _resolveTimedOutMutation(
+    PendingMutation mutation, {
+    bool overlayIsProof = false,
+  }) {
     final changes = mutation.optimisticChanges;
     if (changes == null || changes.isEmpty) {
       return _TimeoutOutcome.undetectable;
@@ -590,6 +601,15 @@ class MutationSyncer implements MutationHandler {
           final expected = table.decoder.fromJson(change.newRowJson!);
           if (expected == null) return _TimeoutOutcome.undetectable;
           final pk = table.decoder.getPrimaryKey(expected);
+          if (!overlayIsProof &&
+              (_optimisticState.hasPendingEntryForKey(change.tableName, pk) ||
+                  _optimisticState.wasOverlayConfirmedForKey(
+                    mutation.requestId,
+                    change.tableName,
+                    pk,
+                  ))) {
+            return _TimeoutOutcome.undetectable;
+          }
           final current = table.getRow(pk);
           if (current == null) return _TimeoutOutcome.undetectable;
           final currentJson = table.decoder.toJson(current);
@@ -600,6 +620,15 @@ class MutationSyncer implements MutationHandler {
           final target = table.decoder.fromJson(change.oldRowJson!);
           if (target == null) return _TimeoutOutcome.undetectable;
           final pk = table.decoder.getPrimaryKey(target);
+          if (!overlayIsProof &&
+              (_optimisticState.hasPendingEntryForKey(change.tableName, pk) ||
+                  _optimisticState.wasOverlayConfirmedForKey(
+                    mutation.requestId,
+                    change.tableName,
+                    pk,
+                  ))) {
+            return _TimeoutOutcome.undetectable;
+          }
           if (table.getRow(pk) != null) {
             allLanded = false;
           }
@@ -637,6 +666,7 @@ class MutationSyncer implements MutationHandler {
       await persistTableSnapshots(onlyTables: touched);
     }
     _abortRecheckCount.remove(mutation.requestId);
+    _optimisticState.clearConfirmedOverlay(mutation.requestId);
     await _storage.dequeueMutation(mutation.requestId);
     _decrementPendingCount();
     SdkLogger.w('Discarding mutation ${mutation.reducerName}: $reason');
