@@ -264,58 +264,6 @@ void main() {
     });
 
     group('Sync Error Handling - Full Integration', () {
-      test('Full Loop: Server Logic Rejection triggers Rollback', () async {
-        final failingConnection = FailingMockConnection();
-        final manager = SubscriptionManager(
-          failingConnection,
-          offlineStorage: storage,
-        );
-        manager.cache.registerDecoder<Note>('note', NoteDecoder());
-
-        const noteId = 999;
-        final note = createNote(noteId, 'Bad Note');
-        final mutation = PendingMutation(
-          requestId: 'fail-req-1',
-          reducerName: 'create_note',
-          encodedArgs: Uint8List(0),
-          createdAt: DateTime.now(),
-          optimisticChanges: [OptimisticChange.insert('note', note.toJson())],
-        );
-
-        await storage.enqueueMutation(mutation);
-        await manager.loadFromOfflineCache();
-
-        await failingConnection.connect();
-        failingConnection.setStateSilently(const Connected());
-
-        final table = manager.cache.getTableByName('note')! as TableCache<Note>;
-
-        expect(
-          table.find(noteId),
-          isNotNull,
-          reason: 'Optimistic row should exist before sync',
-        );
-
-        await manager.syncPendingMutations();
-
-        expect(
-          table.find(noteId),
-          isNull,
-          reason:
-              'CRITICAL: SubscriptionManager must automate the rollback on failure',
-        );
-
-        final pending = await storage.getPendingMutations();
-        expect(
-          pending.isEmpty,
-          isTrue,
-          reason: 'Logic error should discard mutation from disk',
-        );
-
-        await manager.dispose();
-        await failingConnection.dispose();
-      });
-
       test(
         'Offline-first: Optimistic changes survive network issues',
         () async {

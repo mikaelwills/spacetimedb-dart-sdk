@@ -216,6 +216,55 @@ void main() {
     );
   });
 
+  group('subscriptionsReady flips only when ALL query sets applied', () {
+    late MockConnection mockConnection;
+    late SubscriptionManager subscriptionManager;
+
+    setUp(() {
+      mockConnection = MockConnection();
+      subscriptionManager = SubscriptionManager(mockConnection);
+    });
+
+    tearDown(() async {
+      await subscriptionManager.dispose();
+    });
+
+    test(
+      'stays false after the first of two query sets applies, flips true only '
+      'after the second',
+      () async {
+        await mockConnection.connect();
+
+        final firstFuture = subscriptionManager.subscribe([
+          'SELECT * FROM notes',
+        ]);
+        final secondFuture = subscriptionManager.subscribe([
+          'SELECT * FROM folders',
+        ]);
+
+        mockConnection.simulateIncoming(
+          _createSubscribeApplied(requestId: 0, querySetId: 1),
+        );
+        await expectLater(firstFuture, completion(equals(1))).timeout(_timeout);
+
+        expect(
+          subscriptionManager.subscriptionsReady.value,
+          isFalse,
+          reason:
+              'query set 2 has not applied yet; subscriptionsReady must not '
+              'flip true after only the first set',
+        );
+
+        mockConnection.simulateIncoming(
+          _createSubscribeApplied(requestId: 0, querySetId: 2),
+        );
+        await expectLater(secondFuture, completion(equals(2))).timeout(_timeout);
+
+        expect(subscriptionManager.subscriptionsReady.value, isTrue);
+      },
+    );
+  });
+
   group('provenance regex tolerates quoted table names', () {
     late MockConnection mockConnection;
     late SubscriptionManager subscriptionManager;

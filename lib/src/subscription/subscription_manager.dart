@@ -167,22 +167,6 @@ class SubscriptionManager {
     return querySetId;
   }
 
-  Future<void> _sendSubscribeAndWait(
-    int querySetId,
-    List<String> queries,
-  ) async {
-    final message = SubscribeMessage(queries, querySetId: querySetId);
-    _connection.send(message.encode());
-
-    final waiter = Completer<void>();
-    _subscribeWaiters[querySetId] = waiter;
-    try {
-      await waiter.future;
-    } finally {
-      _subscribeWaiters.remove(querySetId);
-    }
-  }
-
   void oneOffQuery(String query, {int requestId = 0}) {
     final message = OneOffQueryMessage(
       queryString: query,
@@ -314,6 +298,14 @@ class SubscriptionManager {
     _subscriptionsReady.dispose();
     await _mutationSyncer?.dispose();
   }
+
+  bool get _allQuerySetsApplied =>
+      _subscriptionsByQuerySetId.isNotEmpty &&
+      _subscriptionsByQuerySetId.keys.every(
+        (id) =>
+            !_subscribeWaiters.containsKey(id) ||
+            _subscribeWaiters[id]!.isCompleted,
+      );
 
   void _completeSubscribeWaiter(int querySetId) {
     final waiter = _subscribeWaiters[querySetId];
@@ -469,9 +461,6 @@ class SubscriptionManager {
         _handleSubscribeApplied(message)
             .then((_) {
               if (_disposed) return;
-              if (!_reconnectInFlight && _connection.isConnected) {
-                _subscriptionsReady.value = true;
-              }
               _subscribeAppliedController.add(message);
               SdkLogger.i('Syncing pending mutations after SubscribeApplied...');
               _mutationSyncer?.syncPendingMutations();
@@ -482,6 +471,11 @@ class SubscriptionManager {
             .whenComplete(() {
               if (_disposed) return;
               _completeSubscribeWaiter(message.querySetId);
+              if (!_reconnectInFlight &&
+                  _connection.isConnected &&
+                  _allQuerySetsApplied) {
+                _subscriptionsReady.value = true;
+              }
             });
       case TransactionUpdateMessage():
         _handleTransactionUpdate(message);
@@ -568,21 +562,38 @@ class SubscriptionManager {
 
     final event = SubscribeAppliedEvent();
     final context = EventContext(myConnectionId: _connectionId, event: event);
-
     final querySetId = message.querySetId;
-    final rowsByTable = <String, BsatnRowList>{};
-    for (final single in message.rows.tables) {
-      final existing = rowsByTable[single.tableName];
-      rowsByTable[single.tableName] = existing == null
-          ? single.rows
-          : _mergeRowLists(existing, single.rows);
-    }
-    final tablesToApply = <String>{
-      ...rowsByTable.keys,
-      ..._tablesForQuerySetId(querySetId),
-    };
 
-    for (final tableName in tablesToApply) {
+    final serverRowsByTable = _groupRowsByTable(message.rows);
+    final querySetTables = _tablesToApply(serverRowsByTable, querySetId);
+    _applyInitialRows(querySetTables, serverRowsByTable, querySetId, context);
+
+    await _mutationSyncer?.persistTableSnapshots();
+  }
+
+  Map<String, BsatnRowList> _groupRowsByTable(QueryRows rows) {
+    final serverRowsByTable = <String, BsatnRowList>{};
+    for (final tableRows in rows.tables) {
+      final existing = serverRowsByTable[tableRows.tableName];
+      serverRowsByTable[tableRows.tableName] = existing == null
+          ? tableRows.rows
+          : _mergeRowLists(existing, tableRows.rows);
+    }
+    return serverRowsByTable;
+  }
+
+  Set<String> _tablesToApply(
+    Map<String, BsatnRowList> serverRowsByTable,
+    int querySetId,
+  ) => <String>{...serverRowsByTable.keys, ..._tablesForQuerySetId(querySetId)};
+
+  void _applyInitialRows(
+    Set<String> querySetTables,
+    Map<String, BsatnRowList> serverRowsByTable,
+    int querySetId,
+    EventContext context,
+  ) {
+    for (final tableName in querySetTables) {
       final table = cache.getTableByName(tableName);
       if (table == null) continue;
 
@@ -590,7 +601,7 @@ class SubscriptionManager {
       final protectedKeys = _optimisticState.optimisticPrimaryKeysForTable(
         tableName,
       );
-      final merged = rowsByTable[tableName];
+      final merged = serverRowsByTable[tableName];
       final inserts = merged ?? BsatnRowList.empty();
 
       if (table.hasPrimaryKey) {
@@ -613,8 +624,6 @@ class SubscriptionManager {
       }
       table.markSubscribed();
     }
-
-    await _mutationSyncer?.persistTableSnapshots();
   }
 
   BsatnRowList _mergeRowLists(BsatnRowList a, BsatnRowList b) {
@@ -761,12 +770,6 @@ class SubscriptionManager {
     _mutationSyncer?.persistTableSnapshots(onlyTables: touchedTables);
   }
 
-  /// Caller's own reducer result (v2 `ReducerResult`).
-  ///
-  /// **Ordering invariant (skeptical I5):** the optimistic-state lookup by
-  /// numeric request id must run BEFORE `reducers.completeRequest(...)`, which
-  /// removes the entry from `_pendingRequests`. Flipping the order
-  /// double-applies optimistic inserts on commit and skips rollback on failure.
   void _handleReducerResult(ReducerResultMessage message) {
     final numericRequestId = message.requestId;
     final reducerName = reducers.pendingReducerName(numericRequestId) ?? '';
@@ -790,6 +793,26 @@ class SubscriptionManager {
       'isOurs=$isOurTransaction, hasOptimistic=$hasOptimistic',
     );
 
+    final context = _buildReducerContext(message, reducerName, numericRequestId);
+
+    if (isOurTransaction && isCommitted && hasOptimistic) {
+      _confirmSelfCommit(message, effectiveRequestId, context);
+    } else {
+      _applyForeignOrRollback(message, effectiveRequestId, isCommitted, context);
+    }
+
+    reducers.completeRequest(numericRequestId, result);
+    final event = context.event;
+    if (event is ReducerEvent) {
+      reducerEmitter.emit(event.reducerName, context);
+    }
+  }
+
+  EventContext _buildReducerContext(
+    ReducerResultMessage message,
+    String reducerName,
+    int numericRequestId,
+  ) {
     Event event = UnknownTransactionEvent();
     if (reducerName.isNotEmpty) {
       final argsBytes = reducers.pendingArgs(numericRequestId);
@@ -806,107 +829,14 @@ class SubscriptionManager {
         reducerArgs: reducerArgs,
       );
     }
-    final context = EventContext(myConnectionId: _connectionId, event: event);
+    return EventContext(myConnectionId: _connectionId, event: event);
+  }
 
-    // Short-circuit for self-initiated commits with optimistic state in
-    // flight: confirm, reconcile released keys to the committed rows
-    // (keys still covered by other pending overlays stay protected),
-    // persist only the touched tables, done.
-    if (isOurTransaction && isCommitted && hasOptimistic) {
-      final confirmedEntries = _optimisticState.confirmOptimisticChange(
-        effectiveRequestId,
-      );
-
-      final touchedTables = <String>{};
-      final touchedKeysByTable = <String, Set<dynamic>>{};
-
-      for (final querySet in message.querySets) {
-        if (!_subscriptionsByQuerySetId.containsKey(querySet.querySetId)) {
-          continue;
-        }
-        for (final tableUpdate in querySet.tables) {
-          final table = cache.getTableByName(tableUpdate.tableName);
-          if (table == null) continue;
-          touchedTables.add(tableUpdate.tableName);
-
-          final stillPending = _optimisticState.optimisticPrimaryKeysForTable(
-            tableUpdate.tableName,
-          );
-          void onProtectedKeyCommitted(
-            dynamic primaryKey,
-            Map<String, dynamic>? committedRowJson,
-          ) {
-            _optimisticState.stashCommittedState(
-              tableUpdate.tableName,
-              primaryKey,
-              committedRowJson,
-            );
-          }
-
-          final touchedKeys = touchedKeysByTable.putIfAbsent(
-            tableUpdate.tableName,
-            () => <dynamic>{},
-          );
-          for (final rowGroup in tableUpdate.rows) {
-            if (rowGroup is PersistentTableRows) {
-              touchedKeys.addAll(
-                table.applyServerDelta(
-                  rowGroup.deletes,
-                  rowGroup.inserts,
-                  context,
-                  querySetId: querySet.querySetId,
-                  protectedKeys: stillPending,
-                  reconcile: true,
-                  onProtectedKeyCommitted: onProtectedKeyCommitted,
-                ),
-              );
-            } else if (rowGroup is EventTableRows) {
-              touchedKeys.addAll(
-                table.applyTransactionUpdateAndCollectKeys(
-                  BsatnRowList.empty(),
-                  rowGroup.events,
-                  context,
-                  protectedKeys: stillPending,
-                  reconcile: true,
-                  onProtectedKeyCommitted: onProtectedKeyCommitted,
-                ),
-              );
-            }
-          }
-        }
-      }
-
-      for (final entry in confirmedEntries) {
-        final pk = entry.primaryKey;
-        if (pk == null) continue;
-        final tableName = entry.tableName;
-        final table = cache.getTableByName(tableName);
-        if (table == null) continue;
-        final stillPending = _optimisticState.optimisticPrimaryKeysForTable(
-          tableName,
-        );
-        if (stillPending.contains(pk)) continue;
-        final touchedKeys = touchedKeysByTable[tableName] ?? const {};
-        switch (entry.type) {
-          case OptimisticChangeType.insert:
-            if (!touchedKeys.contains(pk)) {
-              table.deleteRow(pk);
-            }
-          case OptimisticChangeType.delete:
-          case OptimisticChangeType.update:
-            break;
-        }
-      }
-
-      _mutationSyncer?.persistTableSnapshots(onlyTables: touchedTables);
-      reducers.completeRequest(numericRequestId, result);
-      if (event is ReducerEvent) {
-        reducerEmitter.emit(event.reducerName, context);
-      }
-      return;
-    }
-
-    // Dispatch the nested TransactionUpdate tables to the cache.
+  Map<String, Set<dynamic>> _applyReducerTables(
+    ReducerResultMessage message,
+    EventContext context, {
+    required bool reconcile,
+  }) {
     final touchedKeysByTable = <String, Set<dynamic>>{};
     for (final querySet in message.querySets) {
       if (!_subscriptionsByQuerySetId.containsKey(querySet.querySetId)) {
@@ -915,6 +845,20 @@ class SubscriptionManager {
       for (final tableUpdate in querySet.tables) {
         final table = cache.getTableByName(tableUpdate.tableName);
         if (table == null) continue;
+
+        final protectedKeys = _optimisticState.optimisticPrimaryKeysForTable(
+          tableUpdate.tableName,
+        );
+        void onProtectedKeyCommitted(
+          dynamic primaryKey,
+          Map<String, dynamic>? committedRowJson,
+        ) {
+          _optimisticState.stashCommittedState(
+            tableUpdate.tableName,
+            primaryKey,
+            committedRowJson,
+          );
+        }
 
         final touchedKeys = touchedKeysByTable.putIfAbsent(
           tableUpdate.tableName,
@@ -928,9 +872,11 @@ class SubscriptionManager {
                 rowGroup.inserts,
                 context,
                 querySetId: querySet.querySetId,
-                protectedKeys: _optimisticState.optimisticPrimaryKeysForTable(
-                  tableUpdate.tableName,
-                ),
+                protectedKeys: protectedKeys,
+                reconcile: reconcile,
+                onProtectedKeyCommitted: reconcile
+                    ? onProtectedKeyCommitted
+                    : null,
               ),
             );
           } else if (rowGroup is EventTableRows) {
@@ -939,12 +885,73 @@ class SubscriptionManager {
                 BsatnRowList.empty(),
                 rowGroup.events,
                 context,
+                protectedKeys: reconcile ? protectedKeys : null,
+                reconcile: reconcile,
+                onProtectedKeyCommitted: reconcile
+                    ? onProtectedKeyCommitted
+                    : null,
               ),
             );
           }
         }
       }
     }
+    return touchedKeysByTable;
+  }
+
+  void _confirmSelfCommit(
+    ReducerResultMessage message,
+    String effectiveRequestId,
+    EventContext context,
+  ) {
+    final confirmedEntries = _optimisticState.confirmOptimisticChange(
+      effectiveRequestId,
+    );
+
+    final touchedKeysByTable = _applyReducerTables(
+      message,
+      context,
+      reconcile: true,
+    );
+
+    for (final entry in confirmedEntries) {
+      final pk = entry.primaryKey;
+      if (pk == null) continue;
+      final tableName = entry.tableName;
+      final table = cache.getTableByName(tableName);
+      if (table == null) continue;
+      final stillPending = _optimisticState.optimisticPrimaryKeysForTable(
+        tableName,
+      );
+      if (stillPending.contains(pk)) continue;
+      final touchedKeys = touchedKeysByTable[tableName] ?? const {};
+      switch (entry.type) {
+        case OptimisticChangeType.insert:
+          if (!touchedKeys.contains(pk)) {
+            table.deleteRow(pk);
+          }
+        case OptimisticChangeType.delete:
+        case OptimisticChangeType.update:
+          break;
+      }
+    }
+
+    _mutationSyncer?.persistTableSnapshots(
+      onlyTables: touchedKeysByTable.keys.toSet(),
+    );
+  }
+
+  void _applyForeignOrRollback(
+    ReducerResultMessage message,
+    String effectiveRequestId,
+    bool isCommitted,
+    EventContext context,
+  ) {
+    final touchedKeysByTable = _applyReducerTables(
+      message,
+      context,
+      reconcile: false,
+    );
 
     if (isCommitted) {
       _optimisticState.confirmOrRollbackWithTouchedKeys(
@@ -958,11 +965,21 @@ class SubscriptionManager {
     _mutationSyncer?.persistTableSnapshots(
       onlyTables: touchedKeysByTable.keys.toSet(),
     );
+  }
 
-    reducers.completeRequest(numericRequestId, result);
+  Future<void> _sendSubscribeAndWait(
+    int querySetId,
+    List<String> queries,
+  ) async {
+    final message = SubscribeMessage(queries, querySetId: querySetId);
+    _connection.send(message.encode());
 
-    if (event is ReducerEvent) {
-      reducerEmitter.emit(event.reducerName, context);
+    final waiter = Completer<void>();
+    _subscribeWaiters[querySetId] = waiter;
+    try {
+      await waiter.future;
+    } finally {
+      _subscribeWaiters.remove(querySetId);
     }
   }
 }

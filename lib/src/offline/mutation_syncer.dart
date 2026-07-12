@@ -167,224 +167,9 @@ class MutationSyncer implements MutationHandler {
       SdkLogger.d('Syncing ${pending.length} pending mutations');
 
       for (final mutation in pending) {
-        if (_disposed) return;
-        if (_connection.state is! Connected) {
-          SdkLogger.d('Connection lost during sync. Pausing queue.');
-          break;
-        }
-
-        final maxAge = _policy.maxMutationAge;
-        if (maxAge != null &&
-            DateTime.now().difference(mutation.createdAt) > maxAge) {
-          await _discardMutation(
-            mutation,
-            'expired: older than ${maxAge.inSeconds}s at replay',
-            cycleFailures,
-            expired: true,
-          );
-          continue;
-        }
-
-        final hook = _policy.onBeforeReplay;
-        if (hook != null) {
-          ReplayDecision decision;
-          try {
-            decision = await hook(mutation);
-          } catch (e) {
-            SdkLogger.e('onBeforeReplay hook threw, replaying anyway: $e');
-            decision = ReplayDecision.replay;
-          }
-          if (decision == ReplayDecision.discard) {
-            await _discardMutation(
-              mutation,
-              'discarded by onBeforeReplay',
-              cycleFailures,
-            );
-            continue;
-          }
-        }
-
-        try {
-          SdkLogger.d(
-            'SYNC_SEND: ${mutation.reducerName}, uuidRequestId=${mutation.requestId}, argsLen=${mutation.encodedArgs.length}',
-          );
-          final result = await _send(
-            mutation.reducerName,
-            mutation.encodedArgs,
-            requestId: mutation.requestId,
-          );
-
-          if (_disposed) return;
-
-          if (result.isSuccess) {
-            _abortRecheckCount.remove(mutation.requestId);
-            _optimisticState.clearConfirmedOverlay(mutation.requestId);
-            try {
-              await _storage.dequeueMutation(mutation.requestId);
-            } catch (e) {
-              throw SpacetimeDbStorageException(
-                'Failed to dequeue ${mutation.reducerName} after a successful '
-                'send (requestId=${mutation.requestId}): $e',
-              );
-            }
-            _decrementPendingCount();
-            SdkLogger.d('Synced mutation: ${mutation.reducerName}');
-            if (!_disposed) {
-              _mutationSyncResultController.add(
-                MutationSyncResult(
-                  requestId: mutation.requestId,
-                  reducerName: mutation.reducerName,
-                  success: true,
-                ),
-              );
-            }
-          } else {
-            final errorMsg = result.errorMessage ?? 'Unknown error';
-            _optimisticState.rollbackOptimisticChanges(mutation.requestId);
-            _optimisticState.clearConfirmedOverlay(mutation.requestId);
-            await _storage.dequeueMutation(mutation.requestId);
-            _decrementPendingCount();
-            SdkLogger.e(
-              'Server rejected mutation: ${mutation.reducerName} - $errorMsg',
-            );
-            final failure = MutationSyncResult(
-              requestId: mutation.requestId,
-              reducerName: mutation.reducerName,
-              success: false,
-              error: errorMsg,
-              optimisticChanges: mutation.optimisticChanges,
-            );
-            cycleFailures.add(failure);
-            if (!_disposed) {
-              _mutationSyncResultController.add(failure);
-            }
-          }
-        } on SpacetimeDbReducerException catch (e) {
-          if (_resolveTimedOutMutation(mutation, overlayIsProof: true) ==
-              _TimeoutOutcome.landed) {
-            SdkLogger.w(
-              'Reducer ${mutation.reducerName} aborted on replay but its '
-              'effect is server-owned in cache; the abort is a unique-key '
-              'collision on the already-committed row. Confirming instead of '
-              'failing.',
-            );
-            _abortRecheckCount.remove(mutation.requestId);
-            _optimisticState.confirmOptimisticChange(mutation.requestId);
-            _optimisticState.clearConfirmedOverlay(mutation.requestId);
-            await _storage.dequeueMutation(mutation.requestId);
-            _decrementPendingCount();
-            if (!_disposed) {
-              _mutationSyncResultController.add(
-                MutationSyncResult(
-                  requestId: mutation.requestId,
-                  reducerName: mutation.reducerName,
-                  success: true,
-                ),
-              );
-            }
-            continue;
-          }
-          if (_isPureInsert(mutation)) {
-            final rechecks = _abortRecheckCount[mutation.requestId] ?? 0;
-            if (rechecks < _maxAbortRecheck) {
-              _abortRecheckCount[mutation.requestId] = rechecks + 1;
-              SdkLogger.w(
-                'Reducer ${mutation.reducerName} aborted on replay; its '
-                'insert is not yet server-owned in cache. Keeping in queue to '
-                're-check after resubscribe hydrates ownership '
-                '(${rechecks + 1}/$_maxAbortRecheck).',
-              );
-              break;
-            }
-            SdkLogger.w(
-              'Reducer ${mutation.reducerName} aborted on replay '
-              '$_maxAbortRecheck times without becoming server-owned; treating '
-              'as a genuine failure.',
-            );
-          }
-          _abortRecheckCount.remove(mutation.requestId);
-          _optimisticState.rollbackOptimisticChanges(mutation.requestId);
-          _optimisticState.clearConfirmedOverlay(mutation.requestId);
-          await _storage.dequeueMutation(mutation.requestId);
-          _decrementPendingCount();
-          SdkLogger.e(
-            'Server rejected mutation: ${mutation.reducerName} - ${e.message}',
-          );
-          final failure = MutationSyncResult(
-            requestId: mutation.requestId,
-            reducerName: mutation.reducerName,
-            success: false,
-            error: e.message,
-            optimisticChanges: mutation.optimisticChanges,
-          );
-          cycleFailures.add(failure);
-          if (!_disposed) {
-            _mutationSyncResultController.add(failure);
-          }
-        } on SpacetimeDbTimeoutException catch (e) {
-          final outcome = _resolveTimedOutMutation(mutation);
-          switch (outcome) {
-            case _TimeoutOutcome.landed:
-              SdkLogger.w(
-                'Timeout syncing ${mutation.reducerName}: $e. Effect already '
-                'present in cache; confirming instead of re-sending.',
-              );
-              _abortRecheckCount.remove(mutation.requestId);
-              _optimisticState.confirmOptimisticChange(mutation.requestId);
-              _optimisticState.clearConfirmedOverlay(mutation.requestId);
-              await _storage.dequeueMutation(mutation.requestId);
-              _decrementPendingCount();
-              if (!_disposed) {
-                _mutationSyncResultController.add(
-                  MutationSyncResult(
-                    requestId: mutation.requestId,
-                    reducerName: mutation.reducerName,
-                    success: true,
-                  ),
-                );
-              }
-              continue;
-            case _TimeoutOutcome.notLanded:
-              SdkLogger.w(
-                'Timeout syncing ${mutation.reducerName}: $e. Effect not '
-                'present; keeping in queue for retry.',
-              );
-              break;
-            case _TimeoutOutcome.undetectable:
-              // At-least-once policy: an unverifiable timeout is kept queued
-              // and retried, never discarded — loss is the worse failure than
-              // duplicate execution, and there is no wire idempotency key to do
-              // better. This holds whether the socket is down (reducer likely
-              // never ran) or still connected (it may have run but we can't
-              // confirm). No MutationSyncResult is emitted — the row is still
-              // pending, not failed.
-              //
-              // Honest cost: with no idempotency key, a slow-acking reducer may
-              // be re-executed once PER retry cycle (N duplicates, not just 2 —
-              // trySyncNow drives extra cycles on every user write); and a
-              // mutation the server never acks blocks the FIFO queue behind it
-              // indefinitely while SyncState still reads idle/failed=0. Consumers
-              // bound both with maxMutationAge (expiry) and onBeforeReplay (veto).
-              SdkLogger.w(
-                'Timeout syncing ${mutation.reducerName}: $e. Outcome cannot '
-                'be verified; keeping in queue for retry (at-least-once — the '
-                'server may or may not have executed it).',
-              );
-              break;
-          }
-          break;
-        } on SpacetimeDbStorageException catch (e) {
-          SdkLogger.e(
-            'Storage error after sending ${mutation.reducerName}: $e. '
-            'Pausing queue; the mutation may re-send on the next cycle.',
-          );
-          break;
-        } catch (e) {
-          SdkLogger.w(
-            'Network error syncing ${mutation.reducerName}: $e. Pausing queue.',
-          );
-          break;
-        }
+        final step = await _processMutation(mutation, cycleFailures);
+        if (step == _SyncStep.stop) return;
+        if (step == _SyncStep.pauseQueue) break;
       }
     } finally {
       _isSyncing = false;
@@ -398,49 +183,7 @@ class MutationSyncer implements MutationHandler {
       return;
     }
 
-    try {
-      final remaining = await _storage.getPendingMutations();
-      _cachedPendingCount = remaining.length;
-      SdkLogger.d(
-        'syncPendingMutations: remaining=$_cachedPendingCount, '
-        'failures=${cycleFailures.length}, setting idle',
-      );
-
-      int failedCount;
-      List<MutationSyncResult> recentFailures;
-      if (cycleFailures.isNotEmpty) {
-        failedCount = _currentSyncState.failedCount + cycleFailures.length;
-        recentFailures = _capFailures([
-          ..._currentSyncState.recentFailures,
-          ...cycleFailures,
-        ]);
-      } else if (remaining.isEmpty) {
-        failedCount = 0;
-        recentFailures = const [];
-      } else {
-        failedCount = _currentSyncState.failedCount;
-        recentFailures = _currentSyncState.recentFailures;
-      }
-
-      _updateSyncState(
-        _currentSyncState.copyWith(
-          status: SyncStatus.idle,
-          pendingCount: _cachedPendingCount,
-          lastSyncTime: DateTime.now(),
-          failedCount: failedCount,
-          recentFailures: recentFailures,
-        ),
-      );
-
-      if (remaining.isNotEmpty && _connection.state is Connected) {
-        _scheduleRetry();
-      } else if (remaining.isEmpty) {
-        cancelRetry();
-        _retryAttempt = 0;
-      }
-    } catch (e) {
-      SdkLogger.e('syncPendingMutations: post-sync state update failed: $e');
-    }
+    await _finalizeSyncCycle(cycleFailures);
   }
 
   @override
@@ -565,6 +308,27 @@ class MutationSyncer implements MutationHandler {
     await _storage.dispose();
   }
 
+   @visibleForTesting
+  Duration retryDelayForAttempt(int attempt) {
+    // Clamp the shift exponent BEFORE the multiply: `1 << attempt` overflows
+    // 64-bit int arithmetic past attempt ~50 and the delay collapses to 0
+    // (permanently from ~63), turning a persistently-stuck mutation into a
+    // send-every-10s hot loop. The exponent that reaches _maxRetryDelay is
+    // small (5s * 2^4 = 80s > 60s cap), so cap it there.
+    final maxShift =
+        (_maxRetryDelay.inMilliseconds ~/ _initialRetryDelay.inMilliseconds)
+            .bitLength;
+    final exponent = attempt < maxShift ? attempt : maxShift;
+    return Duration(
+      milliseconds: (_initialRetryDelay.inMilliseconds * (1 << exponent)).clamp(
+        0,
+        _maxRetryDelay.inMilliseconds,
+      ),
+    );
+  }
+
+
+
   bool _isPureInsert(PendingMutation mutation) {
     final changes = mutation.optimisticChanges;
     if (changes == null || changes.isEmpty) return false;
@@ -637,7 +401,7 @@ class MutationSyncer implements MutationHandler {
     return allLanded ? _TimeoutOutcome.landed : _TimeoutOutcome.notLanded;
   }
 
-  bool _jsonEquals(Map<String, dynamic>? a, Map<String, dynamic>? b) {
+   bool _jsonEquals(Map<String, dynamic>? a, Map<String, dynamic>? b) {
     if (a == null || b == null) return a == b;
     if (a.length != b.length) return false;
     for (final key in a.keys) {
@@ -714,21 +478,287 @@ class MutationSyncer implements MutationHandler {
     );
   }
 
-  @visibleForTesting
-  Duration retryDelayForAttempt(int attempt) {
-    // Clamp the shift exponent BEFORE the multiply: `1 << attempt` overflows
-    // 64-bit int arithmetic past attempt ~50 and the delay collapses to 0
-    // (permanently from ~63), turning a persistently-stuck mutation into a
-    // send-every-10s hot loop. The exponent that reaches _maxRetryDelay is
-    // small (5s * 2^4 = 80s > 60s cap), so cap it there.
-    final maxShift =
-        (_maxRetryDelay.inMilliseconds ~/ _initialRetryDelay.inMilliseconds)
-            .bitLength;
-    final exponent = attempt < maxShift ? attempt : maxShift;
-    return Duration(
-      milliseconds: (_initialRetryDelay.inMilliseconds * (1 << exponent))
-          .clamp(0, _maxRetryDelay.inMilliseconds),
+  Future<_SyncStep> _processMutation(
+    PendingMutation mutation,
+    List<MutationSyncResult> cycleFailures,
+  ) async {
+    if (_disposed) return _SyncStep.stop;
+    if (_connection.state is! Connected) {
+      SdkLogger.d('Connection lost during sync. Pausing queue.');
+      return _SyncStep.pauseQueue;
+    }
+
+    final maxAge = _policy.maxMutationAge;
+    if (maxAge != null &&
+        DateTime.now().difference(mutation.createdAt) > maxAge) {
+      await _discardMutation(
+        mutation,
+        'expired: older than ${maxAge.inSeconds}s at replay',
+        cycleFailures,
+        expired: true,
+      );
+      return _SyncStep.next;
+    }
+
+    final hook = _policy.onBeforeReplay;
+    if (hook != null) {
+      ReplayDecision decision;
+      try {
+        decision = await hook(mutation);
+      } catch (e) {
+        SdkLogger.e('onBeforeReplay hook threw, replaying anyway: $e');
+        decision = ReplayDecision.replay;
+      }
+      if (decision == ReplayDecision.discard) {
+        await _discardMutation(
+          mutation,
+          'discarded by onBeforeReplay',
+          cycleFailures,
+        );
+        return _SyncStep.next;
+      }
+    }
+
+    try {
+      SdkLogger.d(
+        'SYNC_SEND: ${mutation.reducerName}, uuidRequestId=${mutation.requestId}, argsLen=${mutation.encodedArgs.length}',
+      );
+      final result = await _send(
+        mutation.reducerName,
+        mutation.encodedArgs,
+        requestId: mutation.requestId,
+      );
+
+      if (_disposed) return _SyncStep.stop;
+
+      return await _onSendResult(mutation, result, cycleFailures);
+    } on SpacetimeDbReducerException catch (e) {
+      return await _onReducerAbort(mutation, e, cycleFailures);
+    } on SpacetimeDbTimeoutException catch (e) {
+      return await _onTimeout(mutation, e);
+    } on SpacetimeDbStorageException catch (e) {
+      SdkLogger.e(
+        'Storage error after sending ${mutation.reducerName}: $e. '
+        'Pausing queue; the mutation may re-send on the next cycle.',
+      );
+      return _SyncStep.pauseQueue;
+    } catch (e) {
+      SdkLogger.w(
+        'Network error syncing ${mutation.reducerName}: $e. Pausing queue.',
+      );
+      return _SyncStep.pauseQueue;
+    }
+  }
+
+  Future<_SyncStep> _onSendResult(
+    PendingMutation mutation,
+    TransactionResult result,
+    List<MutationSyncResult> cycleFailures,
+  ) async {
+    if (result.isSuccess) {
+      _abortRecheckCount.remove(mutation.requestId);
+      _optimisticState.clearConfirmedOverlay(mutation.requestId);
+      try {
+        await _storage.dequeueMutation(mutation.requestId);
+      } catch (e) {
+        throw SpacetimeDbStorageException(
+          'Failed to dequeue ${mutation.reducerName} after a successful '
+          'send (requestId=${mutation.requestId}): $e',
+        );
+      }
+      _decrementPendingCount();
+      SdkLogger.d('Synced mutation: ${mutation.reducerName}');
+      if (!_disposed) {
+        _mutationSyncResultController.add(
+          MutationSyncResult(
+            requestId: mutation.requestId,
+            reducerName: mutation.reducerName,
+            success: true,
+          ),
+        );
+      }
+      return _SyncStep.next;
+    }
+
+    final errorMsg = result.errorMessage ?? 'Unknown error';
+    _optimisticState.rollbackOptimisticChanges(mutation.requestId);
+    _optimisticState.clearConfirmedOverlay(mutation.requestId);
+    await _storage.dequeueMutation(mutation.requestId);
+    _decrementPendingCount();
+    SdkLogger.e(
+      'Server rejected mutation: ${mutation.reducerName} - $errorMsg',
     );
+    final failure = MutationSyncResult(
+      requestId: mutation.requestId,
+      reducerName: mutation.reducerName,
+      success: false,
+      error: errorMsg,
+      optimisticChanges: mutation.optimisticChanges,
+    );
+    cycleFailures.add(failure);
+    if (!_disposed) {
+      _mutationSyncResultController.add(failure);
+    }
+    return _SyncStep.next;
+  }
+
+  Future<_SyncStep> _onReducerAbort(
+    PendingMutation mutation,
+    SpacetimeDbReducerException e,
+    List<MutationSyncResult> cycleFailures,
+  ) async {
+    if (_resolveTimedOutMutation(mutation, overlayIsProof: true) ==
+        _TimeoutOutcome.landed) {
+      SdkLogger.w(
+        'Reducer ${mutation.reducerName} aborted on replay but its '
+        'effect is server-owned in cache; the abort is a unique-key '
+        'collision on the already-committed row. Confirming instead of '
+        'failing.',
+      );
+      _abortRecheckCount.remove(mutation.requestId);
+      _optimisticState.confirmOptimisticChange(mutation.requestId);
+      _optimisticState.clearConfirmedOverlay(mutation.requestId);
+      await _storage.dequeueMutation(mutation.requestId);
+      _decrementPendingCount();
+      if (!_disposed) {
+        _mutationSyncResultController.add(
+          MutationSyncResult(
+            requestId: mutation.requestId,
+            reducerName: mutation.reducerName,
+            success: true,
+          ),
+        );
+      }
+      return _SyncStep.next;
+    }
+    if (_isPureInsert(mutation)) {
+      final rechecks = _abortRecheckCount[mutation.requestId] ?? 0;
+      if (rechecks < _maxAbortRecheck) {
+        _abortRecheckCount[mutation.requestId] = rechecks + 1;
+        SdkLogger.w(
+          'Reducer ${mutation.reducerName} aborted on replay; its '
+          'insert is not yet server-owned in cache. Keeping in queue to '
+          're-check after resubscribe hydrates ownership '
+          '(${rechecks + 1}/$_maxAbortRecheck).',
+        );
+        return _SyncStep.pauseQueue;
+      }
+      SdkLogger.w(
+        'Reducer ${mutation.reducerName} aborted on replay '
+        '$_maxAbortRecheck times without becoming server-owned; treating '
+        'as a genuine failure.',
+      );
+    }
+    _abortRecheckCount.remove(mutation.requestId);
+    _optimisticState.rollbackOptimisticChanges(mutation.requestId);
+    _optimisticState.clearConfirmedOverlay(mutation.requestId);
+    await _storage.dequeueMutation(mutation.requestId);
+    _decrementPendingCount();
+    SdkLogger.e(
+      'Server rejected mutation: ${mutation.reducerName} - ${e.message}',
+    );
+    final failure = MutationSyncResult(
+      requestId: mutation.requestId,
+      reducerName: mutation.reducerName,
+      success: false,
+      error: e.message,
+      optimisticChanges: mutation.optimisticChanges,
+    );
+    cycleFailures.add(failure);
+    if (!_disposed) {
+      _mutationSyncResultController.add(failure);
+    }
+    return _SyncStep.next;
+  }
+
+  Future<_SyncStep> _onTimeout(
+    PendingMutation mutation,
+    SpacetimeDbTimeoutException e,
+  ) async {
+    final outcome = _resolveTimedOutMutation(mutation);
+    switch (outcome) {
+      case _TimeoutOutcome.landed:
+        SdkLogger.w(
+          'Timeout syncing ${mutation.reducerName}: $e. Effect already '
+          'present in cache; confirming instead of re-sending.',
+        );
+        _abortRecheckCount.remove(mutation.requestId);
+        _optimisticState.confirmOptimisticChange(mutation.requestId);
+        _optimisticState.clearConfirmedOverlay(mutation.requestId);
+        await _storage.dequeueMutation(mutation.requestId);
+        _decrementPendingCount();
+        if (!_disposed) {
+          _mutationSyncResultController.add(
+            MutationSyncResult(
+              requestId: mutation.requestId,
+              reducerName: mutation.reducerName,
+              success: true,
+            ),
+          );
+        }
+        return _SyncStep.next;
+      case _TimeoutOutcome.notLanded:
+        SdkLogger.w(
+          'Timeout syncing ${mutation.reducerName}: $e. Effect not '
+          'present; keeping in queue for retry.',
+        );
+        return _SyncStep.pauseQueue;
+      case _TimeoutOutcome.undetectable:
+        SdkLogger.w(
+          'Timeout syncing ${mutation.reducerName}: $e. Outcome cannot '
+          'be verified; keeping in queue for retry (at-least-once — the '
+          'server may or may not have executed it).',
+        );
+        return _SyncStep.pauseQueue;
+    }
+  }
+
+  Future<void> _finalizeSyncCycle(
+    List<MutationSyncResult> cycleFailures,
+  ) async {
+    try {
+      final remaining = await _storage.getPendingMutations();
+      _cachedPendingCount = remaining.length;
+      SdkLogger.d(
+        'syncPendingMutations: remaining=$_cachedPendingCount, '
+        'failures=${cycleFailures.length}, setting idle',
+      );
+
+      int failedCount;
+      List<MutationSyncResult> recentFailures;
+      if (cycleFailures.isNotEmpty) {
+        failedCount = _currentSyncState.failedCount + cycleFailures.length;
+        recentFailures = _capFailures([
+          ..._currentSyncState.recentFailures,
+          ...cycleFailures,
+        ]);
+      } else if (remaining.isEmpty) {
+        failedCount = 0;
+        recentFailures = const [];
+      } else {
+        failedCount = _currentSyncState.failedCount;
+        recentFailures = _currentSyncState.recentFailures;
+      }
+
+      _updateSyncState(
+        _currentSyncState.copyWith(
+          status: SyncStatus.idle,
+          pendingCount: _cachedPendingCount,
+          lastSyncTime: DateTime.now(),
+          failedCount: failedCount,
+          recentFailures: recentFailures,
+        ),
+      );
+
+      if (remaining.isNotEmpty && _connection.state is Connected) {
+        _scheduleRetry();
+      } else if (remaining.isEmpty) {
+        cancelRetry();
+        _retryAttempt = 0;
+      }
+    } catch (e) {
+      SdkLogger.e('syncPendingMutations: post-sync state update failed: $e');
+    }
   }
 
   void _scheduleRetry() {
@@ -753,3 +783,5 @@ class MutationSyncer implements MutationHandler {
 }
 
 enum _TimeoutOutcome { landed, notLanded, undetectable }
+
+enum _SyncStep { next, pauseQueue, stop }
