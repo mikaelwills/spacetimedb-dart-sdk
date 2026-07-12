@@ -39,6 +39,7 @@ class OptimisticStateManager {
   final ClientCache _cache;
   final Map<String, List<OptimisticEntry>> _entries = {};
   final Map<String, Map<dynamic, _StashedCommit>> _committedStash = {};
+  final Map<String, Map<dynamic, _StashedCommit>> _committedBase = {};
   final Map<String, Map<String, Set<dynamic>>> _confirmedOverlayKeys = {};
 
   OptimisticStateManager(this._cache);
@@ -160,6 +161,11 @@ class OptimisticStateManager {
           if (oldRow != null && newRow != null) {
             final pk = table.decoder.getPrimaryKey(newRow);
             final oldPk = table.decoder.getPrimaryKey(oldRow);
+            final baseCommitted =
+                _pkHasCommittedBase(change.tableName, oldPk);
+            if (baseCommitted) {
+              _recordCommittedBase(change.tableName, pk, change.oldRowJson);
+            }
             entries.add(
               OptimisticEntry(
                 tableName: change.tableName,
@@ -167,8 +173,7 @@ class OptimisticStateManager {
                 primaryKey: pk,
                 oldRowJson: change.oldRowJson,
                 newRowJson: change.newRowJson,
-                baseCommitted:
-                    _pkHasCommittedBase(change.tableName, oldPk),
+                baseCommitted: baseCommitted,
               ),
             );
             table.updateRow(newRow);
@@ -180,13 +185,17 @@ class OptimisticStateManager {
           final row = table.decoder.fromJson(change.oldRowJson!);
           if (row != null) {
             final pk = table.decoder.getPrimaryKey(row);
+            final baseCommitted = _pkHasCommittedBase(change.tableName, pk);
+            if (baseCommitted) {
+              _recordCommittedBase(change.tableName, pk, change.oldRowJson);
+            }
             entries.add(
               OptimisticEntry(
                 tableName: change.tableName,
                 type: OptimisticChangeType.delete,
                 primaryKey: pk,
                 oldRowJson: change.oldRowJson,
-                baseCommitted: _pkHasCommittedBase(change.tableName, pk),
+                baseCommitted: baseCommitted,
               ),
             );
             table.deleteRow(pk);
@@ -333,9 +342,48 @@ class OptimisticStateManager {
     if (primaryKey == null) return;
     if (_isKeyStillOptimistic(tableName, primaryKey)) return;
     final tableStash = _committedStash[tableName];
-    if (tableStash == null) return;
-    tableStash.remove(primaryKey);
-    if (tableStash.isEmpty) _committedStash.remove(tableName);
+    if (tableStash != null) {
+      tableStash.remove(primaryKey);
+      if (tableStash.isEmpty) _committedStash.remove(tableName);
+    }
+    final tableBase = _committedBase[tableName];
+    if (tableBase != null) {
+      tableBase.remove(primaryKey);
+      if (tableBase.isEmpty) _committedBase.remove(tableName);
+    }
+  }
+
+  void _recordCommittedBase(
+    String tableName,
+    dynamic primaryKey,
+    Map<String, dynamic>? rowJson,
+  ) {
+    if (primaryKey == null) return;
+    (_committedBase[tableName] ??= {}).putIfAbsent(
+      primaryKey,
+      () => _StashedCommit(rowJson),
+    );
+  }
+
+  _StashedCommit? _committedBaseFor(String tableName, dynamic primaryKey) {
+    if (primaryKey == null) return null;
+    return _committedBase[tableName]?[primaryKey];
+  }
+
+  void _restoreCommittedBase(dynamic table, OptimisticEntry entry) {
+    final base = _committedBaseFor(entry.tableName, entry.primaryKey);
+    if (base == null) {
+      if (entry.primaryKey != null) table.deleteRow(entry.primaryKey);
+      return;
+    }
+    if (base.rowJson == null) {
+      if (entry.primaryKey != null) table.deleteRow(entry.primaryKey);
+      return;
+    }
+    final row = table.decoder.fromJson(base.rowJson!);
+    if (row != null) {
+      table.insertRow(row);
+    }
   }
 
   void _rollbackEntry(OptimisticEntry entry, String requestId) {
@@ -370,30 +418,18 @@ class OptimisticStateManager {
             table.removeNoPkRow(entry.newRowJson!, requestId: requestId);
           }
         } else {
-          table.deleteRow(entry.primaryKey);
-          rolledBackUncommittedInsert = true;
+          final base = _committedBaseFor(entry.tableName, entry.primaryKey);
+          if (base?.rowJson != null) {
+            _restoreCommittedBase(table, entry);
+          } else {
+            table.deleteRow(entry.primaryKey);
+            rolledBackUncommittedInsert = true;
+          }
         }
       case OptimisticChangeType.update:
-        // Only restore the old row if it was a committed base. If the base was
-        // itself an uncommitted overlay, restoring oldRowJson would resurrect a
-        // phantom — drop the pk instead (a surviving overlay is re-applied
-        // below).
-        if (entry.baseCommitted && entry.oldRowJson != null) {
-          final oldRow = table.decoder.fromJson(entry.oldRowJson!);
-          if (oldRow != null) {
-            table.updateRow(oldRow);
-          }
-        } else if (!entry.baseCommitted) {
-          table.deleteRow(entry.primaryKey);
-        }
+        _restoreCommittedBase(table, entry);
       case OptimisticChangeType.delete:
-        // Same guard: only re-insert the old row if it was committed.
-        if (entry.baseCommitted && entry.oldRowJson != null) {
-          final oldRow = table.decoder.fromJson(entry.oldRowJson!);
-          if (oldRow != null) {
-            table.insertRow(oldRow);
-          }
-        }
+        _restoreCommittedBase(table, entry);
     }
 
     _reapplyNewestSurvivingOverlay(
