@@ -75,7 +75,9 @@ class JsonFileStorage implements OfflineStorage {
         try {
           final data = jsonDecode(content);
           if (data is! List) {
-            throw FormatException('Expected JSON list, got ${data.runtimeType}');
+            throw FormatException(
+              'Expected JSON list, got ${data.runtimeType}',
+            );
           }
           await _fileStore.cleanupBackup(file);
           return data.cast<Map<String, dynamic>>();

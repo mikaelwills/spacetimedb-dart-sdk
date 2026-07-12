@@ -163,7 +163,10 @@ class SubscriptionManager {
   Future<int> subscribe(List<String> queries) async {
     final querySetId = _nextQuerySetId++;
     _subscriptionsByQuerySetId[querySetId] = List.of(queries);
-    await _sendSubscribeAndWait(querySetId, _subscriptionsByQuerySetId[querySetId]!);
+    await _sendSubscribeAndWait(
+      querySetId,
+      _subscriptionsByQuerySetId[querySetId]!,
+    );
     return querySetId;
   }
 
@@ -362,7 +365,9 @@ class SubscriptionManager {
       var allResubscribed = true;
       try {
         final entries = _subscriptionsByQuerySetId.entries.toList();
-        SdkLogger.i('Re-subscribing to ${entries.length} query sets in place...');
+        SdkLogger.i(
+          'Re-subscribing to ${entries.length} query sets in place...',
+        );
         for (final entry in entries) {
           if (!_connection.isConnected) {
             allResubscribed = false;
@@ -462,7 +467,9 @@ class SubscriptionManager {
             .then((_) {
               if (_disposed) return;
               _subscribeAppliedController.add(message);
-              SdkLogger.i('Syncing pending mutations after SubscribeApplied...');
+              SdkLogger.i(
+                'Syncing pending mutations after SubscribeApplied...',
+              );
               _mutationSyncer?.syncPendingMutations();
             })
             .catchError((Object e, StackTrace st) {
@@ -575,9 +582,10 @@ class SubscriptionManager {
     final serverRowsByTable = <String, BsatnRowList>{};
     for (final tableRows in rows.tables) {
       final existing = serverRowsByTable[tableRows.tableName];
-      serverRowsByTable[tableRows.tableName] = existing == null
-          ? tableRows.rows
-          : _mergeRowLists(existing, tableRows.rows);
+      serverRowsByTable[tableRows.tableName] =
+          existing == null
+              ? tableRows.rows
+              : _mergeRowLists(existing, tableRows.rows);
     }
     return serverRowsByTable;
   }
@@ -705,7 +713,11 @@ class SubscriptionManager {
           trackImbalance: false,
         );
       } else {
-        table.applyTransactionUpdate(single.rows, BsatnRowList.empty(), context);
+        table.applyTransactionUpdate(
+          single.rows,
+          BsatnRowList.empty(),
+          context,
+        );
       }
     }
   }
@@ -793,12 +805,21 @@ class SubscriptionManager {
       'isOurs=$isOurTransaction, hasOptimistic=$hasOptimistic',
     );
 
-    final context = _buildReducerContext(message, reducerName, numericRequestId);
+    final context = _buildReducerContext(
+      message,
+      reducerName,
+      numericRequestId,
+    );
 
     if (isOurTransaction && isCommitted && hasOptimistic) {
       _confirmSelfCommit(message, effectiveRequestId, context);
     } else {
-      _applyForeignOrRollback(message, effectiveRequestId, isCommitted, context);
+      _applyForeignOrRollback(
+        message,
+        effectiveRequestId,
+        isCommitted,
+        context,
+      );
     }
 
     reducers.completeRequest(numericRequestId, result);
@@ -874,9 +895,8 @@ class SubscriptionManager {
                 querySetId: querySet.querySetId,
                 protectedKeys: protectedKeys,
                 reconcile: reconcile,
-                onProtectedKeyCommitted: reconcile
-                    ? onProtectedKeyCommitted
-                    : null,
+                onProtectedKeyCommitted:
+                    reconcile ? onProtectedKeyCommitted : null,
               ),
             );
           } else if (rowGroup is EventTableRows) {
@@ -887,9 +907,8 @@ class SubscriptionManager {
                 context,
                 protectedKeys: reconcile ? protectedKeys : null,
                 reconcile: reconcile,
-                onProtectedKeyCommitted: reconcile
-                    ? onProtectedKeyCommitted
-                    : null,
+                onProtectedKeyCommitted:
+                    reconcile ? onProtectedKeyCommitted : null,
               ),
             );
           }

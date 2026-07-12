@@ -9,7 +9,10 @@ void main() {
   tearDownAll(cleanupTestEnvironment);
 
   setUp(() async {
-    final cleaner = await createTestEnv(registerNote: true, registerFolder: true);
+    final cleaner = await createTestEnv(
+      registerNote: true,
+      registerFolder: true,
+    );
     await cleaner.connection.connect();
     await cleaner.subManager.onInitialConnection.first.timeout(_timeout);
     await cleaner.reducers.deleteAllNotes().timeout(_timeout);
@@ -46,9 +49,9 @@ void main() {
             .timeout(_timeout);
         expect(result.isSuccess, isTrue);
 
-        final ownNote = env.noteTable
-            .iter()
-            .firstWhere((n) => n.title == 'own-commit-insert');
+        final ownNote = env.noteTable.iter().firstWhere(
+          (n) => n.title == 'own-commit-insert',
+        );
 
         expect(env.noteTable.getRow(ownNote.id), isNotNull);
 
@@ -99,9 +102,9 @@ void main() {
             .timeout(_timeout);
         await txUpdateFuture;
 
-        final liveNote = env.noteTable
-            .iter()
-            .firstWhere((n) => n.title == 'live-multi-tag');
+        final liveNote = env.noteTable.iter().firstWhere(
+          (n) => n.title == 'live-multi-tag',
+        );
 
         expect(env.noteTable.getRow(liveNote.id), isNotNull);
 
@@ -144,9 +147,9 @@ void main() {
             .timeout(_timeout);
         await txUpdateFuture;
 
-        final liveNote = env.noteTable
-            .iter()
-            .firstWhere((n) => n.title == 'lifecycle-row');
+        final liveNote = env.noteTable.iter().firstWhere(
+          (n) => n.title == 'lifecycle-row',
+        );
 
         expect(env.noteTable.getRow(liveNote.id), isNotNull);
 
@@ -195,7 +198,10 @@ void main() {
         await Future.delayed(const Duration(seconds: 1));
 
         final bulkNotes =
-            env.noteTable.iter().where((n) => n.title.startsWith('bulk-live')).toList();
+            env.noteTable
+                .iter()
+                .where((n) => n.title.startsWith('bulk-live'))
+                .toList();
 
         expect(bulkNotes.length, equals(5));
 
@@ -235,9 +241,9 @@ void main() {
         final querySetA = await env.subManager.subscribe([
           'SELECT * FROM note WHERE id >= 1 AND id <= 5',
         ]);
-        final seededNote = env.noteTable
-            .iter()
-            .firstWhere((n) => n.title == 'narrow-tag-me');
+        final seededNote = env.noteTable.iter().firstWhere(
+          (n) => n.title == 'narrow-tag-me',
+        );
 
         final querySetB = await env.subManager.subscribe([
           'SELECT * FROM note WHERE id >= 1000 AND id <= 2000',
@@ -299,9 +305,9 @@ void main() {
         expect(createResult.isSuccess, isTrue);
         await insertUpdateFuture;
 
-        final churnedNote = env.noteTable
-            .iter()
-            .firstWhere((n) => n.title == 'churned-row');
+        final churnedNote = env.noteTable.iter().firstWhere(
+          (n) => n.title == 'churned-row',
+        );
 
         expect(env.noteTable.getRow(churnedNote.id), isNotNull);
         expect(
@@ -332,7 +338,10 @@ void main() {
     test(
       "a JOIN subscription projecting a non-FROM table applies that table's rows and completes subscribed",
       () async {
-        final env = await createTestEnv(registerNote: true, registerFolder: true);
+        final env = await createTestEnv(
+          registerNote: true,
+          registerFolder: true,
+        );
         addTearDown(() async {
           env.subManager.dispose();
           await env.disconnect();
@@ -402,9 +411,9 @@ void main() {
         expect(createResult.isSuccess, isTrue);
         await txUpdateFuture;
 
-        final rowX = env.noteTable
-            .iter()
-            .firstWhere((n) => n.title == 'balance-check');
+        final rowX = env.noteTable.iter().firstWhere(
+          (n) => n.title == 'balance-check',
+        );
 
         expect(env.noteTable.getRow(rowX.id), isNotNull);
         expect(

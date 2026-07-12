@@ -161,8 +161,7 @@ class OptimisticStateManager {
           if (oldRow != null && newRow != null) {
             final pk = table.decoder.getPrimaryKey(newRow);
             final oldPk = table.decoder.getPrimaryKey(oldRow);
-            final baseCommitted =
-                _pkHasCommittedBase(change.tableName, oldPk);
+            final baseCommitted = _pkHasCommittedBase(change.tableName, oldPk);
             if (baseCommitted) {
               _recordCommittedBase(change.tableName, pk, change.oldRowJson);
             }
@@ -228,8 +227,9 @@ class OptimisticStateManager {
       if ((entry.type == OptimisticChangeType.update ||
               entry.type == OptimisticChangeType.delete) &&
           entry.primaryKey != null) {
-        ((_confirmedOverlayKeys[requestId] ??= {})[entry.tableName] ??= {})
-            .add(entry.primaryKey);
+        ((_confirmedOverlayKeys[requestId] ??= {})[entry.tableName] ??= {}).add(
+          entry.primaryKey,
+        );
       }
       _releaseStashIfNoLongerOptimistic(entry.tableName, entry.primaryKey);
     }

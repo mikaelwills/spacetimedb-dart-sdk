@@ -60,11 +60,12 @@ MutationSyncer _syncer(
     storage: storage,
     optimisticState: optimistic,
     cache: cache,
-    send: (reducerName, args, {requestId}) async => TransactionResult(
-      status: Committed(),
-      timestamp: DateTime.now(),
-      reducerName: reducerName,
-    ),
+    send:
+        (reducerName, args, {requestId}) async => TransactionResult(
+          status: Committed(),
+          timestamp: DateTime.now(),
+          reducerName: reducerName,
+        ),
   );
 }
 
@@ -148,25 +149,22 @@ void main() {
     },
   );
 
-  test(
-    'CONTROL: scalar-only no-PK row excludes + rolls back correctly today '
-    '(isolates the nested Map/List as the sole cause)',
-    () {
-      final cache = ClientCache();
-      cache.registerDecoder<_Event>('events', _EventDecoder());
-      final table = cache.getTableByTypedName<_Event>('events');
-      final optimistic = OptimisticStateManager(cache);
+  test('CONTROL: scalar-only no-PK row excludes + rolls back correctly today '
+      '(isolates the nested Map/List as the sole cause)', () {
+    final cache = ClientCache();
+    cache.registerDecoder<_Event>('events', _EventDecoder());
+    final table = cache.getTableByTypedName<_Event>('events');
+    final optimistic = OptimisticStateManager(cache);
 
-      optimistic.applyOptimisticChanges('r1', [
-        OptimisticChange.insert('events', {'name': 'flat'}),
-      ]);
-      expect(table.iter().length, 1);
-      optimistic.rollbackOptimisticChanges('r1');
-      expect(
-        table.iter().length,
-        0,
-        reason: 'scalar values compare by value → shallow compare works',
-      );
-    },
-  );
+    optimistic.applyOptimisticChanges('r1', [
+      OptimisticChange.insert('events', {'name': 'flat'}),
+    ]);
+    expect(table.iter().length, 1);
+    optimistic.rollbackOptimisticChanges('r1');
+    expect(
+      table.iter().length,
+      0,
+      reason: 'scalar values compare by value → shallow compare works',
+    );
+  });
 }

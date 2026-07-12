@@ -27,7 +27,8 @@ class _LogDecoder extends RowDecoder<_LogRow> {
   Map<String, dynamic> toJson(_LogRow row) => {'text': row.text};
 
   @override
-  _LogRow fromJson(Map<String, dynamic> json) => _LogRow(json['text'] as String);
+  _LogRow fromJson(Map<String, dynamic> json) =>
+      _LogRow(json['text'] as String);
 }
 
 MutationSyncer _syncer(
@@ -41,11 +42,12 @@ MutationSyncer _syncer(
     storage: storage,
     optimisticState: optimistic,
     cache: cache,
-    send: (reducerName, args, {requestId}) async => TransactionResult(
-      status: Committed(),
-      timestamp: DateTime.now(),
-      reducerName: reducerName,
-    ),
+    send:
+        (reducerName, args, {requestId}) async => TransactionResult(
+          status: Committed(),
+          timestamp: DateTime.now(),
+          reducerName: reducerName,
+        ),
   );
 }
 

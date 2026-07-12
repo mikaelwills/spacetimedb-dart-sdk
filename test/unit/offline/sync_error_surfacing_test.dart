@@ -202,46 +202,43 @@ void main() {
       );
     });
 
-    test(
-      'a timeout with unverifiable outcome (no optimistic changes) while '
-      'connected is kept queued for retry, not discarded (at-least-once — '
-      'loss is the worse failure)',
-      () async {
-        final harness = _Harness(respond: (name) => _committed(name));
-        final timeoutSyncer = MutationSyncer(
-          connection: harness.connection,
-          storage: harness.storage,
-          optimisticState: OptimisticStateManager(ClientCache()),
-          cache: ClientCache(),
-          send: (reducerName, args, {requestId}) async {
-            throw SpacetimeDbTimeoutException(
-              'Reducer "$reducerName" timed out',
-              elapsed: const Duration(seconds: 10),
-            );
-          },
-        );
-        await harness.storage.enqueueMutation(_mutation('r1', 'update_note'));
+    test('a timeout with unverifiable outcome (no optimistic changes) while '
+        'connected is kept queued for retry, not discarded (at-least-once — '
+        'loss is the worse failure)', () async {
+      final harness = _Harness(respond: (name) => _committed(name));
+      final timeoutSyncer = MutationSyncer(
+        connection: harness.connection,
+        storage: harness.storage,
+        optimisticState: OptimisticStateManager(ClientCache()),
+        cache: ClientCache(),
+        send: (reducerName, args, {requestId}) async {
+          throw SpacetimeDbTimeoutException(
+            'Reducer "$reducerName" timed out',
+            elapsed: const Duration(seconds: 10),
+          );
+        },
+      );
+      await harness.storage.enqueueMutation(_mutation('r1', 'update_note'));
 
-        await timeoutSyncer.syncPendingMutations();
+      await timeoutSyncer.syncPendingMutations();
 
-        expect(
-          await harness.storage.getPendingMutations(),
-          hasLength(1),
-          reason:
-              'the outcome cannot be verified but the connection is up, so the '
-              'reducer may or may not have run; keep it queued for retry '
-              'rather than discarding and risking a lost write',
-        );
-        expect(
-          timeoutSyncer.syncState.failedCount,
-          equals(0),
-          reason:
-              'a kept-queued mutation is not a failure — no MutationSyncResult '
-              'is emitted for it (avoids double-counting the still-pending row)',
-        );
-        timeoutSyncer.cancelRetry();
-      },
-    );
+      expect(
+        await harness.storage.getPendingMutations(),
+        hasLength(1),
+        reason:
+            'the outcome cannot be verified but the connection is up, so the '
+            'reducer may or may not have run; keep it queued for retry '
+            'rather than discarding and risking a lost write',
+      );
+      expect(
+        timeoutSyncer.syncState.failedCount,
+        equals(0),
+        reason:
+            'a kept-queued mutation is not a failure — no MutationSyncResult '
+            'is emitted for it (avoids double-counting the still-pending row)',
+      );
+      timeoutSyncer.cancelRetry();
+    });
 
     test(
       'a timeout while the connection is down keeps the mutation queued '
@@ -395,7 +392,11 @@ void main() {
         await Future<void>.delayed(Duration.zero);
         await sub.cancel();
 
-        expect(sends, equals(1), reason: 'must not re-send (would abort on PK)');
+        expect(
+          sends,
+          equals(1),
+          reason: 'must not re-send (would abort on PK)',
+        );
         expect(
           await storage.getPendingMutations(),
           isEmpty,
@@ -684,89 +685,83 @@ void main() {
       },
     );
 
-    test(
-      'a no-optimistic mutation that times out while connected stays queued '
-      'and is retried on the next cycle (at-least-once)',
-      () async {
-        final connection = MockConnection();
-        connection.setStateSilently(const Connected());
-        final storage = InMemoryOfflineStorage();
-        final sendCount = <String, int>{};
-        final syncer = MutationSyncer(
-          connection: connection,
-          storage: storage,
-          optimisticState: OptimisticStateManager(ClientCache()),
-          cache: ClientCache(),
-          send: (reducerName, args, {requestId}) async {
-            sendCount[requestId ?? reducerName] =
-                (sendCount[requestId ?? reducerName] ?? 0) + 1;
-            if (sendCount[requestId ?? reducerName] == 1) {
-              throw SpacetimeDbTimeoutException(
-                'Reducer "$reducerName" timed out',
-                elapsed: const Duration(seconds: 10),
-              );
-            }
-            return _committed(reducerName);
-          },
-        );
-        await storage.enqueueMutation(_mutation('r1', 'update_note'));
+    test('a no-optimistic mutation that times out while connected stays queued '
+        'and is retried on the next cycle (at-least-once)', () async {
+      final connection = MockConnection();
+      connection.setStateSilently(const Connected());
+      final storage = InMemoryOfflineStorage();
+      final sendCount = <String, int>{};
+      final syncer = MutationSyncer(
+        connection: connection,
+        storage: storage,
+        optimisticState: OptimisticStateManager(ClientCache()),
+        cache: ClientCache(),
+        send: (reducerName, args, {requestId}) async {
+          sendCount[requestId ?? reducerName] =
+              (sendCount[requestId ?? reducerName] ?? 0) + 1;
+          if (sendCount[requestId ?? reducerName] == 1) {
+            throw SpacetimeDbTimeoutException(
+              'Reducer "$reducerName" timed out',
+              elapsed: const Duration(seconds: 10),
+            );
+          }
+          return _committed(reducerName);
+        },
+      );
+      await storage.enqueueMutation(_mutation('r1', 'update_note'));
 
-        await syncer.syncPendingMutations();
-        await syncer.syncPendingMutations();
+      await syncer.syncPendingMutations();
+      await syncer.syncPendingMutations();
 
+      expect(
+        sendCount['r1'],
+        equals(2),
+        reason:
+            'the first send timed out while connected — outcome unverifiable, '
+            'so the mutation is kept queued and re-sent next cycle. Loss is '
+            'the worse failure; duplicate execution is the accepted '
+            'at-least-once tradeoff (no idempotency key exists at the wire)',
+      );
+      expect(
+        await storage.getPendingMutations(),
+        isEmpty,
+        reason: 'the second send committed, so the mutation dequeues',
+      );
+      syncer.cancelRetry();
+    });
+
+    test('retry backoff never collapses to zero at high attempt counts '
+        '(overflow guard) and saturates at the max delay', () async {
+      final syncer = MutationSyncer(
+        connection: MockConnection()..setStateSilently(const Connected()),
+        storage: InMemoryOfflineStorage(),
+        optimisticState: OptimisticStateManager(ClientCache()),
+        cache: ClientCache(),
+        send: (name, args, {requestId}) async => _committed(name),
+      );
+
+      for (final attempt in [0, 1, 4, 51, 63, 200]) {
+        final d = syncer.retryDelayForAttempt(attempt);
         expect(
-          sendCount['r1'],
-          equals(2),
+          d.inMilliseconds,
+          greaterThan(0),
           reason:
-              'the first send timed out while connected — outcome unverifiable, '
-              'so the mutation is kept queued and re-sent next cycle. Loss is '
-              'the worse failure; duplicate execution is the accepted '
-              'at-least-once tradeoff (no idempotency key exists at the wire)',
+              'attempt $attempt must not collapse to a zero-delay hot loop '
+              '(the pre-fix 1<<attempt overflowed negative past ~50)',
         );
         expect(
-          await storage.getPendingMutations(),
-          isEmpty,
-          reason: 'the second send committed, so the mutation dequeues',
+          d.inMilliseconds,
+          lessThanOrEqualTo(60000),
+          reason: 'attempt $attempt must not exceed the 60s max delay',
         );
-        syncer.cancelRetry();
-      },
-    );
-
-    test(
-      'retry backoff never collapses to zero at high attempt counts '
-      '(overflow guard) and saturates at the max delay',
-      () async {
-        final syncer = MutationSyncer(
-          connection: MockConnection()..setStateSilently(const Connected()),
-          storage: InMemoryOfflineStorage(),
-          optimisticState: OptimisticStateManager(ClientCache()),
-          cache: ClientCache(),
-          send: (name, args, {requestId}) async => _committed(name),
-        );
-
-        for (final attempt in [0, 1, 4, 51, 63, 200]) {
-          final d = syncer.retryDelayForAttempt(attempt);
-          expect(
-            d.inMilliseconds,
-            greaterThan(0),
-            reason:
-                'attempt $attempt must not collapse to a zero-delay hot loop '
-                '(the pre-fix 1<<attempt overflowed negative past ~50)',
-          );
-          expect(
-            d.inMilliseconds,
-            lessThanOrEqualTo(60000),
-            reason: 'attempt $attempt must not exceed the 60s max delay',
-          );
-        }
-        expect(
-          syncer.retryDelayForAttempt(51).inMilliseconds,
-          equals(60000),
-          reason: 'high attempts saturate at the max, not overflow to 0',
-        );
-        syncer.cancelRetry();
-      },
-    );
+      }
+      expect(
+        syncer.retryDelayForAttempt(51).inMilliseconds,
+        equals(60000),
+        reason: 'high attempts saturate at the max, not overflow to 0',
+      );
+      syncer.cancelRetry();
+    });
 
     test('retained failures default to the most recent 20', () async {
       final harness = _Harness(respond: (name) => _rejected(name, 'denied'));
@@ -821,110 +816,104 @@ void main() {
       expect(state.recentFailures, hasLength(50));
     });
 
-    test(
-      'a dequeue failure after a successful send does not silently drop the '
-      'mutation or mislabel the storage error',
-      () async {
-        final connection = MockConnection();
-        connection.setStateSilently(const Connected());
-        final storage = _ThrowingDequeueStorage();
-        final sent = <String>[];
-        final syncer = MutationSyncer(
-          connection: connection,
-          storage: storage,
-          optimisticState: OptimisticStateManager(ClientCache()),
-          cache: ClientCache(),
-          send: (reducerName, args, {requestId}) async {
-            sent.add(reducerName);
-            return _committed(reducerName);
-          },
-        );
-        await storage.enqueueMutation(_mutation('r1', 'update_note'));
+    test('a dequeue failure after a successful send does not silently drop the '
+        'mutation or mislabel the storage error', () async {
+      final connection = MockConnection();
+      connection.setStateSilently(const Connected());
+      final storage = _ThrowingDequeueStorage();
+      final sent = <String>[];
+      final syncer = MutationSyncer(
+        connection: connection,
+        storage: storage,
+        optimisticState: OptimisticStateManager(ClientCache()),
+        cache: ClientCache(),
+        send: (reducerName, args, {requestId}) async {
+          sent.add(reducerName);
+          return _committed(reducerName);
+        },
+      );
+      await storage.enqueueMutation(_mutation('r1', 'update_note'));
 
-        await syncer.syncPendingMutations();
+      await syncer.syncPendingMutations();
 
-        expect(sent, equals(['update_note']));
-        expect(
-          await storage.getPendingMutations(),
-          hasLength(1),
-          reason:
-              'the send succeeded but the dequeue failed; the mutation stays '
-              'queued rather than being silently dropped, and the storage '
-              'error is not misreported as a network error',
-        );
-        syncer.cancelRetry();
-      },
-    );
+      expect(sent, equals(['update_note']));
+      expect(
+        await storage.getPendingMutations(),
+        hasLength(1),
+        reason:
+            'the send succeeded but the dequeue failed; the mutation stays '
+            'queued rather than being silently dropped, and the storage '
+            'error is not misreported as a network error',
+      );
+      syncer.cancelRetry();
+    });
 
-    test(
-      'a timed-out UPDATE reads its own optimistic overlay and is '
-      'FALSE-confirmed (lost write): the reducer never ran server-side, so it '
-      'must stay queued',
-      () async {
-        final connection = MockConnection();
-        connection.setStateSilently(const Connected());
-        final storage = InMemoryOfflineStorage();
-        final cache = ClientCache();
-        cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
-        final noteTable = cache.getTableByName('note')!;
-        noteTable.markSubscribed();
-        noteTable.insertServerOwnedRow({'id': 1, 'content': 'old'});
+    test('a timed-out UPDATE reads its own optimistic overlay and is '
+        'FALSE-confirmed (lost write): the reducer never ran server-side, so it '
+        'must stay queued', () async {
+      final connection = MockConnection();
+      connection.setStateSilently(const Connected());
+      final storage = InMemoryOfflineStorage();
+      final cache = ClientCache();
+      cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
+      final noteTable = cache.getTableByName('note')!;
+      noteTable.markSubscribed();
+      noteTable.insertServerOwnedRow({'id': 1, 'content': 'old'});
 
-        final optimisticState = OptimisticStateManager(cache);
-        final syncer = MutationSyncer(
-          connection: connection,
-          storage: storage,
-          optimisticState: optimisticState,
-          cache: cache,
-          send: (reducerName, args, {requestId}) async {
-            throw SpacetimeDbTimeoutException(
-              'timed out',
-              elapsed: const Duration(seconds: 10),
-            );
-          },
-        );
+      final optimisticState = OptimisticStateManager(cache);
+      final syncer = MutationSyncer(
+        connection: connection,
+        storage: storage,
+        optimisticState: optimisticState,
+        cache: cache,
+        send: (reducerName, args, {requestId}) async {
+          throw SpacetimeDbTimeoutException(
+            'timed out',
+            elapsed: const Duration(seconds: 10),
+          );
+        },
+      );
 
-        final results = <MutationSyncResult>[];
-        final sub = syncer.onMutationSyncResult.listen(results.add);
+      final results = <MutationSyncResult>[];
+      final sub = syncer.onMutationSyncResult.listen(results.add);
 
-        final changes = [
-          OptimisticChange.update(
-            'note',
-            {'id': 1, 'content': 'old'},
-            {'id': 1, 'content': 'new'},
-          ),
-        ];
-        syncer.onOptimisticChanges('u1', changes);
-        await storage.enqueueMutation(
-          PendingMutation(
-            requestId: 'u1',
-            reducerName: 'update_note',
-            encodedArgs: Uint8List(0),
-            createdAt: DateTime.now(),
-            optimisticChanges: changes,
-          ),
-        );
+      final changes = [
+        OptimisticChange.update(
+          'note',
+          {'id': 1, 'content': 'old'},
+          {'id': 1, 'content': 'new'},
+        ),
+      ];
+      syncer.onOptimisticChanges('u1', changes);
+      await storage.enqueueMutation(
+        PendingMutation(
+          requestId: 'u1',
+          reducerName: 'update_note',
+          encodedArgs: Uint8List(0),
+          createdAt: DateTime.now(),
+          optimisticChanges: changes,
+        ),
+      );
 
-        await syncer.syncPendingMutations();
-        await Future<void>.delayed(Duration.zero);
-        await sub.cancel();
+      await syncer.syncPendingMutations();
+      await Future<void>.delayed(Duration.zero);
+      await sub.cancel();
 
-        expect(
-          await storage.getPendingMutations(),
-          hasLength(1),
-          reason:
-              'the server never ran the reducer (send timed out); the '
-              'post-state in the cache is the client\'s own optimistic '
-              'overlay, not server provenance, so the update must stay queued '
-              'for at-least-once retry',
-        );
-        expect(
-          results.where((r) => r.success).map((r) => r.requestId),
-          isNot(contains('u1')),
-        );
-        syncer.cancelRetry();
-      },
-    );
+      expect(
+        await storage.getPendingMutations(),
+        hasLength(1),
+        reason:
+            'the server never ran the reducer (send timed out); the '
+            'post-state in the cache is the client\'s own optimistic '
+            'overlay, not server provenance, so the update must stay queued '
+            'for at-least-once retry',
+      );
+      expect(
+        results.where((r) => r.success).map((r) => r.requestId),
+        isNot(contains('u1')),
+      );
+      syncer.cancelRetry();
+    });
 
     test(
       'a timed-out DELETE reads its own optimistic overlay (row removed) and '

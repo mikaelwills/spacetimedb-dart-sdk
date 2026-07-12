@@ -371,9 +371,7 @@ class TableCache<T> {
   /// }
   /// ```
   Iterable<T> iter() {
-    return hasPrimaryKey
-        ? _rowsByPrimaryKey.values
-        : _rows.map((e) => e.row);
+    return hasPrimaryKey ? _rowsByPrimaryKey.values : _rows.map((e) => e.row);
   }
 
   Set<dynamic> get primaryKeys =>
@@ -459,8 +457,8 @@ class TableCache<T> {
     } else {
       all = _rows
           .where(
-            (e) => e.requestId == null ||
-                !excludeRequestIds.contains(e.requestId),
+            (e) =>
+                e.requestId == null || !excludeRequestIds.contains(e.requestId),
           )
           .map((e) => decoder.toJson(e.row)!);
     }
@@ -690,7 +688,8 @@ class TableCache<T> {
   bool _jsonEquals(Map<String, dynamic> a, Map<String, dynamic> b) {
     if (a.length != b.length) return false;
     for (final entry in a.entries) {
-      if (!b.containsKey(entry.key) || b[entry.key] != entry.value) return false;
+      if (!b.containsKey(entry.key) || b[entry.key] != entry.value)
+        return false;
     }
     return true;
   }

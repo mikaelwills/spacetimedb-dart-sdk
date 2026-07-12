@@ -35,33 +35,30 @@ PendingMutation _mutation(String requestId, String reducerName) =>
     );
 
 void main() {
-  test(
-    'a storage throw in the post-sync getPendingMutations tail is caught, '
-    'not left to escape as an unhandled zone error',
-    () async {
-      final connection = MockConnection();
-      connection.setStateSilently(const Connected());
-      final storage = _ThrowOnNthGetStorage(2);
-      final cache = ClientCache();
-      final optimisticState = OptimisticStateManager(cache);
-      final syncer = MutationSyncer(
-        connection: connection,
-        storage: storage,
-        optimisticState: optimisticState,
-        cache: cache,
-        send: (reducerName, args, {requestId}) async => _committed(reducerName),
-      );
+  test('a storage throw in the post-sync getPendingMutations tail is caught, '
+      'not left to escape as an unhandled zone error', () async {
+    final connection = MockConnection();
+    connection.setStateSilently(const Connected());
+    final storage = _ThrowOnNthGetStorage(2);
+    final cache = ClientCache();
+    final optimisticState = OptimisticStateManager(cache);
+    final syncer = MutationSyncer(
+      connection: connection,
+      storage: storage,
+      optimisticState: optimisticState,
+      cache: cache,
+      send: (reducerName, args, {requestId}) async => _committed(reducerName),
+    );
 
-      await storage.enqueueMutation(_mutation('r1', 'good_a'));
+    await storage.enqueueMutation(_mutation('r1', 'good_a'));
 
-      await expectLater(
-        syncer.syncPendingMutations(),
-        completes,
-        reason:
-            'the second getPendingMutations (the post-finally tail) throws; it '
-            'must be caught inside syncPendingMutations, not propagate to the '
-            'root zone where a fire-and-forget caller would crash the host',
-      );
-    },
-  );
+    await expectLater(
+      syncer.syncPendingMutations(),
+      completes,
+      reason:
+          'the second getPendingMutations (the post-finally tail) throws; it '
+          'must be caught inside syncPendingMutations, not propagate to the '
+          'root zone where a fire-and-forget caller would crash the host',
+    );
+  });
 }

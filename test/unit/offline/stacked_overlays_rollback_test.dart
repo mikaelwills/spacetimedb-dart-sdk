@@ -59,69 +59,63 @@ void main() {
       },
     );
 
-    test(
-      'Phantom B: rolling back an uncommitted INSERT with a stacked pending '
-      'UPDATE must NOT resurrect a phantom row (no committed base)',
-      () {
-        final insA = _note(1, 'insert-A');
-        optimistic.applyOptimisticChanges('rA', [
-          OptimisticChange.insert('note', insA.toJson()),
-        ]);
-        expect(table.find(1)?.content, 'insert-A');
+    test('Phantom B: rolling back an uncommitted INSERT with a stacked pending '
+        'UPDATE must NOT resurrect a phantom row (no committed base)', () {
+      final insA = _note(1, 'insert-A');
+      optimistic.applyOptimisticChanges('rA', [
+        OptimisticChange.insert('note', insA.toJson()),
+      ]);
+      expect(table.find(1)?.content, 'insert-A');
 
-        final updB = _note(1, 'insert-B');
-        optimistic.applyOptimisticChanges('rB', [
-          OptimisticChange.update('note', insA.toJson(), updB.toJson()),
-        ]);
-        expect(table.find(1)?.content, 'insert-B');
+      final updB = _note(1, 'insert-B');
+      optimistic.applyOptimisticChanges('rB', [
+        OptimisticChange.update('note', insA.toJson(), updB.toJson()),
+      ]);
+      expect(table.find(1)?.content, 'insert-B');
 
-        optimistic.rollbackOptimisticChanges('rA');
+      optimistic.rollbackOptimisticChanges('rA');
 
-        expect(
-          table.find(1),
-          isNull,
-          reason:
-              'the base insert rA had NO committed row under it; rolling it '
-              'back must remove pk 1 entirely, not leave rB\'s update overlay '
-              'as a phantom over a row that never committed',
-        );
-      },
-    );
+      expect(
+        table.find(1),
+        isNull,
+        reason:
+            'the base insert rA had NO committed row under it; rolling it '
+            'back must remove pk 1 entirely, not leave rB\'s update overlay '
+            'as a phantom over a row that never committed',
+      );
+    });
 
-    test(
-      'Phantom A: rolling back a stacked UPDATE whose oldRow was another '
-      'uncommitted overlay must NOT blind-restore that phantom',
-      () {
-        final insA = _note(1, 'insert-A');
-        optimistic.applyOptimisticChanges('rA', [
-          OptimisticChange.insert('note', insA.toJson()),
-        ]);
-        final updB = _note(1, 'insert-B');
-        optimistic.applyOptimisticChanges('rB', [
-          OptimisticChange.update('note', insA.toJson(), updB.toJson()),
-        ]);
-        expect(table.find(1)?.content, 'insert-B');
+    test('Phantom A: rolling back a stacked UPDATE whose oldRow was another '
+        'uncommitted overlay must NOT blind-restore that phantom', () {
+      final insA = _note(1, 'insert-A');
+      optimistic.applyOptimisticChanges('rA', [
+        OptimisticChange.insert('note', insA.toJson()),
+      ]);
+      final updB = _note(1, 'insert-B');
+      optimistic.applyOptimisticChanges('rB', [
+        OptimisticChange.update('note', insA.toJson(), updB.toJson()),
+      ]);
+      expect(table.find(1)?.content, 'insert-B');
 
-        optimistic.rollbackOptimisticChanges('rB');
+      optimistic.rollbackOptimisticChanges('rB');
 
-        expect(
-          table.find(1)?.content,
-          'insert-A',
-          reason:
-              'rB rolled back → rA insert overlay still pending, so pk 1 shows '
-              'insert-A (rA is uncommitted but still active, not yet rolled '
-              'back)',
-        );
+      expect(
+        table.find(1)?.content,
+        'insert-A',
+        reason:
+            'rB rolled back → rA insert overlay still pending, so pk 1 shows '
+            'insert-A (rA is uncommitted but still active, not yet rolled '
+            'back)',
+      );
 
-        optimistic.rollbackOptimisticChanges('rA');
-        expect(
-          table.find(1),
-          isNull,
-          reason:
-              'now rA rolled back too and nothing committed under it → pk 1 '
-              'must be gone, no phantom',
-        );
-      },
-    );
+      optimistic.rollbackOptimisticChanges('rA');
+      expect(
+        table.find(1),
+        isNull,
+        reason:
+            'now rA rolled back too and nothing committed under it → pk 1 '
+            'must be gone, no phantom',
+      );
+    });
   });
 }

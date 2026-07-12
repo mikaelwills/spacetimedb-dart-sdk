@@ -26,9 +26,11 @@ void main() {
         .firstWhere((state) => state is T)
         .timeout(
           timeout,
-          onTimeout: () => throw TimeoutException(
-            'Timed out waiting for state $T. Current: ${connection.state}',
-          ),
+          onTimeout:
+              () =>
+                  throw TimeoutException(
+                    'Timed out waiting for state $T. Current: ${connection.state}',
+                  ),
         );
   }
 
@@ -37,15 +39,22 @@ void main() {
     () async {
       final env = await createTestEnv();
       await env.connection.connect();
-      await env.subManager.onInitialConnection.first
-          .timeout(const Duration(seconds: 5));
+      await env.subManager.onInitialConnection.first.timeout(
+        const Duration(seconds: 5),
+      );
 
       // Establish an active subscription so _onReconnected has a set to replay.
       await env.subManager.subscribe(['SELECT * FROM note']);
-      expect(env.subManager.subscriptionsByQuerySetId, isNotEmpty,
-          reason: 'baseline: one active query set');
-      expect(env.subManager.subscriptionsReady.value, isTrue,
-          reason: 'baseline: ready after initial SubscribeApplied');
+      expect(
+        env.subManager.subscriptionsByQuerySetId,
+        isNotEmpty,
+        reason: 'baseline: one active query set',
+      );
+      expect(
+        env.subManager.subscriptionsReady.value,
+        isTrue,
+        reason: 'baseline: ready after initial SubscribeApplied',
+      );
 
       // --- Interrupt a resubscribe mid-flight ---
       // reconnect() -> disconnect(); connect(). The subsequent Connected fires
@@ -64,33 +73,45 @@ void main() {
       final mapEmptyAfterInterrupt =
           env.subManager.subscriptionsByQuerySetId.isEmpty;
       // ignore: avoid_print
-      print('PROBE OBSERVATION A: map empty after interrupt = '
-          '$mapEmptyAfterInterrupt');
+      print(
+        'PROBE OBSERVATION A: map empty after interrupt = '
+        '$mapEmptyAfterInterrupt',
+      );
 
       // INVARIANT B: while disconnected, ready is false.
-      expect(env.subManager.subscriptionsReady.value, isFalse,
-          reason: 'ready latches false on Disconnected');
+      expect(
+        env.subManager.subscriptionsReady.value,
+        isFalse,
+        reason: 'ready latches false on Disconnected',
+      );
 
       // --- Now allow a clean reconnect and observe convergence (claim 2b) ---
       await env.connection.connect();
       await waitForState<Connected>(env.connection);
 
       // Give _onReconnected time to replay the retained set and apply.
-      final converged = await _waitReady(env.subManager,
-          timeout: const Duration(seconds: 10));
+      final converged = await _waitReady(
+        env.subManager,
+        timeout: const Duration(seconds: 10),
+      );
 
       // ignore: avoid_print
-      print('PROBE OBSERVATION C: converged after clean reconnect = $converged; '
-          'map now = ${env.subManager.subscriptionsByQuerySetId}');
+      print(
+        'PROBE OBSERVATION C: converged after clean reconnect = $converged; '
+        'map now = ${env.subManager.subscriptionsByQuerySetId}',
+      );
 
       // INVARIANT C (claim 2b): the set IS re-applied on the next Connected and
       // subscriptionsReady returns to true. If this is FALSE, the
       // "never converges / retry is lost" branch is REAL (the load-bearing bug).
-      expect(converged, isTrue,
-          reason:
-              'CLAIM 2b: after a clean reconnect following an interrupted one, '
-              'the set must be re-applied and ready must recover to true. '
-              'mapEmptyAfterInterrupt=$mapEmptyAfterInterrupt');
+      expect(
+        converged,
+        isTrue,
+        reason:
+            'CLAIM 2b: after a clean reconnect following an interrupted one, '
+            'the set must be re-applied and ready must recover to true. '
+            'mapEmptyAfterInterrupt=$mapEmptyAfterInterrupt',
+      );
 
       env.subManager.dispose();
       await env.disconnect();
@@ -103,8 +124,9 @@ void main() {
     () async {
       final env = await createTestEnv();
       await env.connection.connect();
-      await env.subManager.onInitialConnection.first
-          .timeout(const Duration(seconds: 5));
+      await env.subManager.onInitialConnection.first.timeout(
+        const Duration(seconds: 5),
+      );
       await env.subManager.subscribe(['SELECT * FROM note']);
 
       // reconnect, then let the Connected listener + _onReconnected reach the
@@ -114,18 +136,23 @@ void main() {
       await reconnectFuture;
       // At this point Connected has fired and _onReconnected is likely awaiting
       // subscribe()'s SubscribeApplied — line 165 has re-added the set.
-      final mapDuringInflight =
-          Map.of(env.subManager.subscriptionsByQuerySetId);
+      final mapDuringInflight = Map.of(
+        env.subManager.subscriptionsByQuerySetId,
+      );
       // ignore: avoid_print
-      print('PROBE branch-A: map during in-flight resubscribe = '
-          '$mapDuringInflight');
+      print(
+        'PROBE branch-A: map during in-flight resubscribe = '
+        '$mapDuringInflight',
+      );
 
       // Now interrupt.
       await env.connection.disconnect();
       await waitForState<Disconnected>(env.connection);
       // ignore: avoid_print
-      print('PROBE branch-A: map after post-subscribe interrupt = '
-          '${env.subManager.subscriptionsByQuerySetId}');
+      print(
+        'PROBE branch-A: map after post-subscribe interrupt = '
+        '${env.subManager.subscriptionsByQuerySetId}',
+      );
 
       env.subManager.dispose();
       await env.disconnect();
@@ -134,8 +161,7 @@ void main() {
   );
 }
 
-Future<bool> _waitReady(dynamic subManager,
-    {required Duration timeout}) async {
+Future<bool> _waitReady(dynamic subManager, {required Duration timeout}) async {
   final ready = subManager.subscriptionsReady;
   if (ready.value == true) return true;
   final completer = Completer<bool>();

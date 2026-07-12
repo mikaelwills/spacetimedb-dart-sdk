@@ -253,198 +253,189 @@ void main() {
       },
     );
 
-    test(
-      'V4 DELETE whose overlay was confirmed while still queued, no server '
-      'confirmation → kept queued (confirmed-overlay axis)',
-      () async {
-        final connection = MockConnection();
-        connection.setStateSilently(const Connected());
-        final storage = InMemoryOfflineStorage();
-        final cache = ClientCache();
-        cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
-        final noteTable = cache.getTableByName('note')!;
-        noteTable.markSubscribed();
-        noteTable.insertServerOwnedRow({'id': 1, 'content': 'old'});
+    test('V4 DELETE whose overlay was confirmed while still queued, no server '
+        'confirmation → kept queued (confirmed-overlay axis)', () async {
+      final connection = MockConnection();
+      connection.setStateSilently(const Connected());
+      final storage = InMemoryOfflineStorage();
+      final cache = ClientCache();
+      cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
+      final noteTable = cache.getTableByName('note')!;
+      noteTable.markSubscribed();
+      noteTable.insertServerOwnedRow({'id': 1, 'content': 'old'});
 
-        final optimisticState = OptimisticStateManager(cache);
-        final syncer = MutationSyncer(
-          connection: connection,
-          storage: storage,
-          optimisticState: optimisticState,
-          cache: cache,
-          send: (reducerName, args, {requestId}) async {
-            throw SpacetimeDbTimeoutException(
-              'timed out',
-              elapsed: const Duration(seconds: 10),
-            );
-          },
-        );
+      final optimisticState = OptimisticStateManager(cache);
+      final syncer = MutationSyncer(
+        connection: connection,
+        storage: storage,
+        optimisticState: optimisticState,
+        cache: cache,
+        send: (reducerName, args, {requestId}) async {
+          throw SpacetimeDbTimeoutException(
+            'timed out',
+            elapsed: const Duration(seconds: 10),
+          );
+        },
+      );
 
-        final results = <MutationSyncResult>[];
-        final sub = syncer.onMutationSyncResult.listen(results.add);
+      final results = <MutationSyncResult>[];
+      final sub = syncer.onMutationSyncResult.listen(results.add);
 
-        final changes = [
-          OptimisticChange.delete('note', {'id': 1, 'content': 'old'}),
-        ];
-        syncer.onOptimisticChanges('d1', changes);
-        optimisticState.confirmOptimisticChange('d1');
+      final changes = [
+        OptimisticChange.delete('note', {'id': 1, 'content': 'old'}),
+      ];
+      syncer.onOptimisticChanges('d1', changes);
+      optimisticState.confirmOptimisticChange('d1');
 
-        await storage.enqueueMutation(
-          PendingMutation(
-            requestId: 'd1',
-            reducerName: 'delete_note',
-            encodedArgs: Uint8List(0),
-            createdAt: DateTime.now(),
-            optimisticChanges: changes,
-          ),
-        );
+      await storage.enqueueMutation(
+        PendingMutation(
+          requestId: 'd1',
+          reducerName: 'delete_note',
+          encodedArgs: Uint8List(0),
+          createdAt: DateTime.now(),
+          optimisticChanges: changes,
+        ),
+      );
 
-        await syncer.syncPendingMutations();
-        await Future<void>.delayed(Duration.zero);
-        await sub.cancel();
+      await syncer.syncPendingMutations();
+      await Future<void>.delayed(Duration.zero);
+      await sub.cancel();
 
-        expect(
-          await storage.getPendingMutations(),
-          hasLength(1),
-          reason:
-              'the delete reducer never ran server-side; the row is absent '
-              'only because of the (now-confirmed) optimistic removal — not a '
-              'server delete — so it must stay queued',
-        );
-        expect(
-          results.where((r) => r.success).map((r) => r.requestId),
-          isNot(contains('d1')),
-        );
-        syncer.cancelRetry();
-      },
-    );
+      expect(
+        await storage.getPendingMutations(),
+        hasLength(1),
+        reason:
+            'the delete reducer never ran server-side; the row is absent '
+            'only because of the (now-confirmed) optimistic removal — not a '
+            'server delete — so it must stay queued',
+      );
+      expect(
+        results.where((r) => r.success).map((r) => r.requestId),
+        isNot(contains('d1')),
+      );
+      syncer.cancelRetry();
+    });
 
-    test(
-      'V5 timeout while the socket drops mid-send with a pending UPDATE '
-      'overlay → kept queued',
-      () async {
-        final connection = MockConnection();
-        connection.setStateSilently(const Connected());
-        final storage = InMemoryOfflineStorage();
-        final cache = ClientCache();
-        cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
-        final noteTable = cache.getTableByName('note')!;
-        noteTable.markSubscribed();
-        noteTable.insertServerOwnedRow({'id': 1, 'content': 'old'});
+    test('V5 timeout while the socket drops mid-send with a pending UPDATE '
+        'overlay → kept queued', () async {
+      final connection = MockConnection();
+      connection.setStateSilently(const Connected());
+      final storage = InMemoryOfflineStorage();
+      final cache = ClientCache();
+      cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
+      final noteTable = cache.getTableByName('note')!;
+      noteTable.markSubscribed();
+      noteTable.insertServerOwnedRow({'id': 1, 'content': 'old'});
 
-        final optimisticState = OptimisticStateManager(cache);
-        final syncer = MutationSyncer(
-          connection: connection,
-          storage: storage,
-          optimisticState: optimisticState,
-          cache: cache,
-          send: (reducerName, args, {requestId}) async {
-            connection.setStateSilently(const Disconnected());
-            throw SpacetimeDbTimeoutException(
-              'timed out',
-              elapsed: const Duration(seconds: 10),
-            );
-          },
-        );
+      final optimisticState = OptimisticStateManager(cache);
+      final syncer = MutationSyncer(
+        connection: connection,
+        storage: storage,
+        optimisticState: optimisticState,
+        cache: cache,
+        send: (reducerName, args, {requestId}) async {
+          connection.setStateSilently(const Disconnected());
+          throw SpacetimeDbTimeoutException(
+            'timed out',
+            elapsed: const Duration(seconds: 10),
+          );
+        },
+      );
 
-        final changes = [
-          OptimisticChange.update(
-            'note',
-            {'id': 1, 'content': 'old'},
-            {'id': 1, 'content': 'new'},
-          ),
-        ];
-        syncer.onOptimisticChanges('u1', changes);
+      final changes = [
+        OptimisticChange.update(
+          'note',
+          {'id': 1, 'content': 'old'},
+          {'id': 1, 'content': 'new'},
+        ),
+      ];
+      syncer.onOptimisticChanges('u1', changes);
 
-        await storage.enqueueMutation(
-          PendingMutation(
-            requestId: 'u1',
-            reducerName: 'update_note',
-            encodedArgs: Uint8List(0),
-            createdAt: DateTime.now(),
-            optimisticChanges: changes,
-          ),
-        );
+      await storage.enqueueMutation(
+        PendingMutation(
+          requestId: 'u1',
+          reducerName: 'update_note',
+          encodedArgs: Uint8List(0),
+          createdAt: DateTime.now(),
+          optimisticChanges: changes,
+        ),
+      );
 
-        await syncer.syncPendingMutations();
+      await syncer.syncPendingMutations();
 
-        expect(
-          await storage.getPendingMutations(),
-          hasLength(1),
-          reason:
-              'the socket dropped during the send; the pending overlay means '
-              'the cache value is the client prediction — keep queued',
-        );
-        syncer.cancelRetry();
-      },
-    );
+      expect(
+        await storage.getPendingMutations(),
+        hasLength(1),
+        reason:
+            'the socket dropped during the send; the pending overlay means '
+            'the cache value is the client prediction — keep queued',
+      );
+      syncer.cancelRetry();
+    });
 
-    test(
-      'V6 regression: a genuinely-landed UPDATE (server-owned, no pending '
-      'overlay) whose ACK timed out is still confirmed (guard does not '
-      'over-block)',
-      () async {
-        final connection = MockConnection();
-        connection.setStateSilently(const Connected());
-        final storage = InMemoryOfflineStorage();
-        final cache = ClientCache();
-        cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
-        final noteTable = cache.getTableByName('note')!;
-        noteTable.markSubscribed();
-        noteTable.insertServerOwnedRow({'id': 1, 'content': 'new'});
+    test('V6 regression: a genuinely-landed UPDATE (server-owned, no pending '
+        'overlay) whose ACK timed out is still confirmed (guard does not '
+        'over-block)', () async {
+      final connection = MockConnection();
+      connection.setStateSilently(const Connected());
+      final storage = InMemoryOfflineStorage();
+      final cache = ClientCache();
+      cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
+      final noteTable = cache.getTableByName('note')!;
+      noteTable.markSubscribed();
+      noteTable.insertServerOwnedRow({'id': 1, 'content': 'new'});
 
-        final optimisticState = OptimisticStateManager(cache);
-        final syncer = MutationSyncer(
-          connection: connection,
-          storage: storage,
-          optimisticState: optimisticState,
-          cache: cache,
-          send: (reducerName, args, {requestId}) async {
-            throw SpacetimeDbTimeoutException(
-              'timed out',
-              elapsed: const Duration(seconds: 10),
-            );
-          },
-        );
+      final optimisticState = OptimisticStateManager(cache);
+      final syncer = MutationSyncer(
+        connection: connection,
+        storage: storage,
+        optimisticState: optimisticState,
+        cache: cache,
+        send: (reducerName, args, {requestId}) async {
+          throw SpacetimeDbTimeoutException(
+            'timed out',
+            elapsed: const Duration(seconds: 10),
+          );
+        },
+      );
 
-        final results = <MutationSyncResult>[];
-        final sub = syncer.onMutationSyncResult.listen(results.add);
+      final results = <MutationSyncResult>[];
+      final sub = syncer.onMutationSyncResult.listen(results.add);
 
-        await storage.enqueueMutation(
-          PendingMutation(
-            requestId: 'u1',
-            reducerName: 'update_note',
-            encodedArgs: Uint8List(0),
-            createdAt: DateTime.now(),
-            optimisticChanges: [
-              OptimisticChange.update(
-                'note',
-                {'id': 1, 'content': 'old'},
-                {'id': 1, 'content': 'new'},
-              ),
-            ],
-          ),
-        );
+      await storage.enqueueMutation(
+        PendingMutation(
+          requestId: 'u1',
+          reducerName: 'update_note',
+          encodedArgs: Uint8List(0),
+          createdAt: DateTime.now(),
+          optimisticChanges: [
+            OptimisticChange.update(
+              'note',
+              {'id': 1, 'content': 'old'},
+              {'id': 1, 'content': 'new'},
+            ),
+          ],
+        ),
+      );
 
-        await syncer.syncPendingMutations();
-        await Future<void>.delayed(Duration.zero);
-        await sub.cancel();
+      await syncer.syncPendingMutations();
+      await Future<void>.delayed(Duration.zero);
+      await sub.cancel();
 
-        expect(
-          await storage.getPendingMutations(),
-          isEmpty,
-          reason:
-              'the row is genuinely server-owned with the update post-state '
-              'and no overlay was ever applied — the guard must not over-block '
-              'a real landing',
-        );
-        expect(
-          results.where((r) => r.success).map((r) => r.requestId),
-          contains('u1'),
-        );
-        syncer.cancelRetry();
-      },
-    );
+      expect(
+        await storage.getPendingMutations(),
+        isEmpty,
+        reason:
+            'the row is genuinely server-owned with the update post-state '
+            'and no overlay was ever applied — the guard must not over-block '
+            'a real landing',
+      );
+      expect(
+        results.where((r) => r.success).map((r) => r.requestId),
+        contains('u1'),
+      );
+      syncer.cancelRetry();
+    });
 
     test(
       'V7 record self-heals: an UPDATE overlay confirmed-while-queued is kept '
@@ -524,83 +515,80 @@ void main() {
       },
     );
 
-    test(
-      'V8 requestId-scoped, no cross-mutation leak: mutation a\'s overlay '
-      'confirmed-while-queued must not suppress a SEPARATE mutation b\'s real '
-      'landing on the same key',
-      () async {
-        final connection = MockConnection();
-        connection.setStateSilently(const Connected());
-        final storage = InMemoryOfflineStorage();
-        final cache = ClientCache();
-        cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
-        final noteTable = cache.getTableByName('note')!;
-        noteTable.markSubscribed();
-        noteTable.insertServerOwnedRow({'id': 1, 'content': 'zero'});
+    test('V8 requestId-scoped, no cross-mutation leak: mutation a\'s overlay '
+        'confirmed-while-queued must not suppress a SEPARATE mutation b\'s real '
+        'landing on the same key', () async {
+      final connection = MockConnection();
+      connection.setStateSilently(const Connected());
+      final storage = InMemoryOfflineStorage();
+      final cache = ClientCache();
+      cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
+      final noteTable = cache.getTableByName('note')!;
+      noteTable.markSubscribed();
+      noteTable.insertServerOwnedRow({'id': 1, 'content': 'zero'});
 
-        final optimisticState = OptimisticStateManager(cache);
-        final syncer = MutationSyncer(
-          connection: connection,
-          storage: storage,
-          optimisticState: optimisticState,
-          cache: cache,
-          send: (reducerName, args, {requestId}) async {
-            throw SpacetimeDbTimeoutException(
-              'timed out',
-              elapsed: const Duration(seconds: 10),
-            );
-          },
-        );
+      final optimisticState = OptimisticStateManager(cache);
+      final syncer = MutationSyncer(
+        connection: connection,
+        storage: storage,
+        optimisticState: optimisticState,
+        cache: cache,
+        send: (reducerName, args, {requestId}) async {
+          throw SpacetimeDbTimeoutException(
+            'timed out',
+            elapsed: const Duration(seconds: 10),
+          );
+        },
+      );
 
-        final results = <MutationSyncResult>[];
-        final sub = syncer.onMutationSyncResult.listen(results.add);
+      final results = <MutationSyncResult>[];
+      final sub = syncer.onMutationSyncResult.listen(results.add);
 
-        final aChanges = [
-          OptimisticChange.update(
-            'note',
-            {'id': 1, 'content': 'zero'},
-            {'id': 1, 'content': 'a-value'},
-          ),
-        ];
-        syncer.onOptimisticChanges('a', aChanges);
-        optimisticState.confirmOptimisticChange('a');
-        noteTable.insertServerOwnedRow({'id': 1, 'content': 'b-landed'});
+      final aChanges = [
+        OptimisticChange.update(
+          'note',
+          {'id': 1, 'content': 'zero'},
+          {'id': 1, 'content': 'a-value'},
+        ),
+      ];
+      syncer.onOptimisticChanges('a', aChanges);
+      optimisticState.confirmOptimisticChange('a');
+      noteTable.insertServerOwnedRow({'id': 1, 'content': 'b-landed'});
 
-        await storage.enqueueMutation(
-          PendingMutation(
-            requestId: 'b',
-            reducerName: 'update_note',
-            encodedArgs: Uint8List(0),
-            createdAt: DateTime.now(),
-            optimisticChanges: [
-              OptimisticChange.update(
-                'note',
-                {'id': 1, 'content': 'a-value'},
-                {'id': 1, 'content': 'b-landed'},
-              ),
-            ],
-          ),
-        );
+      await storage.enqueueMutation(
+        PendingMutation(
+          requestId: 'b',
+          reducerName: 'update_note',
+          encodedArgs: Uint8List(0),
+          createdAt: DateTime.now(),
+          optimisticChanges: [
+            OptimisticChange.update(
+              'note',
+              {'id': 1, 'content': 'a-value'},
+              {'id': 1, 'content': 'b-landed'},
+            ),
+          ],
+        ),
+      );
 
-        await syncer.syncPendingMutations();
-        await Future<void>.delayed(Duration.zero);
-        await sub.cancel();
+      await syncer.syncPendingMutations();
+      await Future<void>.delayed(Duration.zero);
+      await sub.cancel();
 
-        expect(
-          await storage.getPendingMutations(),
-          isEmpty,
-          reason:
-              'b is genuinely server-owned with b\'s post-state; the guard '
-              'reads _confirmedOverlayKeys[b] (empty), not a\'s record, so b '
-              'confirms and dequeues',
-        );
-        expect(
-          results.where((r) => r.success).map((r) => r.requestId),
-          contains('b'),
-        );
-        syncer.cancelRetry();
-      },
-    );
+      expect(
+        await storage.getPendingMutations(),
+        isEmpty,
+        reason:
+            'b is genuinely server-owned with b\'s post-state; the guard '
+            'reads _confirmedOverlayKeys[b] (empty), not a\'s record, so b '
+            'confirms and dequeues',
+      );
+      expect(
+        results.where((r) => r.success).map((r) => r.requestId),
+        contains('b'),
+      );
+      syncer.cancelRetry();
+    });
 
     test(
       'V9 a genuinely-landed timeout whose durable dequeue throws stays queued '
@@ -752,85 +740,82 @@ void main() {
       },
     );
 
-    test(
-      'V11 abort-confirm short-circuit: an UPDATE whose overlay was '
-      'confirmed-while-queued and is genuinely server-owned in the cache is '
-      're-sent, and the server aborts it as a redundant/unique-key collision '
-      'on the already-committed row — it must be confirmed (success:true) and '
-      'dequeued, NOT surfaced as a failure',
-      () async {
-        final connection = MockConnection();
-        connection.setStateSilently(const Connected());
-        final storage = InMemoryOfflineStorage();
-        final cache = ClientCache();
-        cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
-        final noteTable = cache.getTableByName('note')!;
-        noteTable.markSubscribed();
-        noteTable.insertServerOwnedRow({'id': 1, 'content': 'new'});
+    test('V11 abort-confirm short-circuit: an UPDATE whose overlay was '
+        'confirmed-while-queued and is genuinely server-owned in the cache is '
+        're-sent, and the server aborts it as a redundant/unique-key collision '
+        'on the already-committed row — it must be confirmed (success:true) and '
+        'dequeued, NOT surfaced as a failure', () async {
+      final connection = MockConnection();
+      connection.setStateSilently(const Connected());
+      final storage = InMemoryOfflineStorage();
+      final cache = ClientCache();
+      cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
+      final noteTable = cache.getTableByName('note')!;
+      noteTable.markSubscribed();
+      noteTable.insertServerOwnedRow({'id': 1, 'content': 'new'});
 
-        final optimisticState = OptimisticStateManager(cache);
-        final syncer = MutationSyncer(
-          connection: connection,
-          storage: storage,
-          optimisticState: optimisticState,
-          cache: cache,
-          send: (reducerName, args, {requestId}) async {
-            throw SpacetimeDbReducerException(
-              reducerName: reducerName,
-              message: 'unique key collision',
-              result: _rejected(reducerName, 'unique key collision'),
-            );
-          },
-        );
+      final optimisticState = OptimisticStateManager(cache);
+      final syncer = MutationSyncer(
+        connection: connection,
+        storage: storage,
+        optimisticState: optimisticState,
+        cache: cache,
+        send: (reducerName, args, {requestId}) async {
+          throw SpacetimeDbReducerException(
+            reducerName: reducerName,
+            message: 'unique key collision',
+            result: _rejected(reducerName, 'unique key collision'),
+          );
+        },
+      );
 
-        final results = <MutationSyncResult>[];
-        final sub = syncer.onMutationSyncResult.listen(results.add);
+      final results = <MutationSyncResult>[];
+      final sub = syncer.onMutationSyncResult.listen(results.add);
 
-        final changes = [
-          OptimisticChange.update(
-            'note',
-            {'id': 1, 'content': 'old'},
-            {'id': 1, 'content': 'new'},
-          ),
-        ];
-        syncer.onOptimisticChanges('u1', changes);
-        optimisticState.confirmOptimisticChange('u1');
+      final changes = [
+        OptimisticChange.update(
+          'note',
+          {'id': 1, 'content': 'old'},
+          {'id': 1, 'content': 'new'},
+        ),
+      ];
+      syncer.onOptimisticChanges('u1', changes);
+      optimisticState.confirmOptimisticChange('u1');
 
-        await storage.enqueueMutation(
-          PendingMutation(
-            requestId: 'u1',
-            reducerName: 'update_note',
-            encodedArgs: Uint8List(0),
-            createdAt: DateTime.now(),
-            optimisticChanges: changes,
-          ),
-        );
+      await storage.enqueueMutation(
+        PendingMutation(
+          requestId: 'u1',
+          reducerName: 'update_note',
+          encodedArgs: Uint8List(0),
+          createdAt: DateTime.now(),
+          optimisticChanges: changes,
+        ),
+      );
 
-        await syncer.syncPendingMutations();
-        await Future<void>.delayed(Duration.zero);
-        await sub.cancel();
+      await syncer.syncPendingMutations();
+      await Future<void>.delayed(Duration.zero);
+      await sub.cancel();
 
-        expect(
-          await storage.getPendingMutations(),
-          isEmpty,
-          reason:
-              'a genuinely-committed write that aborts on re-send as redundant '
-              'must be confirmed and dequeued',
-        );
-        expect(
-          results.where((r) => r.success).map((r) => r.requestId),
-          contains('u1'),
-          reason:
-              'a genuinely-committed write that aborts on re-send as redundant '
-              'must be confirmed success, not surfaced as a failure',
-        );
-        expect(
-          results.where((r) => !r.success).map((r) => r.requestId),
-          isNot(contains('u1')),
-          reason: 'no spurious failedCount bump for an already-landed write',
-        );
-        syncer.cancelRetry();
-      },
-    );
+      expect(
+        await storage.getPendingMutations(),
+        isEmpty,
+        reason:
+            'a genuinely-committed write that aborts on re-send as redundant '
+            'must be confirmed and dequeued',
+      );
+      expect(
+        results.where((r) => r.success).map((r) => r.requestId),
+        contains('u1'),
+        reason:
+            'a genuinely-committed write that aborts on re-send as redundant '
+            'must be confirmed success, not surfaced as a failure',
+      );
+      expect(
+        results.where((r) => !r.success).map((r) => r.requestId),
+        isNot(contains('u1')),
+        reason: 'no spurious failedCount bump for an already-landed write',
+      );
+      syncer.cancelRetry();
+    });
   });
 }

@@ -141,158 +141,173 @@ void main() {
       },
     );
 
-    test('delete case: M1 commit is a pure delete, rollback of M2 leaves row absent', () {
-      final server0 = createNote(2, 'title', content: 'server0');
-      table.insertRow(server0);
+    test(
+      'delete case: M1 commit is a pure delete, rollback of M2 leaves row absent',
+      () {
+        final server0 = createNote(2, 'title', content: 'server0');
+        table.insertRow(server0);
 
-      optimistic.applyOptimisticChanges('m1', [
-        OptimisticChange.delete('note', server0.toJson()),
-      ]);
-      expect(table.find(2), isNull);
+        optimistic.applyOptimisticChanges('m1', [
+          OptimisticChange.delete('note', server0.toJson()),
+        ]);
+        expect(table.find(2), isNull);
 
-      final v2 = createNote(2, 'title', content: 'v2-resurrected');
-      optimistic.applyOptimisticChanges('m2', [
-        OptimisticChange.insert('note', v2.toJson()),
-      ]);
-      expect(table.find(2)?.content, equals('v2-resurrected'));
+        final v2 = createNote(2, 'title', content: 'v2-resurrected');
+        optimistic.applyOptimisticChanges('m2', [
+          OptimisticChange.insert('note', v2.toJson()),
+        ]);
+        expect(table.find(2)?.content, equals('v2-resurrected'));
 
-      applyCommit(
-        table: table,
-        optimistic: optimistic,
-        context: dummyContext,
-        deletes: [server0],
-        inserts: [],
-        stillPending: {2},
-      );
-      optimistic.confirmOptimisticChange('m1');
+        applyCommit(
+          table: table,
+          optimistic: optimistic,
+          context: dummyContext,
+          deletes: [server0],
+          inserts: [],
+          stillPending: {2},
+        );
+        optimistic.confirmOptimisticChange('m1');
 
-      expect(table.find(2)?.content, equals('v2-resurrected'));
+        expect(table.find(2)?.content, equals('v2-resurrected'));
 
-      optimistic.rollbackOptimisticChanges('m2');
+        optimistic.rollbackOptimisticChanges('m2');
 
-      expect(
-        table.find(2),
-        isNull,
-        reason: 'Server committed a delete for key 2; rollback of M2 must '
-            'leave the row absent (tombstone), not resurrect the pre-M2 state',
-      );
-    });
+        expect(
+          table.find(2),
+          isNull,
+          reason:
+              'Server committed a delete for key 2; rollback of M2 must '
+              'leave the row absent (tombstone), not resurrect the pre-M2 state',
+        );
+      },
+    );
 
-    test('regression: single mutation, no overlapping commit, rollback restores oldRowJson exactly', () {
-      final original = createNote(3, 'title', content: 'original');
-      table.insertRow(original);
+    test(
+      'regression: single mutation, no overlapping commit, rollback restores oldRowJson exactly',
+      () {
+        final original = createNote(3, 'title', content: 'original');
+        table.insertRow(original);
 
-      final updated = createNote(3, 'title', content: 'updated');
-      optimistic.applyOptimisticChanges('solo', [
-        OptimisticChange.update('note', original.toJson(), updated.toJson()),
-      ]);
-      expect(table.find(3)?.content, equals('updated'));
+        final updated = createNote(3, 'title', content: 'updated');
+        optimistic.applyOptimisticChanges('solo', [
+          OptimisticChange.update('note', original.toJson(), updated.toJson()),
+        ]);
+        expect(table.find(3)?.content, equals('updated'));
 
-      optimistic.rollbackOptimisticChanges('solo');
+        optimistic.rollbackOptimisticChanges('solo');
 
-      expect(table.find(3)?.content, equals('original'));
-    });
+        expect(table.find(3)?.content, equals('original'));
+      },
+    );
 
-    test('confirm-path regression: M1 then M2 both confirm, cache ends on M2 committed row', () {
-      final server0 = createNote(4, 'title', content: 'server0');
-      table.insertRow(server0);
+    test(
+      'confirm-path regression: M1 then M2 both confirm, cache ends on M2 committed row',
+      () {
+        final server0 = createNote(4, 'title', content: 'server0');
+        table.insertRow(server0);
 
-      final v1Predicted = createNote(4, 'title', content: 'v1-predicted');
-      optimistic.applyOptimisticChanges('m1', [
-        OptimisticChange.update(
-          'note',
-          server0.toJson(),
-          v1Predicted.toJson(),
-        ),
-      ]);
+        final v1Predicted = createNote(4, 'title', content: 'v1-predicted');
+        optimistic.applyOptimisticChanges('m1', [
+          OptimisticChange.update(
+            'note',
+            server0.toJson(),
+            v1Predicted.toJson(),
+          ),
+        ]);
 
-      final v2Predicted = createNote(4, 'title', content: 'v2-predicted');
-      optimistic.applyOptimisticChanges('m2', [
-        OptimisticChange.update(
-          'note',
-          v1Predicted.toJson(),
-          v2Predicted.toJson(),
-        ),
-      ]);
+        final v2Predicted = createNote(4, 'title', content: 'v2-predicted');
+        optimistic.applyOptimisticChanges('m2', [
+          OptimisticChange.update(
+            'note',
+            v1Predicted.toJson(),
+            v2Predicted.toJson(),
+          ),
+        ]);
 
-      final v1Actual = createNote(4, 'title', content: 'v1-actual');
-      applyCommit(
-        table: table,
-        optimistic: optimistic,
-        context: dummyContext,
-        deletes: [server0],
-        inserts: [v1Actual],
-        stillPending: {4},
-      );
-      optimistic.confirmOptimisticChange('m1');
-      expect(table.find(4)?.content, equals('v2-predicted'));
+        final v1Actual = createNote(4, 'title', content: 'v1-actual');
+        applyCommit(
+          table: table,
+          optimistic: optimistic,
+          context: dummyContext,
+          deletes: [server0],
+          inserts: [v1Actual],
+          stillPending: {4},
+        );
+        optimistic.confirmOptimisticChange('m1');
+        expect(table.find(4)?.content, equals('v2-predicted'));
 
-      final v2Actual = createNote(4, 'title', content: 'v2-actual');
-      applyCommit(
-        table: table,
-        optimistic: optimistic,
-        context: dummyContext,
-        deletes: [v1Actual],
-        inserts: [v2Actual],
-        stillPending: {},
-      );
-      optimistic.confirmOptimisticChange('m2');
+        final v2Actual = createNote(4, 'title', content: 'v2-actual');
+        applyCommit(
+          table: table,
+          optimistic: optimistic,
+          context: dummyContext,
+          deletes: [v1Actual],
+          inserts: [v2Actual],
+          stillPending: {},
+        );
+        optimistic.confirmOptimisticChange('m2');
 
-      expect(
-        table.find(4)?.content,
-        equals('v2-actual'),
-        reason: 'Untouched by the rollback fix: full confirm chain still '
-            'lands on the servers actual final row',
-      );
-    });
+        expect(
+          table.find(4)?.content,
+          equals('v2-actual'),
+          reason:
+              'Untouched by the rollback fix: full confirm chain still '
+              'lands on the servers actual final row',
+        );
+      },
+    );
 
-    test('stash lifecycle: after key is released, a fresh optimistic episode rolls back to its own undo snapshot', () {
-      final server0 = createNote(5, 'title', content: 'server0');
-      table.insertRow(server0);
+    test(
+      'stash lifecycle: after key is released, a fresh optimistic episode rolls back to its own undo snapshot',
+      () {
+        final server0 = createNote(5, 'title', content: 'server0');
+        table.insertRow(server0);
 
-      final v1Predicted = createNote(5, 'title', content: 'v1-predicted');
-      optimistic.applyOptimisticChanges('m1', [
-        OptimisticChange.update(
-          'note',
-          server0.toJson(),
-          v1Predicted.toJson(),
-        ),
-      ]);
+        final v1Predicted = createNote(5, 'title', content: 'v1-predicted');
+        optimistic.applyOptimisticChanges('m1', [
+          OptimisticChange.update(
+            'note',
+            server0.toJson(),
+            v1Predicted.toJson(),
+          ),
+        ]);
 
-      final v2 = createNote(5, 'title', content: 'v2');
-      optimistic.applyOptimisticChanges('m2', [
-        OptimisticChange.update('note', v1Predicted.toJson(), v2.toJson()),
-      ]);
+        final v2 = createNote(5, 'title', content: 'v2');
+        optimistic.applyOptimisticChanges('m2', [
+          OptimisticChange.update('note', v1Predicted.toJson(), v2.toJson()),
+        ]);
 
-      final v1Actual = createNote(5, 'title', content: 'v1-actual');
-      applyCommit(
-        table: table,
-        optimistic: optimistic,
-        context: dummyContext,
-        deletes: [server0],
-        inserts: [v1Actual],
-        stillPending: {5},
-      );
-      optimistic.confirmOptimisticChange('m1');
+        final v1Actual = createNote(5, 'title', content: 'v1-actual');
+        applyCommit(
+          table: table,
+          optimistic: optimistic,
+          context: dummyContext,
+          deletes: [server0],
+          inserts: [v1Actual],
+          stillPending: {5},
+        );
+        optimistic.confirmOptimisticChange('m1');
 
-      optimistic.rollbackOptimisticChanges('m2');
-      expect(table.find(5)?.content, equals('v1-actual'));
+        optimistic.rollbackOptimisticChanges('m2');
+        expect(table.find(5)?.content, equals('v1-actual'));
 
-      final freshOld = createNote(5, 'title', content: 'v1-actual');
-      final freshNew = createNote(5, 'title', content: 'fresh-predicted');
-      optimistic.applyOptimisticChanges('m3', [
-        OptimisticChange.update('note', freshOld.toJson(), freshNew.toJson()),
-      ]);
-      expect(table.find(5)?.content, equals('fresh-predicted'));
+        final freshOld = createNote(5, 'title', content: 'v1-actual');
+        final freshNew = createNote(5, 'title', content: 'fresh-predicted');
+        optimistic.applyOptimisticChanges('m3', [
+          OptimisticChange.update('note', freshOld.toJson(), freshNew.toJson()),
+        ]);
+        expect(table.find(5)?.content, equals('fresh-predicted'));
 
-      optimistic.rollbackOptimisticChanges('m3');
+        optimistic.rollbackOptimisticChanges('m3');
 
-      expect(
-        table.find(5)?.content,
-        equals('v1-actual'),
-        reason: 'm3 rollback must use its own undo snapshot (freshOld), not '
-            'a stale stash left over from the m1/m2 episode',
-      );
-    });
+        expect(
+          table.find(5)?.content,
+          equals('v1-actual'),
+          reason:
+              'm3 rollback must use its own undo snapshot (freshOld), not '
+              'a stale stash left over from the m1/m2 episode',
+        );
+      },
+    );
   });
 }

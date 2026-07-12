@@ -157,13 +157,16 @@ void main() {
       },
     );
 
-    test('completes when the connection reports Disconnected mid-subscribe', () async {
-      final future = subscriptionManager.subscribe(['SELECT * FROM notes']);
+    test(
+      'completes when the connection reports Disconnected mid-subscribe',
+      () async {
+        final future = subscriptionManager.subscribe(['SELECT * FROM notes']);
 
-      mockConnection.mockState = const Disconnected();
+        mockConnection.mockState = const Disconnected();
 
-      await expectLater(future, completion(equals(1))).timeout(_timeout);
-    });
+        await expectLater(future, completion(equals(1))).timeout(_timeout);
+      },
+    );
 
     test('dispose() mid-subscribe resolves without throwing', () async {
       final future = subscriptionManager.subscribe(['SELECT * FROM notes']);
@@ -173,47 +176,44 @@ void main() {
       await expectLater(future, completion(equals(1))).timeout(_timeout);
     });
 
-    test(
-      'dispose during the reconnect resubscribe loop does not touch the '
-      'disposed subscriptionsReady notifier',
-      () async {
-        final subscribeFuture = subscriptionManager.subscribe([
-          'SELECT * FROM notes',
-        ]);
-        await mockConnection.connect();
-        mockConnection.simulateIncoming(
-          _createSubscribeApplied(requestId: 0, querySetId: 1),
-        );
-        await expectLater(
-          subscribeFuture,
-          completion(equals(1)),
-        ).timeout(_timeout);
+    test('dispose during the reconnect resubscribe loop does not touch the '
+        'disposed subscriptionsReady notifier', () async {
+      final subscribeFuture = subscriptionManager.subscribe([
+        'SELECT * FROM notes',
+      ]);
+      await mockConnection.connect();
+      mockConnection.simulateIncoming(
+        _createSubscribeApplied(requestId: 0, querySetId: 1),
+      );
+      await expectLater(
+        subscribeFuture,
+        completion(equals(1)),
+      ).timeout(_timeout);
 
-        await mockConnection.disconnect();
+      await mockConnection.disconnect();
 
-        Object? escaped;
-        await runZonedGuarded(
-          () async {
-            await mockConnection.connect();
-            await pumpEventQueue();
+      Object? escaped;
+      await runZonedGuarded(
+        () async {
+          await mockConnection.connect();
+          await pumpEventQueue();
 
-            await subscriptionManager.dispose();
-            await pumpEventQueue();
-          },
-          (error, stack) {
-            escaped = error;
-          },
-        );
+          await subscriptionManager.dispose();
+          await pumpEventQueue();
+        },
+        (error, stack) {
+          escaped = error;
+        },
+      );
 
-        expect(
-          escaped,
-          isNull,
-          reason:
-              'dispose() landing while _onReconnected awaits the resubscribe '
-              'loop must not write subscriptionsReady after it is disposed',
-        );
-      },
-    );
+      expect(
+        escaped,
+        isNull,
+        reason:
+            'dispose() landing while _onReconnected awaits the resubscribe '
+            'loop must not write subscriptionsReady after it is disposed',
+      );
+    });
   });
 
   group('subscriptionsReady flips only when ALL query sets applied', () {
@@ -258,7 +258,10 @@ void main() {
         mockConnection.simulateIncoming(
           _createSubscribeApplied(requestId: 0, querySetId: 2),
         );
-        await expectLater(secondFuture, completion(equals(2))).timeout(_timeout);
+        await expectLater(
+          secondFuture,
+          completion(equals(2)),
+        ).timeout(_timeout);
 
         expect(subscriptionManager.subscriptionsReady.value, isTrue);
       },
@@ -302,9 +305,7 @@ void main() {
 
         await expectLater(future, completion(equals(1))).timeout(_timeout);
 
-        final table = subscriptionManager.cache.getTableByName(
-          'quoted_table',
-        );
+        final table = subscriptionManager.cache.getTableByName('quoted_table');
         if (table == null) fail('quoted_table was not registered');
         expect(table.iter(), contains('row_a'));
 

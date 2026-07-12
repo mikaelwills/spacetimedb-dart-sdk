@@ -53,8 +53,7 @@ BsatnRowList _rowList(List<String> values) {
   );
 }
 
-OptimisticChange _insert(String v) =>
-    OptimisticChange.insert('logs', {'v': v});
+OptimisticChange _insert(String v) => OptimisticChange.insert('logs', {'v': v});
 
 ({ClientCache cache, TableCache<String> table, OptimisticStateManager opt})
 _env() {
@@ -75,11 +74,12 @@ MutationSyncer _syncer(
     storage: storage,
     optimisticState: opt,
     cache: cache,
-    send: (reducerName, args, {requestId}) async => TransactionResult(
-      status: Committed(),
-      timestamp: DateTime.now(),
-      reducerName: reducerName,
-    ),
+    send:
+        (reducerName, args, {requestId}) async => TransactionResult(
+          status: Committed(),
+          timestamp: DateTime.now(),
+          reducerName: reducerName,
+        ),
   );
 }
 
@@ -93,8 +93,10 @@ void main() {
     expect(e.table.iter().toList(), ['a', 'b', 'c']);
 
     e.opt.rollbackOptimisticChanges('r2');
-    expect(e.table.iter().toList(), ['a', 'c'],
-        reason: 'only r2 removed, r1 and r3 untouched');
+    expect(e.table.iter().toList(), [
+      'a',
+      'c',
+    ], reason: 'only r2 removed, r1 and r3 untouched');
 
     e.opt.rollbackOptimisticChanges('r1');
     e.opt.rollbackOptimisticChanges('r3');
@@ -104,8 +106,11 @@ void main() {
   test('2. interleaved server-delete removes the committed copy, not a pending '
       'overlay', () {
     final e = _env();
-    e.table.applyTransactionUpdate(BsatnRowList.empty(), _rowList(['x']),
-        EventContext.optimistic(requestId: 'srv'));
+    e.table.applyTransactionUpdate(
+      BsatnRowList.empty(),
+      _rowList(['x']),
+      EventContext.optimistic(requestId: 'srv'),
+    );
     e.opt.applyOptimisticChanges('r1', [_insert('x')]);
     expect(e.table.count(), 2, reason: 'committed x + pending overlay x');
 
@@ -138,58 +143,77 @@ void main() {
     expect(e.table.count(), 2);
 
     e.table.applyDeletes(_rowList(['dup']));
-    expect(e.table.count(), 2,
-        reason: 'server delete must NOT touch tagged overlays (no-op)');
+    expect(
+      e.table.count(),
+      2,
+      reason: 'server delete must NOT touch tagged overlays (no-op)',
+    );
 
     e.opt.rollbackOptimisticChanges('r1');
     expect(e.table.count(), 1);
     e.opt.rollbackOptimisticChanges('r2');
-    expect(e.table.iter(), isEmpty,
-        reason: 'neither rollback ate the other overlay');
+    expect(
+      e.table.iter(),
+      isEmpty,
+      reason: 'neither rollback ate the other overlay',
+    );
   });
 
-  test('5. bulk clear leaves no orphaned tags: reinsert same requestId works',
-      () {
-    final e = _env();
-    e.opt.applyOptimisticChanges('r1', [_insert('a')]);
-    e.table.clear();
-    expect(e.table.iter(), isEmpty);
+  test(
+    '5. bulk clear leaves no orphaned tags: reinsert same requestId works',
+    () {
+      final e = _env();
+      e.opt.applyOptimisticChanges('r1', [_insert('a')]);
+      e.table.clear();
+      expect(e.table.iter(), isEmpty);
 
-    e.opt.applyOptimisticChanges('r1', [_insert('b')]);
-    expect(e.table.iter().toList(), ['b']);
-    e.opt.rollbackOptimisticChanges('r1');
-    expect(e.table.iter(), isEmpty, reason: 'no orphaned tag from the clear');
-  });
+      e.opt.applyOptimisticChanges('r1', [_insert('b')]);
+      expect(e.table.iter().toList(), ['b']);
+      e.opt.rollbackOptimisticChanges('r1');
+      expect(e.table.iter(), isEmpty, reason: 'no orphaned tag from the clear');
+    },
+  );
 
-  test('6. snapshot round-trip: overlay excluded from snapshot, replay re-tags, '
-      'rollback removes exactly the replayed row', () async {
-    final connection = MockConnection();
-    connection.setStateSilently(const Connected());
-    final storage = InMemoryOfflineStorage();
+  test(
+    '6. snapshot round-trip: overlay excluded from snapshot, replay re-tags, '
+    'rollback removes exactly the replayed row',
+    () async {
+      final connection = MockConnection();
+      connection.setStateSilently(const Connected());
+      final storage = InMemoryOfflineStorage();
 
-    final e1 = _env();
-    final s1 = _syncer(connection, storage, e1.cache, e1.opt);
-    await s1.ensureInitialized();
+      final e1 = _env();
+      final s1 = _syncer(connection, storage, e1.cache, e1.opt);
+      await s1.ensureInitialized();
 
-    await storage.enqueueMutation(PendingMutation(
-      requestId: 'r1',
-      reducerName: 'push',
-      encodedArgs: Uint8List(0),
-      createdAt: DateTime.now(),
-      optimisticChanges: [_insert('pending')],
-    ));
-    s1.onOptimisticChanges('r1', [_insert('pending')]);
-    await Future<void>.delayed(Duration.zero);
-    expect(e1.table.iter().toList(), ['pending']);
+      await storage.enqueueMutation(
+        PendingMutation(
+          requestId: 'r1',
+          reducerName: 'push',
+          encodedArgs: Uint8List(0),
+          createdAt: DateTime.now(),
+          optimisticChanges: [_insert('pending')],
+        ),
+      );
+      s1.onOptimisticChanges('r1', [_insert('pending')]);
+      await Future<void>.delayed(Duration.zero);
+      expect(e1.table.iter().toList(), ['pending']);
 
-    final e2 = _env();
-    final s2 = _syncer(connection, storage, e2.cache, e2.opt);
-    await s2.loadFromOfflineCache();
+      final e2 = _env();
+      final s2 = _syncer(connection, storage, e2.cache, e2.opt);
+      await s2.loadFromOfflineCache();
 
-    expect(e2.table.iter().toList(), ['pending'],
-        reason: 'snapshot excluded the overlay; replay re-applied it once');
-    e2.opt.rollbackOptimisticChanges('r1');
-    expect(e2.table.iter(), isEmpty,
-        reason: 'replayed row was re-tagged so rollback finds it');
-  });
+      expect(
+        e2.table.iter().toList(),
+        ['pending'],
+        reason: 'snapshot excluded the overlay; replay re-applied it once',
+      );
+      e2.opt.rollbackOptimisticChanges('r1');
+      expect(
+        e2.table.iter(),
+        isEmpty,
+        reason: 'replayed row was re-tagged so rollback finds it',
+      );
+    },
+  );
 }

@@ -241,7 +241,9 @@ void main() {
       test(
         'enqueueMutation: journal already contains the entry once the call resolves',
         () async {
-          await storage.enqueueMutation(_createMutation('req-1')).timeout(_timeout);
+          await storage
+              .enqueueMutation(_createMutation('req-1'))
+              .timeout(_timeout);
 
           final journalFile = File('${tempDir.path}/pending_mutations.jsonl');
           final lines = await journalFile.readAsLines().timeout(_timeout);
@@ -257,7 +259,9 @@ void main() {
       test(
         'dequeueMutation: journal already contains the dequeue entry once the call resolves',
         () async {
-          await storage.enqueueMutation(_createMutation('req-1')).timeout(_timeout);
+          await storage
+              .enqueueMutation(_createMutation('req-1'))
+              .timeout(_timeout);
           await storage.dequeueMutation('req-1').timeout(_timeout);
 
           final journalFile = File('${tempDir.path}/pending_mutations.jsonl');
@@ -271,88 +275,81 @@ void main() {
         },
       );
 
-      test(
-        'enqueueMutation: when the journal append fails, the queue does not '
-        'expose the mutation and the call throws',
-        () async {
-          final journalFile = File('${tempDir.path}/pending_mutations.jsonl');
-          if (!await journalFile.exists()) {
-            await journalFile.create();
-          }
-          final result = await Process.run('chmod', ['444', journalFile.path]);
-          expect(result.exitCode, equals(0));
+      test('enqueueMutation: when the journal append fails, the queue does not '
+          'expose the mutation and the call throws', () async {
+        final journalFile = File('${tempDir.path}/pending_mutations.jsonl');
+        if (!await journalFile.exists()) {
+          await journalFile.create();
+        }
+        final result = await Process.run('chmod', ['444', journalFile.path]);
+        expect(result.exitCode, equals(0));
 
-          try {
-            await expectLater(
-              storage.enqueueMutation(_createMutation('req-fail')),
-              throwsA(anything),
-            ).timeout(_timeout);
+        try {
+          await expectLater(
+            storage.enqueueMutation(_createMutation('req-fail')),
+            throwsA(anything),
+          ).timeout(_timeout);
 
-            final pending = await storage
-                .getPendingMutations()
-                .timeout(_timeout);
-            expect(
-              pending.any((m) => m.requestId == 'req-fail'),
-              isFalse,
-            );
-          } finally {
-            await Process.run('chmod', ['644', journalFile.path]);
-          }
-        },
-      );
+          final pending = await storage.getPendingMutations().timeout(_timeout);
+          expect(pending.any((m) => m.requestId == 'req-fail'), isFalse);
+        } finally {
+          await Process.run('chmod', ['644', journalFile.path]);
+        }
+      });
 
-      test(
-        'dequeueMutation: when the journal append fails, the queue still '
-        'contains the mutation and a fresh instance replaying the journal '
-        'agrees',
-        () async {
-          await storage.enqueueMutation(_createMutation('req-1')).timeout(_timeout);
+      test('dequeueMutation: when the journal append fails, the queue still '
+          'contains the mutation and a fresh instance replaying the journal '
+          'agrees', () async {
+        await storage
+            .enqueueMutation(_createMutation('req-1'))
+            .timeout(_timeout);
 
-          final journalFile = File('${tempDir.path}/pending_mutations.jsonl');
-          final result = await Process.run('chmod', ['444', journalFile.path]);
-          expect(result.exitCode, equals(0));
+        final journalFile = File('${tempDir.path}/pending_mutations.jsonl');
+        final result = await Process.run('chmod', ['444', journalFile.path]);
+        expect(result.exitCode, equals(0));
 
-          try {
-            await expectLater(
-              storage.dequeueMutation('req-1'),
-              throwsA(anything),
-            ).timeout(_timeout);
+        try {
+          await expectLater(
+            storage.dequeueMutation('req-1'),
+            throwsA(anything),
+          ).timeout(_timeout);
 
-            final pending = await storage
-                .getPendingMutations()
-                .timeout(_timeout);
-            expect(pending.any((m) => m.requestId == 'req-1'), isTrue);
-          } finally {
-            await Process.run('chmod', ['644', journalFile.path]);
-          }
+          final pending = await storage.getPendingMutations().timeout(_timeout);
+          expect(pending.any((m) => m.requestId == 'req-1'), isTrue);
+        } finally {
+          await Process.run('chmod', ['644', journalFile.path]);
+        }
 
-          await storage.dispose().timeout(_timeout);
+        await storage.dispose().timeout(_timeout);
 
-          final freshStorage = JsonFileStorage(basePath: tempDir.path);
-          await freshStorage.initialize().timeout(_timeout);
-          final freshPending = await freshStorage
-              .getPendingMutations()
-              .timeout(_timeout);
-          expect(freshPending.any((m) => m.requestId == 'req-1'), isTrue);
-          await freshStorage.dispose().timeout(_timeout);
-        },
-      );
+        final freshStorage = JsonFileStorage(basePath: tempDir.path);
+        await freshStorage.initialize().timeout(_timeout);
+        final freshPending = await freshStorage.getPendingMutations().timeout(
+          _timeout,
+        );
+        expect(freshPending.any((m) => m.requestId == 'req-1'), isTrue);
+        await freshStorage.dispose().timeout(_timeout);
+      });
 
       test(
         'happy path: enqueue two, dequeue one, fresh instance replays exactly '
         'the remaining one',
         () async {
-          await storage.enqueueMutation(_createMutation('req-1')).timeout(_timeout);
-          await storage.enqueueMutation(_createMutation('req-2')).timeout(_timeout);
+          await storage
+              .enqueueMutation(_createMutation('req-1'))
+              .timeout(_timeout);
+          await storage
+              .enqueueMutation(_createMutation('req-2'))
+              .timeout(_timeout);
           await storage.dequeueMutation('req-1').timeout(_timeout);
 
           await storage.dispose().timeout(_timeout);
 
           final freshStorage = JsonFileStorage(basePath: tempDir.path);
           await freshStorage.initialize().timeout(_timeout);
-          final pending = await freshStorage
-              .getPendingMutations()
-              .timeout(_timeout);
+          final pending = await freshStorage.getPendingMutations().timeout(
+            _timeout,
+          );
           expect(pending, hasLength(1));
           expect(pending.single.requestId, equals('req-2'));
           await freshStorage.dispose().timeout(_timeout);

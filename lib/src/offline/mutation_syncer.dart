@@ -308,7 +308,7 @@ class MutationSyncer implements MutationHandler {
     await _storage.dispose();
   }
 
-   @visibleForTesting
+  @visibleForTesting
   Duration retryDelayForAttempt(int attempt) {
     // Clamp the shift exponent BEFORE the multiply: `1 << attempt` overflows
     // 64-bit int arithmetic past attempt ~50 and the delay collapses to 0
@@ -326,8 +326,6 @@ class MutationSyncer implements MutationHandler {
       ),
     );
   }
-
-
 
   bool _isPureInsert(PendingMutation mutation) {
     final changes = mutation.optimisticChanges;
@@ -401,7 +399,7 @@ class MutationSyncer implements MutationHandler {
     return allLanded ? _TimeoutOutcome.landed : _TimeoutOutcome.notLanded;
   }
 
-   bool _jsonEquals(Map<String, dynamic>? a, Map<String, dynamic>? b) {
+  bool _jsonEquals(Map<String, dynamic>? a, Map<String, dynamic>? b) {
     if (a == null || b == null) return a == b;
     if (a.length != b.length) return false;
     for (final key in a.keys) {

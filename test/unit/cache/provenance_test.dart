@@ -57,7 +57,10 @@ void main() {
     late TableCache<String> table;
 
     setUp(() {
-      table = TableCache<String>(tableName: 'strays', decoder: _StringDecoder());
+      table = TableCache<String>(
+        tableName: 'strays',
+        decoder: _StringDecoder(),
+      );
     });
 
     test(
@@ -74,27 +77,27 @@ void main() {
       },
     );
 
-    test(
-      'a row evicted by the stale-stray sweep nulls its rowNotifier',
-      () {
-        table.applySnapshot(_rowList(['a']), _ctx, querySetId: 1);
-        table.insertRow('stray');
-        final strayNotifier = table.rowNotifier('stray');
-        expect(strayNotifier.value, equals('stray'));
+    test('a row evicted by the stale-stray sweep nulls its rowNotifier', () {
+      table.applySnapshot(_rowList(['a']), _ctx, querySetId: 1);
+      table.insertRow('stray');
+      final strayNotifier = table.rowNotifier('stray');
+      expect(strayNotifier.value, equals('stray'));
 
-        table.applySnapshot(_rowList(['a']), _ctx, querySetId: 2);
+      table.applySnapshot(_rowList(['a']), _ctx, querySetId: 2);
 
-        expect(table.find('stray'), isNull);
-        expect(strayNotifier.value, isNull);
-      },
-    );
+      expect(table.find('stray'), isNull);
+      expect(strayNotifier.value, isNull);
+    });
   });
 
   group('T6 — owner-entry lifecycle across all six removal paths', () {
     late TableCache<String> table;
 
     setUp(() {
-      table = TableCache<String>(tableName: 'strays', decoder: _StringDecoder());
+      table = TableCache<String>(
+        tableName: 'strays',
+        decoder: _StringDecoder(),
+      );
     });
 
     test('(1) _applyChanges delete branch via applyServerDelta', () {
@@ -164,45 +167,39 @@ void main() {
       expect(table.find('hydrated'), isNotNull);
     });
 
-    test(
-      'designed exception: optimistic-delete pendency leaves an owner entry '
-      'with no cache row, resolved by confirm (owner+entry removed)',
-      () {
-        table.applySnapshot(_rowList(['a']), _ctx, querySetId: 1);
-        expect(table.ownerEntryCount, equals(1));
+    test('designed exception: optimistic-delete pendency leaves an owner entry '
+        'with no cache row, resolved by confirm (owner+entry removed)', () {
+      table.applySnapshot(_rowList(['a']), _ctx, querySetId: 1);
+      expect(table.ownerEntryCount, equals(1));
 
-        table.deleteRow('a');
-        expect(table.find('a'), isNull);
-        expect(table.ownerEntryCount, equals(1));
+      table.deleteRow('a');
+      expect(table.find('a'), isNull);
+      expect(table.ownerEntryCount, equals(1));
 
-        table.applyServerDelta(
-          _rowList(['a']),
-          BsatnRowList.empty(),
-          _ctx,
-          querySetId: 1,
-          protectedKeys: const {},
-        );
+      table.applyServerDelta(
+        _rowList(['a']),
+        BsatnRowList.empty(),
+        _ctx,
+        querySetId: 1,
+        protectedKeys: const {},
+      );
 
-        expect(table.ownerEntryCount, equals(0));
-      },
-    );
+      expect(table.ownerEntryCount, equals(0));
+    });
 
-    test(
-      'designed exception: optimistic-delete pendency leaves an owner entry '
-      'with no cache row, resolved by rollback (row restored, ownership '
-      'valid)',
-      () {
-        table.applySnapshot(_rowList(['a']), _ctx, querySetId: 1);
-        table.deleteRow('a');
-        expect(table.find('a'), isNull);
-        expect(table.ownerEntryCount, equals(1));
+    test('designed exception: optimistic-delete pendency leaves an owner entry '
+        'with no cache row, resolved by rollback (row restored, ownership '
+        'valid)', () {
+      table.applySnapshot(_rowList(['a']), _ctx, querySetId: 1);
+      table.deleteRow('a');
+      expect(table.find('a'), isNull);
+      expect(table.ownerEntryCount, equals(1));
 
-        table.insertRow('a');
+      table.insertRow('a');
 
-        expect(table.find('a'), isNotNull);
-        expect(table.ownerEntryCount, equals(1));
-      },
-    );
+      expect(table.find('a'), isNotNull);
+      expect(table.ownerEntryCount, equals(1));
+    });
 
     test('baseline owner-entry count is restored after exercising every '
         'removal path in sequence', () {
@@ -228,74 +225,71 @@ void main() {
     late TableCache<String> table;
 
     setUp(() {
-      table = TableCache<String>(tableName: 'overlap', decoder: _StringDecoder());
+      table = TableCache<String>(
+        tableName: 'overlap',
+        decoder: _StringDecoder(),
+      );
     });
 
-    test(
-      'a row entering two overlapping query sets in one message emits '
-      'exactly one insert event',
-      () {
-        var insertCount = 0;
-        table.onInsert.listen((_) => insertCount++);
+    test('a row entering two overlapping query sets in one message emits '
+        'exactly one insert event', () {
+      var insertCount = 0;
+      table.onInsert.listen((_) => insertCount++);
 
-        table.applyServerDelta(
-          BsatnRowList.empty(),
-          _rowList(['shared']),
-          _ctx,
-          querySetId: 1,
-        );
-        table.applyServerDelta(
-          BsatnRowList.empty(),
-          _rowList(['shared']),
-          _ctx,
-          querySetId: 2,
-        );
+      table.applyServerDelta(
+        BsatnRowList.empty(),
+        _rowList(['shared']),
+        _ctx,
+        querySetId: 1,
+      );
+      table.applyServerDelta(
+        BsatnRowList.empty(),
+        _rowList(['shared']),
+        _ctx,
+        querySetId: 2,
+      );
 
-        expect(insertCount, equals(1));
-        expect(table.ownerEntryCount, equals(1));
-      },
-    );
+      expect(insertCount, equals(1));
+      expect(table.ownerEntryCount, equals(1));
+    });
 
-    test(
-      'a row leaving both overlapping query sets emits exactly one delete '
-      'event, on the set whose removal empties the owner set',
-      () {
-        table.applyServerDelta(
-          BsatnRowList.empty(),
-          _rowList(['shared']),
-          _ctx,
-          querySetId: 1,
-        );
-        table.applyServerDelta(
-          BsatnRowList.empty(),
-          _rowList(['shared']),
-          _ctx,
-          querySetId: 2,
-        );
+    test('a row leaving both overlapping query sets emits exactly one delete '
+        'event, on the set whose removal empties the owner set', () {
+      table.applyServerDelta(
+        BsatnRowList.empty(),
+        _rowList(['shared']),
+        _ctx,
+        querySetId: 1,
+      );
+      table.applyServerDelta(
+        BsatnRowList.empty(),
+        _rowList(['shared']),
+        _ctx,
+        querySetId: 2,
+      );
 
-        var deleteCount = 0;
-        table.onDelete.listen((_) => deleteCount++);
+      var deleteCount = 0;
+      table.onDelete.listen((_) => deleteCount++);
 
-        table.applyServerDelta(
-          _rowList(['shared']),
-          BsatnRowList.empty(),
-          _ctx,
-          querySetId: 1,
-        );
+      table.applyServerDelta(
+        _rowList(['shared']),
+        BsatnRowList.empty(),
+        _ctx,
+        querySetId: 1,
+      );
 
-        expect(deleteCount, equals(0));
-        expect(table.find('shared'), isNotNull);
+      expect(deleteCount, equals(0));
+      expect(table.find('shared'), isNotNull);
 
-        table.applyServerDelta(
-          _rowList(['shared']),
-          BsatnRowList.empty(),
-          _ctx,
-          querySetId: 2,
-        );
+      table.applyServerDelta(
+        _rowList(['shared']),
+        BsatnRowList.empty(),
+        _ctx,
+        querySetId: 2,
+      );
 
-        expect(deleteCount, equals(1));
-        expect(table.find('shared'), isNull);
-      },
-    );
+      expect(deleteCount, equals(1));
+      expect(table.find('shared'), isNull);
+    });
   });
 }
