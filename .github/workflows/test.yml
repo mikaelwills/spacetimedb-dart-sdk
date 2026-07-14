@@ -14,7 +14,7 @@ env:
   # assertion fails loudly and we upgrade this env var deliberately (and
   # verify nothing broke) rather than silently tracking latest. Update this
   # in lockstep when `spacetime version upgrade` happens locally.
-  SPACETIMEDB_VERSION: '2.6.0'
+  SPACETIMEDB_VERSION: '2.6.1'
 
 jobs:
   analyze:
