@@ -27,8 +27,7 @@ class _LogDecoder extends RowDecoder<_LogRow> {
   Map<String, dynamic> toJson(_LogRow row) => {'text': row.text};
 
   @override
-  _LogRow fromJson(Map<String, dynamic> json) =>
-      _LogRow(json['text'] ?? '');
+  _LogRow fromJson(Map<String, dynamic> json) => _LogRow(json['text'] ?? '');
 }
 
 MutationSyncer _syncer(

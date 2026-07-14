@@ -43,10 +43,8 @@ class _EventDecoder extends RowDecoder<_Event> {
   };
 
   @override
-  _Event fromJson(Map<String, dynamic> json) => _Event(
-    json['name'] ?? '',
-    Map<String, dynamic>.from(json['meta'] ?? {}),
-  );
+  _Event fromJson(Map<String, dynamic> json) =>
+      _Event(json['name'] ?? '', Map<String, dynamic>.from(json['meta'] ?? {}));
 }
 
 MutationSyncer _syncer(
