@@ -38,7 +38,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://install.spacetimedb.com | sh
 
 ```yaml
 dependencies:
-  spacetimedb_sdk: ^2.2.0
+  spacetimedb_sdk: ^2.3.0
 ```
 
 ### 3. Generate client code from your module
@@ -319,6 +319,8 @@ The subtypes let you narrow when you care:
 - `SpacetimeDbSchemaException`: generated-client / server schema mismatch.
 - `SpacetimeDbProtocolException`: BSATN decode or message-shape error.
 - `SpacetimeDbSubscriptionException`: server rejected a subscription query.
+- `SpacetimeDbStorageException`: a post-send offline-queue storage operation failed (e.g. dequeue after the server accepted the mutation). Classified as storage rather than network so a disk fault isn't mistaken for a dropped connection.
+- `SpacetimeDbQueueFullException`: the offline queue hit `maxQueueLength` under `OverflowStrategy.rejectNew`; thrown at enqueue time before any optimistic change is applied. See [queuePolicy](#bounding-the-queue-queuepolicy).
 
 ## Recipes
 
@@ -567,6 +569,33 @@ When offline storage is configured:
 - Cached table snapshots load during `create()`, so reads work without network.
 - Reducer calls while disconnected return `TransactionResult.pending` and queue on disk.
 - On reconnect, queued mutations replay in order. Failed mutations roll back (including their optimistic changes).
+
+### Bounding the queue: `queuePolicy`
+
+By default the queue is unbounded — no age limit, no length cap, every queued mutation replays on reconnect. Pass an `OfflineQueuePolicy` to `create()` to bound it:
+
+```dart
+final client = await SpacetimeDbClient.create(
+  host: '...',
+  database: 'myapp',
+  offlineStorage: JsonFileStorage(basePath: '/path/to/cache'),
+  queuePolicy: OfflineQueuePolicy(
+    maxMutationAge: Duration(hours: 24),
+    maxQueueLength: 500,
+    overflow: OverflowStrategy.dropOldest,
+    onBeforeReplay: (mutation) =>
+        mutation.reducerName == 'sendTypingIndicator'
+            ? ReplayDecision.discard
+            : ReplayDecision.replay,
+    maxRetainedFailures: 20,
+  ),
+);
+```
+
+- **`maxMutationAge`**: mutations older than this at flush time are discarded (optimistic changes rolled back, surfaced as a failed `MutationSyncResult` with `expired: true`) instead of replayed. `null` = no age limit.
+- **`maxQueueLength`**: enqueue-time bound. At the limit `overflow` decides — `rejectNew` throws `SpacetimeDbQueueFullException` before any optimistic change is applied; `dropOldest` evicts and rolls back the oldest queued mutation to make room.
+- **`onBeforeReplay`**: per-mutation veto called at flush time. Return `ReplayDecision.discard` to drop a stale mutation through the same surfaced path as expiry. Runs on the sync path — keep it fast.
+- **`maxRetainedFailures`**: how many recent failed `MutationSyncResult`s `SyncState.recentFailures` keeps for UIs. `failedCount` always reflects the true total. `null` retains every failure; default is 20.
 
 ### The `OfflineStorage` interface
 
