@@ -79,9 +79,6 @@ jobs:
           rustup toolchain install 1.94.0 --profile minimal
           rustup default 1.94.0
           rustup target add wasm32-unknown-unknown
-          # Pinned: floating `stable` (>=1.95) rejects ethnum 1.5.2's transmute
-          # (E0512) when building the SpacetimeDB test module to wasm32. 1.94.0
-          # compiles it. Bump alongside SPACETIMEDB_VERSION after verifying.
 
       - name: Cache cargo build for test module
         uses: Swatinem/rust-cache@v2
