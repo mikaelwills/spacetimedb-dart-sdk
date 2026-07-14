@@ -163,7 +163,7 @@ class TableCache<T> {
       for (final pk in inserts.getRows().map(
         (bytes) => decoder.getPrimaryKey(decoder.decode(BsatnDecoder(bytes))),
       ))
-        if (pk != null && (_rowOwners[pk]?.isNotEmpty ?? false)) pk,
+        if (pk != null && _rowOwners[pk]?.isNotEmpty == true) pk,
     };
 
     final changes = _applyChanges(
@@ -688,8 +688,9 @@ class TableCache<T> {
   bool _jsonEquals(Map<String, dynamic> a, Map<String, dynamic> b) {
     if (a.length != b.length) return false;
     for (final entry in a.entries) {
-      if (!b.containsKey(entry.key) || b[entry.key] != entry.value)
+      if (!b.containsKey(entry.key) || b[entry.key] != entry.value) {
         return false;
+      }
     }
     return true;
   }

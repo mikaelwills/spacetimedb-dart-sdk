@@ -44,7 +44,7 @@ class _EventDecoder extends RowDecoder<_Event> {
 
   @override
   _Event fromJson(Map<String, dynamic> json) => _Event(
-    json['name'] as String,
+    json['name'] ?? '',
     Map<String, dynamic>.from(json['meta'] ?? {}),
   );
 }

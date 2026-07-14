@@ -18,7 +18,7 @@ class _StringDecoder extends RowDecoder<String> {
   Map<String, dynamic>? toJson(String row) => {'v': row};
 
   @override
-  String? fromJson(Map<String, dynamic> json) => json['v'] as String?;
+  String? fromJson(Map<String, dynamic> json) => json['v'] ?? '';
 }
 
 BsatnRowList _rowList(List<String> rows) {

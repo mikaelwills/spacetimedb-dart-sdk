@@ -103,20 +103,6 @@ class OptimisticStateManager {
     return ids;
   }
 
-  /// True iff no pending optimistic entry already sits on (tableName, pk) — i.e.
-  /// the row currently at that pk is a committed row, not another overlay.
-  bool _pkHasCommittedBase(String tableName, dynamic pk) {
-    if (pk == null) return true;
-    for (final entries in _entries.values) {
-      for (final entry in entries) {
-        if (entry.tableName == tableName && entry.primaryKey == pk) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }
-
   void applyOptimisticChanges(
     String requestId,
     List<OptimisticChange>? changes,
@@ -245,8 +231,8 @@ class OptimisticStateManager {
     String tableName,
     dynamic primaryKey,
   ) {
-    return _confirmedOverlayKeys[requestId]?[tableName]?.contains(primaryKey) ??
-        false;
+    return _confirmedOverlayKeys[requestId]?[tableName]?.contains(primaryKey) ==
+        true;
   }
 
   void clearConfirmedOverlay(String requestId) {
@@ -325,6 +311,20 @@ class OptimisticStateManager {
     (_committedStash[tableName] ??= {})[primaryKey] = _StashedCommit(
       committedRowJson,
     );
+  }
+
+  /// True iff no pending optimistic entry already sits on (tableName, pk) — i.e.
+  /// the row currently at that pk is a committed row, not another overlay.
+  bool _pkHasCommittedBase(String tableName, dynamic pk) {
+    if (pk == null) return true;
+    for (final entries in _entries.values) {
+      for (final entry in entries) {
+        if (entry.tableName == tableName && entry.primaryKey == pk) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   bool _isKeyStillOptimistic(String tableName, dynamic primaryKey) {

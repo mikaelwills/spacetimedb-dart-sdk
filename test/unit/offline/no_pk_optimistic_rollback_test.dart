@@ -24,7 +24,7 @@ class _LogDecoder extends RowDecoder<_LogRow> {
 
   @override
   _LogRow fromJson(Map<String, dynamic> json) =>
-      _LogRow(json['text'] as String);
+      _LogRow(json['text'] ?? '');
 }
 
 void main() {

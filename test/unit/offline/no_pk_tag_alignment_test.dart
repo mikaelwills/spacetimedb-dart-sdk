@@ -23,7 +23,7 @@ class _StringDecoder extends RowDecoder<String> {
   @override
   Map<String, dynamic> toJson(String row) => {'v': row};
   @override
-  String fromJson(Map<String, dynamic> json) => json['v'] as String;
+  String fromJson(Map<String, dynamic> json) => json['v'] ?? '';
 }
 
 Uint8List _enc(String v) {
