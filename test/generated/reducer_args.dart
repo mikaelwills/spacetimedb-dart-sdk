@@ -19,6 +19,33 @@ class BulkInsertEntitiesArgsDecoder
   }
 }
 
+class CreateCadenceItemArgs {
+  CreateCadenceItemArgs({
+    required this.id,
+    required this.cadence,
+    required this.label,
+  });
+
+  final int id;
+
+  final ScheduleAt cadence;
+
+  final String label;
+}
+
+class CreateCadenceItemArgsDecoder
+    implements ReducerArgDecoder<CreateCadenceItemArgs> {
+  const CreateCadenceItemArgsDecoder();
+
+  @override
+  CreateCadenceItemArgs decode(BsatnDecoder decoder) {
+    final id = decoder.readU32();
+    final cadence = ScheduleAt.decode(decoder);
+    final label = decoder.readString();
+    return CreateCadenceItemArgs(id: id, cadence: cadence, label: label);
+  }
+}
+
 class CreateFolderArgs {
   CreateFolderArgs({required this.path, required this.name});
 
@@ -389,6 +416,10 @@ class UpdateNoteGuardedArgsDecoder
 const bulkInsertEntitiesDef = ReducerDef<BulkInsertEntitiesArgs>(
   'bulk_insert_entities',
   BulkInsertEntitiesArgsDecoder(),
+);
+const createCadenceItemDef = ReducerDef<CreateCadenceItemArgs>(
+  'create_cadence_item',
+  CreateCadenceItemArgsDecoder(),
 );
 const createFolderDef = ReducerDef<CreateFolderArgs>(
   'create_folder',

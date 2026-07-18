@@ -35,6 +35,9 @@ export 'src/auth/in_memory_token_store.dart';
 export 'src/auth/oidc_helper.dart';
 export 'src/auth/identity.dart';
 
+// Special types
+export 'src/types/schedule_at.dart';
+
 // Offline support (consumer-facing)
 export 'src/offline/offline_storage.dart';
 export 'src/offline/offline_queue_policy.dart';

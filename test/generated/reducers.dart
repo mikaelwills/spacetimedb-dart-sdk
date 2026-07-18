@@ -33,6 +33,32 @@ class Reducers {
     );
   }
 
+  /// Calls the `create_cadence_item` reducer.
+  ///
+  /// Returns a [TransactionResult] on success. Throws
+  /// [SpacetimeDbReducerException] if the reducer returns `Failed` or
+  /// `InternalError`. The returned status is one of `Committed`,
+  /// `Pending` (queued to offline storage), or `Dropped` (skipped via
+  /// `dropIfOffline: true` while offline).
+  Future<TransactionResult> createCadenceItem({
+    required int id,
+    required ScheduleAt cadence,
+    required String label,
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    encoder.writeU32(id);
+    cadence.encode(encoder);
+    encoder.writeString(label);
+    return await _reducerCaller.call(
+      createCadenceItemDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
   /// Calls the `create_folder` reducer.
   ///
   /// Returns a [TransactionResult] on success. Throws
@@ -463,6 +489,19 @@ class Reducers {
       final args = event.reducerArgs;
       if (args is! BulkInsertEntitiesArgs) return;
       callback(ctx, args.count);
+    });
+  }
+
+  StreamSubscription<void> onCreateCadenceItem(
+    void Function(EventContext ctx, int id, ScheduleAt cadence, String label)
+    callback,
+  ) {
+    return _reducerEmitter.on(createCadenceItemDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! CreateCadenceItemArgs) return;
+      callback(ctx, args.id, args.cadence, args.label);
     });
   }
 

@@ -433,6 +433,8 @@ class TableGenerator {
       switch (type) {
         IdentityType() => '$fieldName.toJson()',
         TimestampType() => '$fieldName.toInt()',
+        TimeDurationType() => '$fieldName.toInt()',
+        ScheduleAtType() => '$fieldName.toJson()',
         PrimitiveType(kind: PrimitiveKind.u64 || PrimitiveKind.i64) =>
           '$fieldName.toInt()',
         RefType() => '$fieldName.toJson()',
@@ -474,6 +476,9 @@ class TableGenerator {
     return switch (type) {
       IdentityType() => "Identity.fromJson(json['$fieldName'] ?? '')",
       TimestampType() => "Int64(json['$fieldName'] ?? 0)",
+      TimeDurationType() => "Int64(json['$fieldName'] ?? 0)",
+      ScheduleAtType() =>
+        "ScheduleAt.fromJson(Map<String, dynamic>.from(json['$fieldName'] ?? {}))",
       PrimitiveType(kind: PrimitiveKind.u64 || PrimitiveKind.i64) =>
         "Int64(json['$fieldName'] ?? 0)",
       RefType() =>

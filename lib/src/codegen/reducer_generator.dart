@@ -1,11 +1,32 @@
-import 'package:code_builder/code_builder.dart';
+import 'package:code_builder/code_builder.dart' hide TypeDef;
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
 import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
 
 class ReducerGenerator {
   final List<ReducerSchema> reducers;
+  final TypeSpace? typeSpace;
+  final List<TypeDef>? typeDefs;
 
-  ReducerGenerator(this.reducers);
+  ReducerGenerator(this.reducers, {this.typeSpace, this.typeDefs});
+
+  Iterable<Directive> _refTypeImports() {
+    final defs = typeDefs;
+    if (defs == null) return const [];
+    final seen = <String>{};
+    final imports = <Directive>[];
+    for (final reducer in reducers) {
+      for (final param in reducer.params.elements) {
+        if (!param.type.isRef) continue;
+        final refTypeName = param.type.refTypeName(defs);
+        if (refTypeName == null) continue;
+        final fileName = toSnakeCase(refTypeName);
+        if (seen.add(fileName)) {
+          imports.add(Directive.import('$fileName.dart'));
+        }
+      }
+    }
+    return imports;
+  }
 
   String generate() {
     final lib = Library(
@@ -15,6 +36,7 @@ class ReducerGenerator {
               Directive.import('dart:async'),
               Directive.import('package:spacetimedb_sdk/codegen.dart'),
               Directive.import('reducer_args.dart'),
+              ..._refTypeImports(),
             ])
             ..body.add(_buildReducersClass()),
     );
@@ -35,9 +57,10 @@ class ReducerGenerator {
     final lib = Library(
       (b) =>
           b
-            ..directives.add(
+            ..directives.addAll([
               Directive.import('package:spacetimedb_sdk/codegen.dart'),
-            )
+              ..._refTypeImports(),
+            ])
             ..body.addAll(specs),
     );
 
@@ -106,7 +129,9 @@ class ReducerGenerator {
     encoderStatements.writeln('final encoder = BsatnEncoder();');
     for (final param in reducer.params.elements) {
       final paramName = toCamelCase(param.name ?? 'unknown');
-      encoderStatements.writeln('${param.type.encodeExpression(paramName)};');
+      encoderStatements.writeln(
+        '${param.type.encodeExpression(paramName, typeSpace: typeSpace, typeDefs: typeDefs)};',
+      );
     }
     final defName = '${toCamelCase(reducer.name)}Def';
     encoderStatements.writeln(
@@ -130,7 +155,10 @@ class ReducerGenerator {
 
       for (final param in reducer.params.elements) {
         final paramName = toCamelCase(param.name ?? 'unknown');
-        final dartType = param.type.toDartTypeName();
+        final dartType = param.type.toDartTypeName(
+          typeSpace: typeSpace,
+          typeDefs: typeDefs,
+        );
         m.optionalParameters.add(
           Parameter(
             (p) =>
@@ -172,7 +200,10 @@ class ReducerGenerator {
     final callbackParams = StringBuffer('EventContext ctx');
     for (final param in reducer.params.elements) {
       final paramName = toCamelCase(param.name ?? 'unknown');
-      final dartType = param.type.toDartTypeName();
+      final dartType = param.type.toDartTypeName(
+        typeSpace: typeSpace,
+        typeDefs: typeDefs,
+      );
       callbackParams.write(', $dartType $paramName');
     }
 
@@ -220,7 +251,10 @@ class ReducerGenerator {
 
       for (final param in reducer.params.elements) {
         final paramName = toCamelCase(param.name ?? 'unknown');
-        final dartType = param.type.toDartTypeName();
+        final dartType = param.type.toDartTypeName(
+          typeSpace: typeSpace,
+          typeDefs: typeDefs,
+        );
         b.fields.add(
           Field(
             (f) =>
@@ -263,16 +297,9 @@ class ReducerGenerator {
     final decodeBody = StringBuffer();
     for (final param in reducer.params.elements) {
       final paramName = toCamelCase(param.name ?? 'unknown');
-      if (param.type is ArrayType ||
-          param.type is OptionType ||
-          param.type.isPrimitive) {
-        decodeBody.writeln(
-          'final $paramName = ${param.type.decodeExpression()};',
-        );
-      } else {
-        final typeName = _getDartClassName(param.type);
-        decodeBody.writeln('final $paramName = $typeName.decode(decoder);');
-      }
+      decodeBody.writeln(
+        'final $paramName = ${param.type.decodeExpression(typeSpace: typeSpace, typeDefs: typeDefs)};',
+      );
     }
     decodeBody.writeln('return $argsClassName(');
     for (final param in reducer.params.elements) {
@@ -315,9 +342,5 @@ class ReducerGenerator {
     return Code(
       "const $defName = ReducerDef<$argsClassName>('${reducer.name}', $decoderClassName());",
     );
-  }
-
-  String _getDartClassName(AlgebraicType type) {
-    return 'UnknownType';
   }
 }

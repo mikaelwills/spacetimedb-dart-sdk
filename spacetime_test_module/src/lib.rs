@@ -1,6 +1,6 @@
 use spacetimedb::{
     procedure, reducer, table, view, AnonymousViewContext, ProcedureContext, Query,
-    ReducerContext, Table, SpacetimeType,
+    ReducerContext, ScheduleAt, Table, SpacetimeType,
 };
 
 /// Status enum for testing sum types
@@ -358,6 +358,31 @@ pub fn mutate_random_entities(ctx: &ReducerContext, count: u32, seed: u64) {
             ctx.db.entity().id().update(e);
         }
     }
+}
+
+#[table(accessor = scheduled_task, public, scheduled(run_scheduled_task))]
+pub struct ScheduledTask {
+    #[primary_key]
+    #[auto_inc]
+    pub scheduled_id: u64,
+    pub scheduled_at: ScheduleAt,
+    pub label: String,
+}
+
+#[reducer]
+pub fn run_scheduled_task(_ctx: &ReducerContext, _task: ScheduledTask) {}
+
+#[table(accessor = cadence_item, public)]
+pub struct CadenceItem {
+    #[primary_key]
+    pub id: u32,
+    pub cadence: ScheduleAt,
+    pub label: String,
+}
+
+#[reducer]
+pub fn create_cadence_item(ctx: &ReducerContext, id: u32, cadence: ScheduleAt, label: String) {
+    ctx.db.cadence_item().insert(CadenceItem { id, cadence, label });
 }
 
 /// Initialize with some test data

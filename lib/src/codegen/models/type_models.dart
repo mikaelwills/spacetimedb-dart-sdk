@@ -61,7 +61,7 @@ class ProductType {
 
 class ProductElement {
   final String? name;
-  final AlgebraicType type;
+  AlgebraicType type;
 
   ProductElement({required this.type, this.name});
 
