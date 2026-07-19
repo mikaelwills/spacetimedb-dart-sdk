@@ -39,7 +39,7 @@ class Note {
     encoder.writeString(title);
     encoder.writeString(content);
     encoder.writeU64(timestamp);
-    status.encode(encoder);
+    status.encodeBsatn(encoder);
   }
 
   static Note decodeBsatn(BsatnDecoder decoder) {
@@ -48,7 +48,7 @@ class Note {
       title: decoder.readString(),
       content: decoder.readString(),
       timestamp: decoder.readU64(),
-      status: NoteStatus.decode(decoder),
+      status: NoteStatus.decodeBsatn(decoder),
     );
   }
 
@@ -75,7 +75,7 @@ class Note {
 
   @override
   int get hashCode {
-    return Object.hash(id, title, content, timestamp, status);
+    return Object.hashAll([id, title, content, timestamp, status]);
   }
 
   @override

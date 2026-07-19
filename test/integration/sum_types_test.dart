@@ -112,7 +112,7 @@ void main() {
       // Test Draft variant (tag 0, no payload)
       const originalDraft = NoteStatusDraft();
       final encoder1 = BsatnEncoder();
-      originalDraft.encode(encoder1); // Generated encode method
+      originalDraft.encodeBsatn(encoder1); // Generated encode method
       final draftBytes = encoder1.toBytes();
 
       expect(
@@ -122,7 +122,7 @@ void main() {
       );
       expect(draftBytes[0], equals(0), reason: 'Draft should have tag 0');
 
-      final decodedDraft = NoteStatus.decode(BsatnDecoder(draftBytes));
+      final decodedDraft = NoteStatus.decodeBsatn(BsatnDecoder(draftBytes));
       expect(
         decodedDraft,
         isA<NoteStatusDraft>(),
@@ -132,7 +132,7 @@ void main() {
       // Test Published variant (tag 1, u64 payload)
       final originalPublished = NoteStatusPublished(Int64(1234567890));
       final encoder2 = BsatnEncoder();
-      originalPublished.encode(encoder2); // Generated encode method
+      originalPublished.encodeBsatn(encoder2); // Generated encode method
       final publishedBytes = encoder2.toBytes();
 
       expect(
@@ -146,7 +146,9 @@ void main() {
         reason: 'Published should have tag 1',
       );
 
-      final decodedPublished = NoteStatus.decode(BsatnDecoder(publishedBytes));
+      final decodedPublished = NoteStatus.decodeBsatn(
+        BsatnDecoder(publishedBytes),
+      );
       expect(
         decodedPublished,
         isA<NoteStatusPublished>(),
@@ -163,7 +165,7 @@ void main() {
       // Test Archived variant (tag 2, no payload)
       const originalArchived = NoteStatusArchived();
       final encoder3 = BsatnEncoder();
-      originalArchived.encode(encoder3); // Generated encode method
+      originalArchived.encodeBsatn(encoder3); // Generated encode method
       final archivedBytes = encoder3.toBytes();
 
       expect(
@@ -173,7 +175,9 @@ void main() {
       );
       expect(archivedBytes[0], equals(2), reason: 'Archived should have tag 2');
 
-      final decodedArchived = NoteStatus.decode(BsatnDecoder(archivedBytes));
+      final decodedArchived = NoteStatus.decodeBsatn(
+        BsatnDecoder(archivedBytes),
+      );
       expect(
         decodedArchived,
         isA<NoteStatusArchived>(),
@@ -309,7 +313,9 @@ void main() {
           encoder.writeU8(1);
           encoder.writeU64(Int64(9999));
           final bytesWithPayload = encoder.toBytes();
-          final decoded = NoteStatus.decode(BsatnDecoder(bytesWithPayload));
+          final decoded = NoteStatus.decodeBsatn(
+            BsatnDecoder(bytesWithPayload),
+          );
           expect(
             decoded.runtimeType,
             equals(testCase.type),
@@ -317,7 +323,7 @@ void main() {
                 'Tag ${testCase.tag} should decode to ${testCase.description}',
           );
         } else {
-          final decoded = NoteStatus.decode(BsatnDecoder(bytes));
+          final decoded = NoteStatus.decodeBsatn(BsatnDecoder(bytes));
           expect(
             decoded.runtimeType,
             equals(testCase.type),

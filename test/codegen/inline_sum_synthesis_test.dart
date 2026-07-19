@@ -126,7 +126,10 @@ void main() {
       expect(args, isNot(contains('UnknownType')));
       expect(args, isNot(contains('dynamic nextPhase')));
       expect(args, contains('final Next_phase nextPhase;'));
-      expect(args, contains('final nextPhase = Next_phase.decode(decoder);'));
+      expect(
+        args,
+        contains('final nextPhase = Next_phase.decodeBsatn(decoder);'),
+      );
       expect(args, contains("import 'next_phase.dart';"));
 
       expect(reducers, isNot(contains('dynamic nextPhase')));
@@ -167,8 +170,8 @@ void main() {
           files.firstWhere((f) => f.filename == 'widget.dart').content;
 
       expect(widget, contains('final Phase phase;'));
-      expect(widget, contains('phase.encode(encoder);'));
-      expect(widget, contains('phase: Phase.decode(decoder)'));
+      expect(widget, contains('phase.encodeBsatn(encoder);'));
+      expect(widget, contains('phase: Phase.decodeBsatn(decoder)'));
       expect(widget, isNot(contains('IrSumType')));
     });
 

@@ -385,6 +385,36 @@ pub fn create_cadence_item(ctx: &ReducerContext, id: u32, cadence: ScheduleAt, l
     ctx.db.cadence_item().insert(CadenceItem { id, cadence, label });
 }
 
+/// Standalone `SpacetimeType` product type (NOT a table) — exercises
+/// product-type class generation. Used as a reducer param below so it also
+/// appears as a `RefType` in reducers.dart (product-ref encode path).
+#[derive(SpacetimeType, Debug, Clone, PartialEq)]
+pub struct ServerPosition {
+    pub x: f32,
+    pub y: f32,
+}
+
+#[reducer]
+pub fn move_to(ctx: &ReducerContext, id: u64, position: ServerPosition) {
+    if let Some(mut e) = ctx.db.entity().id().find(id) {
+        e.x = position.x;
+        e.y = position.y;
+        ctx.db.entity().id().update(e);
+    }
+}
+
+/// Single-field table — exercises the `Object.hash` single-arg codegen path.
+#[table(accessor = single_field, public)]
+pub struct SingleField {
+    #[primary_key]
+    pub id: u32,
+}
+
+#[reducer]
+pub fn create_single_field(ctx: &ReducerContext, id: u32) {
+    ctx.db.single_field().insert(SingleField { id });
+}
+
 /// Initialize with some test data
 #[reducer(init)]
 pub fn init(ctx: &ReducerContext) {

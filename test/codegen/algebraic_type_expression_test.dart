@@ -1,4 +1,4 @@
-import 'package:spacetimedb_sdk/src/codegen/ir/algebraic_type.dart';
+import 'package:spacetimedb_sdk/src/codegen/models/type_models.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -146,12 +146,39 @@ void main() {
       expect(t.encodeExpression('dur'), equals('encoder.writeI64(dur)'));
     });
 
-    test('ScheduleAtType emits value.encode(encoder)', () {
+    test('ScheduleAtType emits value.encodeBsatn(encoder)', () {
       const t = ScheduleAtType();
       expect(
         t.encodeExpression('nextTick'),
-        equals('nextTick.encode(encoder)'),
+        equals('nextTick.encodeBsatn(encoder)'),
       );
+    });
+
+    test('RefType to a sum type emits value.encodeBsatn(encoder)', () {
+      final typeSpace = TypeSpace(
+        types: [TypeSpaceEntry(sum: SumType(variants: []))],
+      );
+      const t = RefType(0);
+      expect(
+        t.encodeExpression('status', typeSpace: typeSpace),
+        equals('status.encodeBsatn(encoder)'),
+      );
+    });
+
+    test('RefType to a product type emits value.encodeBsatn(encoder)', () {
+      final typeSpace = TypeSpace(
+        types: [TypeSpaceEntry(product: ProductType(elements: []))],
+      );
+      const t = RefType(0);
+      expect(
+        t.encodeExpression('pos', typeSpace: typeSpace),
+        equals('pos.encodeBsatn(encoder)'),
+      );
+    });
+
+    test('RefType with no typeSpace still emits encodeBsatn', () {
+      const t = RefType(0);
+      expect(t.encodeExpression('thing'), equals('thing.encodeBsatn(encoder)'));
     });
 
     test('IrProductType throws StateError', () {
@@ -240,9 +267,51 @@ void main() {
       expect(t.decodeExpression(), equals('decoder.readI64()'));
     });
 
-    test('ScheduleAtType emits ScheduleAt.decode(decoder)', () {
+    test('ScheduleAtType emits ScheduleAt.decodeBsatn(decoder)', () {
       const t = ScheduleAtType();
-      expect(t.decodeExpression(), equals('ScheduleAt.decode(decoder)'));
+      expect(t.decodeExpression(), equals('ScheduleAt.decodeBsatn(decoder)'));
+    });
+
+    test('RefType to a sum type emits Name.decodeBsatn(decoder)', () {
+      final typeSpace = TypeSpace(
+        types: [TypeSpaceEntry(sum: SumType(variants: []))],
+      );
+      const t = RefType(0);
+      expect(
+        t.decodeExpression(
+          typeSpace: typeSpace,
+          typeDefs: [
+            TypeDef(
+              scope: const [],
+              name: 'Status',
+              typeRef: 0,
+              customOrdering: false,
+            ),
+          ],
+        ),
+        equals('Status.decodeBsatn(decoder)'),
+      );
+    });
+
+    test('RefType to a product type emits Name.decodeBsatn(decoder)', () {
+      final typeSpace = TypeSpace(
+        types: [TypeSpaceEntry(product: ProductType(elements: []))],
+      );
+      const t = RefType(0);
+      expect(
+        t.decodeExpression(
+          typeSpace: typeSpace,
+          typeDefs: [
+            TypeDef(
+              scope: const [],
+              name: 'Pos',
+              typeRef: 0,
+              customOrdering: false,
+            ),
+          ],
+        ),
+        equals('Pos.decodeBsatn(decoder)'),
+      );
     });
 
     test('IrProductType throws StateError', () {

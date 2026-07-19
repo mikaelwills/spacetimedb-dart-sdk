@@ -27,14 +27,14 @@ class ScheduledTask {
 
   void encodeBsatn(BsatnEncoder encoder) {
     encoder.writeU64(scheduledId);
-    scheduledAt.encode(encoder);
+    scheduledAt.encodeBsatn(encoder);
     encoder.writeString(label);
   }
 
   static ScheduledTask decodeBsatn(BsatnDecoder decoder) {
     return ScheduledTask(
       scheduledId: decoder.readU64(),
-      scheduledAt: ScheduleAt.decode(decoder),
+      scheduledAt: ScheduleAt.decodeBsatn(decoder),
       label: decoder.readString(),
     );
   }
@@ -58,7 +58,7 @@ class ScheduledTask {
 
   @override
   int get hashCode {
-    return Object.hash(scheduledId, scheduledAt, label);
+    return Object.hashAll([scheduledId, scheduledAt, label]);
   }
 
   @override

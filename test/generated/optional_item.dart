@@ -67,7 +67,7 @@ class OptionalItem {
 
   @override
   int get hashCode {
-    return Object.hash(id, nickname, score, resolvedAt);
+    return Object.hashAll([id, nickname, score, resolvedAt]);
   }
 
   @override

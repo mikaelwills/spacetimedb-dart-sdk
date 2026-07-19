@@ -5,15 +5,15 @@ import 'package:spacetimedb_sdk/codegen.dart';
 sealed class NoteStatus {
   const NoteStatus();
 
-  factory NoteStatus.decode(BsatnDecoder decoder) {
+  factory NoteStatus.decodeBsatn(BsatnDecoder decoder) {
     final tag = decoder.readU8();
     switch (tag) {
       case 0:
-        return NoteStatusDraft.decode(decoder);
+        return NoteStatusDraft.decodeBsatn(decoder);
       case 1:
-        return NoteStatusPublished.decode(decoder);
+        return NoteStatusPublished.decodeBsatn(decoder);
       case 2:
-        return NoteStatusArchived.decode(decoder);
+        return NoteStatusArchived.decodeBsatn(decoder);
       default:
         throw Exception('Unknown NoteStatus variant: $tag');
     }
@@ -33,14 +33,14 @@ sealed class NoteStatus {
     }
   }
 
-  void encode(BsatnEncoder encoder);
+  void encodeBsatn(BsatnEncoder encoder);
   Map<String, dynamic> toJson();
 }
 
 class NoteStatusDraft extends NoteStatus {
   const NoteStatusDraft();
 
-  factory NoteStatusDraft.decode(BsatnDecoder decoder) {
+  factory NoteStatusDraft.decodeBsatn(BsatnDecoder decoder) {
     return const NoteStatusDraft();
   }
 
@@ -49,7 +49,7 @@ class NoteStatusDraft extends NoteStatus {
   }
 
   @override
-  void encode(BsatnEncoder encoder) {
+  void encodeBsatn(BsatnEncoder encoder) {
     encoder.writeU8(0);
   }
 
@@ -77,7 +77,7 @@ class NoteStatusDraft extends NoteStatus {
 class NoteStatusPublished extends NoteStatus {
   const NoteStatusPublished(this.value);
 
-  factory NoteStatusPublished.decode(BsatnDecoder decoder) {
+  factory NoteStatusPublished.decodeBsatn(BsatnDecoder decoder) {
     return NoteStatusPublished(decoder.readU64());
   }
 
@@ -88,7 +88,7 @@ class NoteStatusPublished extends NoteStatus {
   final Int64 value;
 
   @override
-  void encode(BsatnEncoder encoder) {
+  void encodeBsatn(BsatnEncoder encoder) {
     encoder.writeU8(1);
     encoder.writeU64(value);
   }
@@ -118,7 +118,7 @@ class NoteStatusPublished extends NoteStatus {
 class NoteStatusArchived extends NoteStatus {
   const NoteStatusArchived();
 
-  factory NoteStatusArchived.decode(BsatnDecoder decoder) {
+  factory NoteStatusArchived.decodeBsatn(BsatnDecoder decoder) {
     return const NoteStatusArchived();
   }
 
@@ -127,7 +127,7 @@ class NoteStatusArchived extends NoteStatus {
   }
 
   @override
-  void encode(BsatnEncoder encoder) {
+  void encodeBsatn(BsatnEncoder encoder) {
     encoder.writeU8(2);
   }
 

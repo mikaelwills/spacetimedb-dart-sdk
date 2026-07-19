@@ -1,4 +1,5 @@
 import 'package:spacetimedb_sdk/src/exceptions.dart';
+import '../codegen_emitter.dart';
 import '../models/type_models.dart';
 
 enum PrimitiveKind {
@@ -195,7 +196,7 @@ sealed class AlgebraicType {
     TimestampType() ||
     TimeDurationType() ||
     ByteArrayType() => 'encoder.$encoderMethod($valueName)',
-    ScheduleAtType() => '$valueName.encode(encoder)',
+    ScheduleAtType() => '$valueName.encodeBsatn(encoder)',
     ArrayType(element: final inner) => () {
       final innerDart = inner.toDartTypeName(
         typeSpace: typeSpace,
@@ -220,7 +221,7 @@ sealed class AlgebraicType {
       );
       return 'encoder.writeOption<$innerDart>($valueName, (value) => $innerExpr)';
     }(),
-    RefType() => '$valueName.encode(encoder)',
+    RefType() => '$valueName.encodeBsatn(encoder)',
     IrProductType() =>
       throw StateError(
         'codegen: unhandled IrProductType in encodeExpression for \$$valueName '
@@ -240,7 +241,7 @@ sealed class AlgebraicType {
         TimestampType() ||
         TimeDurationType() ||
         ByteArrayType() => 'decoder.$decoderMethod()',
-        ScheduleAtType() => 'ScheduleAt.decode(decoder)',
+        ScheduleAtType() => 'ScheduleAt.decodeBsatn(decoder)',
         ArrayType(element: final inner) => () {
           final innerDart = inner.toDartTypeName(
             typeSpace: typeSpace,
@@ -265,7 +266,7 @@ sealed class AlgebraicType {
         }(),
         RefType() => () {
           final name = toDartTypeName(typeSpace: typeSpace, typeDefs: typeDefs);
-          return '$name.decode(decoder)';
+          return '$name.decodeBsatn(decoder)';
         }(),
         IrProductType() =>
           throw StateError(
@@ -353,15 +354,10 @@ sealed class AlgebraicType {
     if (typeSpace != null && typeDefs != null) {
       final typeDef = typeDefs.where((td) => td.typeRef == index).firstOrNull;
       if (typeDef != null && typeDef.name.isNotEmpty) {
-        return _toPascalCase(typeDef.name);
+        return toTypeClassName(typeDef.name);
       }
     }
     return 'dynamic';
-  }
-
-  static String _toPascalCase(String input) {
-    if (input.isEmpty) return input;
-    return input[0].toUpperCase() + input.substring(1);
   }
 }
 

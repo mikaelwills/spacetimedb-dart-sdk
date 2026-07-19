@@ -23,14 +23,14 @@ class CadenceItem {
 
   void encodeBsatn(BsatnEncoder encoder) {
     encoder.writeU32(id);
-    cadence.encode(encoder);
+    cadence.encodeBsatn(encoder);
     encoder.writeString(label);
   }
 
   static CadenceItem decodeBsatn(BsatnDecoder decoder) {
     return CadenceItem(
       id: decoder.readU32(),
-      cadence: ScheduleAt.decode(decoder),
+      cadence: ScheduleAt.decodeBsatn(decoder),
       label: decoder.readString(),
     );
   }
@@ -50,7 +50,7 @@ class CadenceItem {
 
   @override
   int get hashCode {
-    return Object.hash(id, cadence, label);
+    return Object.hashAll([id, cadence, label]);
   }
 
   @override

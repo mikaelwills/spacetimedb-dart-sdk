@@ -40,7 +40,9 @@ class SumTypeGenerator {
     for (var i = 0; i < sumType.variants.length; i++) {
       final variant = sumType.variants[i];
       final variantClassName = _getVariantClassName(variant, i);
-      switchCases.writeln('case $i: return $variantClassName.decode(decoder);');
+      switchCases.writeln(
+        'case $i: return $variantClassName.decodeBsatn(decoder);',
+      );
     }
 
     final fromJsonCases = StringBuffer();
@@ -57,7 +59,7 @@ class SumTypeGenerator {
 sealed class $enumName {
   const $enumName();
 
-  factory $enumName.decode(BsatnDecoder decoder) {
+  factory $enumName.decodeBsatn(BsatnDecoder decoder) {
     final tag = decoder.readU8();
     switch (tag) {
 $switchCases      default: throw Exception('Unknown $enumName variant: \$tag');
@@ -71,7 +73,7 @@ $fromJsonCases      default: throw Exception('Unknown $enumName variant: \$type'
     }
   }
 
-  void encode(BsatnEncoder encoder);
+  void encodeBsatn(BsatnEncoder encoder);
   Map<String, dynamic> toJson();
 }
 ''');
@@ -116,7 +118,7 @@ $fromJsonCases      default: throw Exception('Unknown $enumName variant: \$type'
             (c) =>
                 c
                   ..factory = true
-                  ..name = 'decode'
+                  ..name = 'decodeBsatn'
                   ..requiredParameters.add(
                     Parameter(
                       (p) =>
@@ -149,7 +151,7 @@ $fromJsonCases      default: throw Exception('Unknown $enumName variant: \$type'
           Method(
             (m) =>
                 m
-                  ..name = 'encode'
+                  ..name = 'encodeBsatn'
                   ..annotations.add(refer('override'))
                   ..returns = refer('void')
                   ..requiredParameters.add(
@@ -231,7 +233,7 @@ $fromJsonCases      default: throw Exception('Unknown $enumName variant: \$type'
             (c) =>
                 c
                   ..factory = true
-                  ..name = 'decode'
+                  ..name = 'decodeBsatn'
                   ..requiredParameters.add(
                     Parameter(
                       (p) =>
@@ -264,7 +266,7 @@ $fromJsonCases      default: throw Exception('Unknown $enumName variant: \$type'
           Method(
             (m) =>
                 m
-                  ..name = 'encode'
+                  ..name = 'encodeBsatn'
                   ..annotations.add(refer('override'))
                   ..returns = refer('void')
                   ..requiredParameters.add(
@@ -362,7 +364,7 @@ $fromJsonCases      default: throw Exception('Unknown $enumName variant: \$type'
           (c) =>
               c
                 ..factory = true
-                ..name = 'decode'
+                ..name = 'decodeBsatn'
                 ..requiredParameters.add(
                   Parameter(
                     (p) =>
@@ -397,7 +399,7 @@ $fromJsonCases      default: throw Exception('Unknown $enumName variant: \$type'
         Method(
           (m) =>
               m
-                ..name = 'encode'
+                ..name = 'encodeBsatn'
                 ..annotations.add(refer('override'))
                 ..returns = refer('void')
                 ..requiredParameters.add(
@@ -497,7 +499,7 @@ $fromJsonCases      default: throw Exception('Unknown $enumName variant: \$type'
           (c) =>
               c
                 ..factory = true
-                ..name = 'decode'
+                ..name = 'decodeBsatn'
                 ..requiredParameters.add(
                   Parameter(
                     (p) =>
@@ -532,7 +534,7 @@ $fromJsonCases      default: throw Exception('Unknown $enumName variant: \$type'
         Method(
           (m) =>
               m
-                ..name = 'encode'
+                ..name = 'encodeBsatn'
                 ..annotations.add(refer('override'))
                 ..returns = refer('void')
                 ..requiredParameters.add(

@@ -6,7 +6,7 @@ import '../codec/bsatn_decoder.dart';
 sealed class ScheduleAt {
   const ScheduleAt();
 
-  factory ScheduleAt.decode(BsatnDecoder decoder) {
+  factory ScheduleAt.decodeBsatn(BsatnDecoder decoder) {
     final tag = decoder.readU8();
     switch (tag) {
       case 0:
@@ -30,7 +30,7 @@ sealed class ScheduleAt {
     }
   }
 
-  void encode(BsatnEncoder encoder);
+  void encodeBsatn(BsatnEncoder encoder);
   Map<String, dynamic> toJson();
 }
 
@@ -40,7 +40,7 @@ class ScheduleAtInterval extends ScheduleAt {
   const ScheduleAtInterval(this.micros);
 
   @override
-  void encode(BsatnEncoder encoder) {
+  void encodeBsatn(BsatnEncoder encoder) {
     encoder.writeU8(0);
     encoder.writeI64(micros);
   }
@@ -69,7 +69,7 @@ class ScheduleAtTime extends ScheduleAt {
   const ScheduleAtTime(this.microsSinceUnixEpoch);
 
   @override
-  void encode(BsatnEncoder encoder) {
+  void encodeBsatn(BsatnEncoder encoder) {
     encoder.writeU8(1);
     encoder.writeI64(microsSinceUnixEpoch);
   }

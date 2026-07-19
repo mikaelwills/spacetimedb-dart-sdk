@@ -48,7 +48,7 @@ class Folder {
 
   @override
   int get hashCode {
-    return Object.hash(path, name, createdAt);
+    return Object.hashAll([path, name, createdAt]);
   }
 
   @override
