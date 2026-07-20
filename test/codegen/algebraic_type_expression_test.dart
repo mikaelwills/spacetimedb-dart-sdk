@@ -1,4 +1,4 @@
-import 'package:spacetimedb_sdk/src/codegen/ir/algebraic_type.dart';
+import 'package:spacetimedb_sdk/src/codegen/models/type_models.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -141,6 +141,46 @@ void main() {
       );
     });
 
+    test('TimeDurationType emits encoder.writeI64(value)', () {
+      const t = TimeDurationType();
+      expect(t.encodeExpression('dur'), equals('encoder.writeI64(dur)'));
+    });
+
+    test('ScheduleAtType emits value.encodeBsatn(encoder)', () {
+      const t = ScheduleAtType();
+      expect(
+        t.encodeExpression('nextTick'),
+        equals('nextTick.encodeBsatn(encoder)'),
+      );
+    });
+
+    test('RefType to a sum type emits value.encodeBsatn(encoder)', () {
+      final typeSpace = TypeSpace(
+        types: [TypeSpaceEntry(sum: SumType(variants: []))],
+      );
+      const t = RefType(0);
+      expect(
+        t.encodeExpression('status', typeSpace: typeSpace),
+        equals('status.encodeBsatn(encoder)'),
+      );
+    });
+
+    test('RefType to a product type emits value.encodeBsatn(encoder)', () {
+      final typeSpace = TypeSpace(
+        types: [TypeSpaceEntry(product: ProductType(elements: []))],
+      );
+      const t = RefType(0);
+      expect(
+        t.encodeExpression('pos', typeSpace: typeSpace),
+        equals('pos.encodeBsatn(encoder)'),
+      );
+    });
+
+    test('RefType with no typeSpace still emits encodeBsatn', () {
+      const t = RefType(0);
+      expect(t.encodeExpression('thing'), equals('thing.encodeBsatn(encoder)'));
+    });
+
     test('IrProductType throws StateError', () {
       const t = IrProductType(elements: []);
       expect(() => t.encodeExpression('value'), throwsA(isA<StateError>()));
@@ -222,6 +262,58 @@ void main() {
       );
     });
 
+    test('TimeDurationType emits decoder.readI64()', () {
+      const t = TimeDurationType();
+      expect(t.decodeExpression(), equals('decoder.readI64()'));
+    });
+
+    test('ScheduleAtType emits ScheduleAt.decodeBsatn(decoder)', () {
+      const t = ScheduleAtType();
+      expect(t.decodeExpression(), equals('ScheduleAt.decodeBsatn(decoder)'));
+    });
+
+    test('RefType to a sum type emits Name.decodeBsatn(decoder)', () {
+      final typeSpace = TypeSpace(
+        types: [TypeSpaceEntry(sum: SumType(variants: []))],
+      );
+      const t = RefType(0);
+      expect(
+        t.decodeExpression(
+          typeSpace: typeSpace,
+          typeDefs: [
+            TypeDef(
+              scope: const [],
+              name: 'Status',
+              typeRef: 0,
+              customOrdering: false,
+            ),
+          ],
+        ),
+        equals('Status.decodeBsatn(decoder)'),
+      );
+    });
+
+    test('RefType to a product type emits Name.decodeBsatn(decoder)', () {
+      final typeSpace = TypeSpace(
+        types: [TypeSpaceEntry(product: ProductType(elements: []))],
+      );
+      const t = RefType(0);
+      expect(
+        t.decodeExpression(
+          typeSpace: typeSpace,
+          typeDefs: [
+            TypeDef(
+              scope: const [],
+              name: 'Pos',
+              typeRef: 0,
+              customOrdering: false,
+            ),
+          ],
+        ),
+        equals('Pos.decodeBsatn(decoder)'),
+      );
+    });
+
     test('IrProductType throws StateError', () {
       const t = IrProductType(elements: []);
       expect(() => t.decodeExpression(), throwsA(isA<StateError>()));
@@ -247,6 +339,18 @@ void main() {
     test('Option<Timestamp> emits Int64?', () {
       const t = OptionType(TimestampType());
       expect(t.toDartTypeName(), equals('Int64?'));
+    });
+  });
+
+  group('AlgebraicType.toDartTypeName for special scheduled types', () {
+    test('TimeDurationType emits Int64', () {
+      const t = TimeDurationType();
+      expect(t.toDartTypeName(), equals('Int64'));
+    });
+
+    test('ScheduleAtType emits ScheduleAt', () {
+      const t = ScheduleAtType();
+      expect(t.toDartTypeName(), equals('ScheduleAt'));
     });
   });
 
@@ -347,6 +451,95 @@ void main() {
       };
       final parsed = AlgebraicType.fromJson(json);
       expect(parsed, isA<IrSumType>());
+    });
+  });
+
+  group('AlgebraicType.fromJson detects special scheduled types', () {
+    Map<String, dynamic> timeDurationJson() => {
+      'Product': {
+        'elements': [
+          {
+            'name': {'some': '__time_duration_micros__'},
+            'algebraic_type': {'I64': []},
+          },
+        ],
+      },
+    };
+
+    Map<String, dynamic> timestampJson() => {
+      'Product': {
+        'elements': [
+          {
+            'name': {'some': '__timestamp_micros_since_unix_epoch__'},
+            'algebraic_type': {'I64': []},
+          },
+        ],
+      },
+    };
+
+    test('TimeDuration special product collapses to TimeDurationType', () {
+      expect(
+        AlgebraicType.fromJson(timeDurationJson()),
+        isA<TimeDurationType>(),
+      );
+    });
+
+    test(
+      'ScheduleAt sum [Interval(TimeDuration), Time(Timestamp)] collapses to '
+      'ScheduleAtType',
+      () {
+        final json = {
+          'Sum': {
+            'variants': [
+              {
+                'name': {'some': 'Interval'},
+                'algebraic_type': timeDurationJson(),
+              },
+              {
+                'name': {'some': 'Time'},
+                'algebraic_type': timestampJson(),
+              },
+            ],
+          },
+        };
+        expect(AlgebraicType.fromJson(json), isA<ScheduleAtType>());
+      },
+    );
+
+    test('reversed [Time, Interval] stays IrSumType (order matters)', () {
+      final json = {
+        'Sum': {
+          'variants': [
+            {
+              'name': {'some': 'Time'},
+              'algebraic_type': timestampJson(),
+            },
+            {
+              'name': {'some': 'Interval'},
+              'algebraic_type': timeDurationJson(),
+            },
+          ],
+        },
+      };
+      expect(AlgebraicType.fromJson(json), isA<IrSumType>());
+    });
+
+    test('lowercase variant names stay IrSumType', () {
+      final json = {
+        'Sum': {
+          'variants': [
+            {
+              'name': {'some': 'interval'},
+              'algebraic_type': timeDurationJson(),
+            },
+            {
+              'name': {'some': 'time'},
+              'algebraic_type': timestampJson(),
+            },
+          ],
+        },
+      };
+      expect(AlgebraicType.fromJson(json), isA<IrSumType>());
     });
   });
 }

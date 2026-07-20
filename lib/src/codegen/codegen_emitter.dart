@@ -11,6 +11,15 @@ String emitLibrary(Library library, {String? header}) {
 
 const kGeneratedHeader = '// GENERATED CODE - DO NOT MODIFY BY HAND';
 
+/// Class name for a named typedef (product/sum). Upper-cases the first
+/// character and preserves the rest, so the emitted class name always matches
+/// how a `RefType` to this type resolves. Do NOT use snake-case-splitting
+/// `toPascalCase` here — that would drift from the reference resolver.
+String toTypeClassName(String input) {
+  if (input.isEmpty) return input;
+  return input[0].toUpperCase() + input.substring(1);
+}
+
 String toPascalCase(String input) {
   return input
       .split('_')

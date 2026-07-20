@@ -66,7 +66,7 @@ class Entity {
 
   @override
   int get hashCode {
-    return Object.hash(id, x, y, z, health);
+    return Object.hashAll([id, x, y, z, health]);
   }
 
   @override

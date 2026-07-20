@@ -1,4 +1,5 @@
 import 'package:spacetimedb_sdk/src/exceptions.dart';
+import '../codegen_emitter.dart';
 import '../models/type_models.dart';
 
 enum PrimitiveKind {
@@ -65,6 +66,9 @@ sealed class AlgebraicType {
               name['some'] == '__timestamp_micros_since_unix_epoch__') {
             return const TimestampType();
           }
+          if (name is Map && name['some'] == '__time_duration_micros__') {
+            return const TimeDurationType();
+          }
         }
       }
       final elements =
@@ -90,6 +94,9 @@ sealed class AlgebraicType {
       final optionInner = _detectOptionInner(variants);
       if (optionInner != null) {
         return OptionType(optionInner);
+      }
+      if (_isScheduleAt(variants)) {
+        return const ScheduleAtType();
       }
       return IrSumType(variants: variants);
     }
@@ -127,6 +134,8 @@ sealed class AlgebraicType {
     PrimitiveType(kind: PrimitiveKind.string) => 'String',
     IdentityType() => 'Identity',
     TimestampType() => 'Int64',
+    TimeDurationType() => 'Int64',
+    ScheduleAtType() => 'ScheduleAt',
     ByteArrayType() => 'List<int>',
     ArrayType(element: final inner) =>
       'List<${inner.toDartTypeName(typeSpace: typeSpace, typeDefs: typeDefs)}>',
@@ -152,6 +161,7 @@ sealed class AlgebraicType {
     PrimitiveType(kind: PrimitiveKind.string) => 'writeString',
     IdentityType() => 'writeIdentity',
     TimestampType() => 'writeI64',
+    TimeDurationType() => 'writeI64',
     ByteArrayType() => 'writeByteArray',
     _ => 'write',
   };
@@ -171,6 +181,7 @@ sealed class AlgebraicType {
     PrimitiveType(kind: PrimitiveKind.string) => 'readString',
     IdentityType() => 'readIdentity',
     TimestampType() => 'readI64',
+    TimeDurationType() => 'readI64',
     ByteArrayType() => 'readByteArray',
     _ => 'read',
   };
@@ -183,7 +194,9 @@ sealed class AlgebraicType {
     PrimitiveType() ||
     IdentityType() ||
     TimestampType() ||
+    TimeDurationType() ||
     ByteArrayType() => 'encoder.$encoderMethod($valueName)',
+    ScheduleAtType() => '$valueName.encodeBsatn(encoder)',
     ArrayType(element: final inner) => () {
       final innerDart = inner.toDartTypeName(
         typeSpace: typeSpace,
@@ -208,7 +221,7 @@ sealed class AlgebraicType {
       );
       return 'encoder.writeOption<$innerDart>($valueName, (value) => $innerExpr)';
     }(),
-    RefType() => '$valueName.encode(encoder)',
+    RefType() => '$valueName.encodeBsatn(encoder)',
     IrProductType() =>
       throw StateError(
         'codegen: unhandled IrProductType in encodeExpression for \$$valueName '
@@ -226,7 +239,9 @@ sealed class AlgebraicType {
         PrimitiveType() ||
         IdentityType() ||
         TimestampType() ||
+        TimeDurationType() ||
         ByteArrayType() => 'decoder.$decoderMethod()',
+        ScheduleAtType() => 'ScheduleAt.decodeBsatn(decoder)',
         ArrayType(element: final inner) => () {
           final innerDart = inner.toDartTypeName(
             typeSpace: typeSpace,
@@ -251,7 +266,7 @@ sealed class AlgebraicType {
         }(),
         RefType() => () {
           final name = toDartTypeName(typeSpace: typeSpace, typeDefs: typeDefs);
-          return '$name.decode(decoder)';
+          return '$name.decodeBsatn(decoder)';
         }(),
         IrProductType() =>
           throw StateError(
@@ -269,6 +284,7 @@ sealed class AlgebraicType {
     PrimitiveType() => true,
     IdentityType() => true,
     TimestampType() => true,
+    TimeDurationType() => true,
     ByteArrayType() => true,
     _ => false,
   };
@@ -320,6 +336,16 @@ sealed class AlgebraicType {
     return first.type;
   }
 
+  static bool _isScheduleAt(List<IrSumVariant> variants) {
+    if (variants.length != 2) return false;
+    final first = variants[0];
+    final second = variants[1];
+    if (first.name != 'Interval' || second.name != 'Time') return false;
+    if (first.type is! TimeDurationType) return false;
+    if (second.type is! TimestampType) return false;
+    return true;
+  }
+
   static String _resolveRefTypeName(
     int index,
     TypeSpace? typeSpace,
@@ -328,15 +354,10 @@ sealed class AlgebraicType {
     if (typeSpace != null && typeDefs != null) {
       final typeDef = typeDefs.where((td) => td.typeRef == index).firstOrNull;
       if (typeDef != null && typeDef.name.isNotEmpty) {
-        return _toPascalCase(typeDef.name);
+        return toTypeClassName(typeDef.name);
       }
     }
     return 'dynamic';
-  }
-
-  static String _toPascalCase(String input) {
-    if (input.isEmpty) return input;
-    return input[0].toUpperCase() + input.substring(1);
   }
 }
 
@@ -351,6 +372,14 @@ class IdentityType extends AlgebraicType {
 
 class TimestampType extends AlgebraicType {
   const TimestampType();
+}
+
+class TimeDurationType extends AlgebraicType {
+  const TimeDurationType();
+}
+
+class ScheduleAtType extends AlgebraicType {
+  const ScheduleAtType();
 }
 
 class ByteArrayType extends AlgebraicType {

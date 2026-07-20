@@ -3,29 +3,49 @@ import 'package:spacetimedb_sdk/src/codegen/reducer_generator.dart';
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
 import 'package:spacetimedb_sdk/src/codegen/table_generator.dart';
 import 'package:spacetimedb_sdk/src/codegen/generators/sum_type_generator.dart';
+import 'package:spacetimedb_sdk/src/codegen/generators/product_type_generator.dart';
 import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
+import 'package:spacetimedb_sdk/src/codegen/schema_normalizer.dart';
 import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 import 'dart:io';
 
 class DartGenerator {
   final DatabaseSchema schema;
-  DartGenerator(this.schema);
+  DartGenerator(this.schema) {
+    SchemaNormalizer.normalize(schema);
+  }
 
   List<GeneratedFile> generateAll() {
     final files = <GeneratedFile>[];
 
+    final tableTypeRefs = schema.tables.map((t) => t.productTypeRef).toSet();
+
     for (final typeDef in schema.types) {
       final type = schema.typeSpace.types[typeDef.typeRef];
+      final fileName = toSnakeCase(typeDef.name);
 
       if (type.isSum) {
         final generator = SumTypeGenerator(
-          enumName: typeDef.name,
+          enumName: toTypeClassName(typeDef.name),
           sumType: type.sum!,
           typeSpace: schema.typeSpace,
           typeDefs: schema.types,
         );
 
-        final fileName = toSnakeCase(typeDef.name);
+        files.add(
+          GeneratedFile(
+            filename: '$fileName.dart',
+            content: generator.generate(),
+          ),
+        );
+      } else if (type.isProduct && !tableTypeRefs.contains(typeDef.typeRef)) {
+        final generator = ProductTypeGenerator(
+          typeName: typeDef.name,
+          productType: type.product!,
+          typeSpace: schema.typeSpace,
+          typeDefs: schema.types,
+        );
+
         files.add(
           GeneratedFile(
             filename: '$fileName.dart',
@@ -46,7 +66,11 @@ class DartGenerator {
     }
 
     if (schema.reducers.isNotEmpty) {
-      final generator = ReducerGenerator(schema.reducers);
+      final generator = ReducerGenerator(
+        schema.reducers,
+        typeSpace: schema.typeSpace,
+        typeDefs: schema.types,
+      );
       files.add(
         GeneratedFile(filename: 'reducers.dart', content: generator.generate()),
       );

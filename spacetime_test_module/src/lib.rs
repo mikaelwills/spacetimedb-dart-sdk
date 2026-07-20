@@ -1,6 +1,6 @@
 use spacetimedb::{
     procedure, reducer, table, view, AnonymousViewContext, ProcedureContext, Query,
-    ReducerContext, Table, SpacetimeType,
+    ReducerContext, ScheduleAt, Table, SpacetimeType,
 };
 
 /// Status enum for testing sum types
@@ -358,6 +358,61 @@ pub fn mutate_random_entities(ctx: &ReducerContext, count: u32, seed: u64) {
             ctx.db.entity().id().update(e);
         }
     }
+}
+
+#[table(accessor = scheduled_task, public, scheduled(run_scheduled_task))]
+pub struct ScheduledTask {
+    #[primary_key]
+    #[auto_inc]
+    pub scheduled_id: u64,
+    pub scheduled_at: ScheduleAt,
+    pub label: String,
+}
+
+#[reducer]
+pub fn run_scheduled_task(_ctx: &ReducerContext, _task: ScheduledTask) {}
+
+#[table(accessor = cadence_item, public)]
+pub struct CadenceItem {
+    #[primary_key]
+    pub id: u32,
+    pub cadence: ScheduleAt,
+    pub label: String,
+}
+
+#[reducer]
+pub fn create_cadence_item(ctx: &ReducerContext, id: u32, cadence: ScheduleAt, label: String) {
+    ctx.db.cadence_item().insert(CadenceItem { id, cadence, label });
+}
+
+/// Standalone `SpacetimeType` product type (NOT a table) — exercises
+/// product-type class generation. Used as a reducer param below so it also
+/// appears as a `RefType` in reducers.dart (product-ref encode path).
+#[derive(SpacetimeType, Debug, Clone, PartialEq)]
+pub struct ServerPosition {
+    pub x: f32,
+    pub y: f32,
+}
+
+#[reducer]
+pub fn move_to(ctx: &ReducerContext, id: u64, position: ServerPosition) {
+    if let Some(mut e) = ctx.db.entity().id().find(id) {
+        e.x = position.x;
+        e.y = position.y;
+        ctx.db.entity().id().update(e);
+    }
+}
+
+/// Single-field table — exercises the `Object.hash` single-arg codegen path.
+#[table(accessor = single_field, public)]
+pub struct SingleField {
+    #[primary_key]
+    pub id: u32,
+}
+
+#[reducer]
+pub fn create_single_field(ctx: &ReducerContext, id: u32) {
+    ctx.db.single_field().insert(SingleField { id });
 }
 
 /// Initialize with some test data

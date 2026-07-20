@@ -1,6 +1,7 @@
 // GENERATED REDUCER ARGUMENT CLASSES AND DECODERS - DO NOT MODIFY BY HAND
 
 import 'package:spacetimedb_sdk/codegen.dart';
+import 'server_position.dart';
 
 class BulkInsertEntitiesArgs {
   BulkInsertEntitiesArgs({required this.count});
@@ -16,6 +17,33 @@ class BulkInsertEntitiesArgsDecoder
   BulkInsertEntitiesArgs decode(BsatnDecoder decoder) {
     final count = decoder.readU32();
     return BulkInsertEntitiesArgs(count: count);
+  }
+}
+
+class CreateCadenceItemArgs {
+  CreateCadenceItemArgs({
+    required this.id,
+    required this.cadence,
+    required this.label,
+  });
+
+  final int id;
+
+  final ScheduleAt cadence;
+
+  final String label;
+}
+
+class CreateCadenceItemArgsDecoder
+    implements ReducerArgDecoder<CreateCadenceItemArgs> {
+  const CreateCadenceItemArgsDecoder();
+
+  @override
+  CreateCadenceItemArgs decode(BsatnDecoder decoder) {
+    final id = decoder.readU32();
+    final cadence = ScheduleAt.decodeBsatn(decoder);
+    final label = decoder.readString();
+    return CreateCadenceItemArgs(id: id, cadence: cadence, label: label);
   }
 }
 
@@ -110,6 +138,23 @@ class CreateOptionalItemArgsDecoder
       score: score,
       resolvedAt: resolvedAt,
     );
+  }
+}
+
+class CreateSingleFieldArgs {
+  CreateSingleFieldArgs({required this.id});
+
+  final int id;
+}
+
+class CreateSingleFieldArgsDecoder
+    implements ReducerArgDecoder<CreateSingleFieldArgs> {
+  const CreateSingleFieldArgsDecoder();
+
+  @override
+  CreateSingleFieldArgs decode(BsatnDecoder decoder) {
+    final id = decoder.readU32();
+    return CreateSingleFieldArgs(id: id);
   }
 }
 
@@ -259,6 +304,25 @@ class MixedNoteBatchArgsDecoder
   }
 }
 
+class MoveToArgs {
+  MoveToArgs({required this.id, required this.position});
+
+  final Int64 id;
+
+  final ServerPosition position;
+}
+
+class MoveToArgsDecoder implements ReducerArgDecoder<MoveToArgs> {
+  const MoveToArgsDecoder();
+
+  @override
+  MoveToArgs decode(BsatnDecoder decoder) {
+    final id = decoder.readU64();
+    final position = ServerPosition.decodeBsatn(decoder);
+    return MoveToArgs(id: id, position: position);
+  }
+}
+
 class MutateRandomEntitiesArgs {
   MutateRandomEntitiesArgs({required this.count, required this.seed});
 
@@ -390,6 +454,10 @@ const bulkInsertEntitiesDef = ReducerDef<BulkInsertEntitiesArgs>(
   'bulk_insert_entities',
   BulkInsertEntitiesArgsDecoder(),
 );
+const createCadenceItemDef = ReducerDef<CreateCadenceItemArgs>(
+  'create_cadence_item',
+  CreateCadenceItemArgsDecoder(),
+);
 const createFolderDef = ReducerDef<CreateFolderArgs>(
   'create_folder',
   CreateFolderArgsDecoder(),
@@ -405,6 +473,10 @@ const createNotesBulkDef = ReducerDef<CreateNotesBulkArgs>(
 const createOptionalItemDef = ReducerDef<CreateOptionalItemArgs>(
   'create_optional_item',
   CreateOptionalItemArgsDecoder(),
+);
+const createSingleFieldDef = ReducerDef<CreateSingleFieldArgs>(
+  'create_single_field',
+  CreateSingleFieldArgsDecoder(),
 );
 const createTaggedItemDef = ReducerDef<CreateTaggedItemArgs>(
   'create_tagged_item',
@@ -434,6 +506,7 @@ const mixedNoteBatchDef = ReducerDef<MixedNoteBatchArgs>(
   'mixed_note_batch',
   MixedNoteBatchArgsDecoder(),
 );
+const moveToDef = ReducerDef<MoveToArgs>('move_to', MoveToArgsDecoder());
 const mutateRandomEntitiesDef = ReducerDef<MutateRandomEntitiesArgs>(
   'mutate_random_entities',
   MutateRandomEntitiesArgsDecoder(),

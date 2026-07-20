@@ -64,7 +64,7 @@ class TaggedItem {
 
   @override
   int get hashCode {
-    return Object.hash(id, name, tagIds, labels);
+    return Object.hashAll([id, name, tagIds, labels]);
   }
 
   @override

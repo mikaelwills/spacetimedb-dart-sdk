@@ -285,13 +285,27 @@ dependencies:
               )
               .length;
 
-      // Should have: tables + sum_types + reducers + reducer_args + client
-      final expectedFiles = schema.tables.length + sumTypeCount + 3;
+      // Count standalone product types (SpacetimeType structs that are not tables)
+      final tableTypeRefs = schema.tables.map((t) => t.productTypeRef).toSet();
+      final productTypeCount =
+          schema.types
+              .where(
+                (typeDef) =>
+                    schema.typeSpace.types[typeDef.typeRef].product != null &&
+                    !tableTypeRefs.contains(typeDef.typeRef),
+              )
+              .length;
+
+      // Should have: tables + sum_types + product_types + reducers +
+      // reducer_args + client
+      final expectedFiles =
+          schema.tables.length + sumTypeCount + productTypeCount + 3;
       expect(
         files.length,
         equals(expectedFiles),
         reason:
-            'Expected ${schema.tables.length} tables + $sumTypeCount sum types + 3 system files',
+            'Expected ${schema.tables.length} tables + $sumTypeCount sum types '
+            '+ $productTypeCount product types + 3 system files',
       );
 
       // Verify filenames

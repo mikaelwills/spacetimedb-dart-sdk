@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'package:spacetimedb_sdk/codegen.dart';
 import 'reducer_args.dart';
+import 'server_position.dart';
 
 class Reducers {
   Reducers(this._reducerCaller, this._reducerEmitter);
@@ -27,6 +28,32 @@ class Reducers {
     encoder.writeU32(count);
     return await _reducerCaller.call(
       bulkInsertEntitiesDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
+  /// Calls the `create_cadence_item` reducer.
+  ///
+  /// Returns a [TransactionResult] on success. Throws
+  /// [SpacetimeDbReducerException] if the reducer returns `Failed` or
+  /// `InternalError`. The returned status is one of `Committed`,
+  /// `Pending` (queued to offline storage), or `Dropped` (skipped via
+  /// `dropIfOffline: true` while offline).
+  Future<TransactionResult> createCadenceItem({
+    required int id,
+    required ScheduleAt cadence,
+    required String label,
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    encoder.writeU32(id);
+    cadence.encodeBsatn(encoder);
+    encoder.writeString(label);
+    return await _reducerCaller.call(
+      createCadenceItemDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
       dropIfOffline: dropIfOffline,
@@ -130,6 +157,28 @@ class Reducers {
     encoder.writeOption<Int64>(resolvedAt, (value) => encoder.writeU64(value));
     return await _reducerCaller.call(
       createOptionalItemDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
+  /// Calls the `create_single_field` reducer.
+  ///
+  /// Returns a [TransactionResult] on success. Throws
+  /// [SpacetimeDbReducerException] if the reducer returns `Failed` or
+  /// `InternalError`. The returned status is one of `Committed`,
+  /// `Pending` (queued to offline storage), or `Dropped` (skipped via
+  /// `dropIfOffline: true` while offline).
+  Future<TransactionResult> createSingleField({
+    required int id,
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    encoder.writeU32(id);
+    return await _reducerCaller.call(
+      createSingleFieldDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
       dropIfOffline: dropIfOffline,
@@ -290,6 +339,30 @@ class Reducers {
     encoder.writeString(marker);
     return await _reducerCaller.call(
       mixedNoteBatchDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
+  /// Calls the `move_to` reducer.
+  ///
+  /// Returns a [TransactionResult] on success. Throws
+  /// [SpacetimeDbReducerException] if the reducer returns `Failed` or
+  /// `InternalError`. The returned status is one of `Committed`,
+  /// `Pending` (queued to offline storage), or `Dropped` (skipped via
+  /// `dropIfOffline: true` while offline).
+  Future<TransactionResult> moveTo({
+    required Int64 id,
+    required ServerPosition position,
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    encoder.writeU64(id);
+    position.encodeBsatn(encoder);
+    return await _reducerCaller.call(
+      moveToDef.name,
       encoder.toBytes(),
       optimisticChanges: optimisticChanges,
       dropIfOffline: dropIfOffline,
@@ -466,6 +539,19 @@ class Reducers {
     });
   }
 
+  StreamSubscription<void> onCreateCadenceItem(
+    void Function(EventContext ctx, int id, ScheduleAt cadence, String label)
+    callback,
+  ) {
+    return _reducerEmitter.on(createCadenceItemDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! CreateCadenceItemArgs) return;
+      callback(ctx, args.id, args.cadence, args.label);
+    });
+  }
+
   StreamSubscription<void> onCreateFolder(
     void Function(EventContext ctx, String path, String name) callback,
   ) {
@@ -518,6 +604,18 @@ class Reducers {
       final args = event.reducerArgs;
       if (args is! CreateOptionalItemArgs) return;
       callback(ctx, args.id, args.nickname, args.score, args.resolvedAt);
+    });
+  }
+
+  StreamSubscription<void> onCreateSingleField(
+    void Function(EventContext ctx, int id) callback,
+  ) {
+    return _reducerEmitter.on(createSingleFieldDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! CreateSingleFieldArgs) return;
+      callback(ctx, args.id);
     });
   }
 
@@ -616,6 +714,18 @@ class Reducers {
       final args = event.reducerArgs;
       if (args is! MixedNoteBatchArgs) return;
       callback(ctx, args.inserts, args.updates, args.deletes, args.marker);
+    });
+  }
+
+  StreamSubscription<void> onMoveTo(
+    void Function(EventContext ctx, Int64 id, ServerPosition position) callback,
+  ) {
+    return _reducerEmitter.on(moveToDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! MoveToArgs) return;
+      callback(ctx, args.id, args.position);
     });
   }
 
