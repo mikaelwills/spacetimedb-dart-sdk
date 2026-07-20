@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 2.3.1 - 2026-07-20
+
+Code-generation fixes, all surfaced by consumers integrating generated clients. No runtime-API changes. Generated clients from 2.3.0 keep working; regenerating against 2.3.1 is additive.
+
+### Added
+
+- **Standalone `#[SpacetimeType]` product structs.** A named product type used as a reducer parameter or field but not backed by a table (e.g. a `ServerPosition` reducer argument) produced no Dart class, forcing consumers to hand-write it. It now emits a full data class alongside table and sum-type classes.
+- **`ScheduleAt` / `TimeDuration` special types.** Generated clients now handle `ScheduleAt` columns on `#[scheduled]` tables and `TimeDuration` fields, and synthesize named companion classes for inline (anonymous) sum types instead of failing on an unhandled `IrSumType`.
+
+### Fixed
+
+- **Single-field `hashCode` crash.** A table or struct with exactly one field generated `Object.hash(x)`, which throws at runtime (it needs at least two arguments). Now uses `Object.hashAll([...])`, correct for one field or many.
+- **Wrong BSATN method on struct/table references.** `reducers.dart` emitted `.encode()` / `.decode()` on product and table references, but the generated classes expose `encodeBsatn` / `decodeBsatn`, so the output did not compile. Encode and decode are now unified on the `*Bsatn` methods across all generated tables, structs, sum types, synthesized inline-sum companions, and the runtime `ScheduleAt` type. The hand-written wire-protocol `.encode()` / `.decode()` API is a separate surface and is unchanged.
+- **Zero-field struct broke `operator ==`.** An empty-field struct generated `other is X && ;`, a syntax error. Equality now guards the zero-field case.
+- **Class name and cross-reference name could drift for non-PascalCase type names.** Type-class naming and reference resolution now share one transform, so a `#[allow(non_camel_case_types)]` type name cannot emit a class the rest of the generated code fails to reference.
+
 ## 2.3.0 - 2026-07-12
 
 Offline-first correctness hardening. This release closes several silent data-loss and data-integrity gaps on the offline mutation and reconnect paths, adds a `subscriptionsReady` readiness signal so consumers can tell a genuinely-usable connection from a merely socket-open one, and makes the previously-dead `queuePolicy` reachable from generated clients. All additive — existing consumers keep working unchanged.
