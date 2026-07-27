@@ -734,6 +734,7 @@ class SubscriptionManager {
     );
 
     final touchedTables = <String>{};
+    final ownershipGains = <(String, dynamic)>[];
 
     for (final querySet in message.querySets) {
       if (!_subscriptionsByQuerySetId.containsKey(querySet.querySetId)) {
@@ -767,6 +768,8 @@ class SubscriptionManager {
               ),
               reconcile: true,
               onProtectedKeyCommitted: onProtectedKeyCommitted,
+              onOwnershipGained:
+                  (pk) => ownershipGains.add((tableUpdate.tableName, pk)),
             );
           } else if (rowGroup is EventTableRows) {
             table.applyTransactionUpdate(
@@ -780,6 +783,9 @@ class SubscriptionManager {
     }
 
     _mutationSyncer?.persistTableSnapshots(onlyTables: touchedTables);
+    for (final (tableName, pk) in ownershipGains) {
+      _mutationSyncer?.notifyOwnershipGained(tableName, pk);
+    }
   }
 
   void _handleReducerResult(ReducerResultMessage message) {
@@ -859,6 +865,7 @@ class SubscriptionManager {
     required bool reconcile,
   }) {
     final touchedKeysByTable = <String, Set<dynamic>>{};
+    final ownershipGains = <(String, dynamic)>[];
     for (final querySet in message.querySets) {
       if (!_subscriptionsByQuerySetId.containsKey(querySet.querySetId)) {
         continue;
@@ -897,6 +904,8 @@ class SubscriptionManager {
                 reconcile: reconcile,
                 onProtectedKeyCommitted:
                     reconcile ? onProtectedKeyCommitted : null,
+                onOwnershipGained:
+                    (pk) => ownershipGains.add((tableUpdate.tableName, pk)),
               ),
             );
           } else if (rowGroup is EventTableRows) {
@@ -914,6 +923,9 @@ class SubscriptionManager {
           }
         }
       }
+    }
+    for (final (tableName, pk) in ownershipGains) {
+      _mutationSyncer?.notifyOwnershipGained(tableName, pk);
     }
     return touchedKeysByTable;
   }

@@ -158,6 +158,7 @@ class TableCache<T> {
     bool trackImbalance = true,
     void Function(dynamic primaryKey, Map<String, dynamic>? committedRowJson)?
     onProtectedKeyCommitted,
+    void Function(dynamic primaryKey)? onOwnershipGained,
   }) {
     final hadOwnersBefore = <dynamic>{
       for (final pk in inserts.getRows().map(
@@ -175,7 +176,9 @@ class TableCache<T> {
     );
 
     for (final pk in changes.serverPresentKeys) {
-      _rowOwners.putIfAbsent(pk, () => <int>{}).add(querySetId);
+      final owners = _rowOwners.putIfAbsent(pk, () => <int>{});
+      if (owners.isEmpty) onOwnershipGained?.call(pk);
+      owners.add(querySetId);
     }
 
     final suppressInsertEvents = <dynamic>{};

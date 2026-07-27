@@ -1,6 +1,6 @@
 import 'optimistic_change.dart';
 
-enum SyncStatus { idle, syncing, error }
+enum SyncStatus { idle, syncing, waitingToRetry, error }
 
 class MutationSyncResult {
   final String requestId;
@@ -30,6 +30,7 @@ class SyncState {
   final int pendingCount;
   final String? lastError;
   final DateTime? lastSyncTime;
+  final DateTime? nextRetryAt;
   final int failedCount;
   final List<MutationSyncResult> recentFailures;
 
@@ -38,6 +39,7 @@ class SyncState {
     this.pendingCount = 0,
     this.lastError,
     this.lastSyncTime,
+    this.nextRetryAt,
     this.failedCount = 0,
     this.recentFailures = const [],
   });
@@ -45,6 +47,7 @@ class SyncState {
   bool get hasPending => pendingCount > 0;
   bool get isSyncing => status == SyncStatus.syncing;
   bool get isIdle => status == SyncStatus.idle;
+  bool get isWaitingToRetry => status == SyncStatus.waitingToRetry;
   bool get hasError => failedCount > 0 || status == SyncStatus.error;
 
   SyncState copyWith({
@@ -52,6 +55,8 @@ class SyncState {
     int? pendingCount,
     String? lastError,
     DateTime? lastSyncTime,
+    DateTime? nextRetryAt,
+    bool clearNextRetryAt = false,
     int? failedCount,
     List<MutationSyncResult>? recentFailures,
   }) {
@@ -60,6 +65,7 @@ class SyncState {
       pendingCount: pendingCount ?? this.pendingCount,
       lastError: lastError ?? this.lastError,
       lastSyncTime: lastSyncTime ?? this.lastSyncTime,
+      nextRetryAt: clearNextRetryAt ? null : (nextRetryAt ?? this.nextRetryAt),
       failedCount: failedCount ?? this.failedCount,
       recentFailures: recentFailures ?? this.recentFailures,
     );

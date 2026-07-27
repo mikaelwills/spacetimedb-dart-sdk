@@ -32,18 +32,23 @@ class MutationSyncer implements MutationHandler {
   final OfflineQueuePolicy _policy;
 
   bool _isSyncing = false;
+  bool _syncLoopActive = false;
+  bool _resyncRequested = false;
   bool _disposed = false;
   bool _storageInitialized = false;
   int _cachedPendingCount = 0;
   SyncState _currentSyncState = const SyncState();
 
   Timer? _retryTimer;
+  DateTime? _nextRetryAt;
   int _retryAttempt = 0;
   static const Duration _initialRetryDelay = Duration(seconds: 5);
   static const Duration _maxRetryDelay = Duration(seconds: 60);
 
   final Map<String, int> _abortRecheckCount = {};
   static const int _maxAbortRecheck = 3;
+
+  final Map<String, Set<dynamic>> _awaitedOwnershipKeys = {};
 
   final StreamController<SyncState> _syncStateController =
       StreamController<SyncState>.broadcast();
@@ -128,14 +133,68 @@ class MutationSyncer implements MutationHandler {
   void cancelRetry() {
     _retryTimer?.cancel();
     _retryTimer = null;
+    _nextRetryAt = null;
+  }
+
+  void notifyOwnershipGained(String tableName, dynamic primaryKey) {
+    if (_disposed) return;
+    final awaited = _awaitedOwnershipKeys[tableName];
+    if (awaited == null || !awaited.remove(primaryKey)) return;
+    if (awaited.isEmpty) _awaitedOwnershipKeys.remove(tableName);
+    if (_awaitedOwnershipKeys.isNotEmpty) return;
+    SdkLogger.d(
+      'Awaited insert pk=$primaryKey on "$tableName" gained a server '
+      'owner; resuming the paused sync queue',
+    );
+    syncPendingMutations();
+  }
+
+  void _stashAwaitedInsertKeys(PendingMutation mutation) {
+    _awaitedOwnershipKeys.clear();
+    final changes = mutation.optimisticChanges;
+    if (changes == null) return;
+    for (final change in changes) {
+      if (change.type != OptimisticChangeType.insert) continue;
+      final table = _cache.getTableByName(change.tableName);
+      if (table == null || !table.decoder.supportsJsonSerialization) continue;
+      final row = table.decoder.fromJson(change.newRowJson!);
+      if (row == null) continue;
+      final pk = table.decoder.getPrimaryKey(row);
+      if (pk == null) continue;
+      if (table.ownedKeys(pk).isNotEmpty) continue;
+      _awaitedOwnershipKeys
+          .putIfAbsent(change.tableName, () => <dynamic>{})
+          .add(pk);
+    }
   }
 
   Future<void> syncPendingMutations() async {
     if (_disposed) return;
-    if (_isSyncing) {
-      SdkLogger.d('Sync already in progress, skipping');
+    if (_syncLoopActive) {
+      _resyncRequested = true;
+      SdkLogger.d('Sync already in progress; follow-up sync requested');
       return;
     }
+    _syncLoopActive = true;
+    try {
+      await _runSyncCycle();
+      while (_takeResyncRequest()) {
+        await _runSyncCycle();
+      }
+    } finally {
+      _syncLoopActive = false;
+    }
+  }
+
+  bool _takeResyncRequest() {
+    if (!_resyncRequested) return false;
+    _resyncRequested = false;
+    if (_disposed) return false;
+    if (_connection.state is! Connected) return false;
+    return _cachedPendingCount > 0;
+  }
+
+  Future<void> _runSyncCycle() async {
     if (_connection.state is! Connected) {
       SdkLogger.d('syncPendingMutations: not connected, skipping');
       return;
@@ -143,6 +202,7 @@ class MutationSyncer implements MutationHandler {
 
     SdkLogger.d('syncPendingMutations: starting');
     _isSyncing = true;
+    _awaitedOwnershipKeys.clear();
     final cycleFailures = <MutationSyncResult>[];
 
     try {
@@ -151,7 +211,11 @@ class MutationSyncer implements MutationHandler {
         SdkLogger.d('syncPendingMutations: no pending mutations, setting idle');
         _cachedPendingCount = 0;
         _updateSyncState(
-          _currentSyncState.copyWith(status: SyncStatus.idle, pendingCount: 0),
+          _currentSyncState.copyWith(
+            status: SyncStatus.idle,
+            pendingCount: 0,
+            clearNextRetryAt: true,
+          ),
         );
         return;
       }
@@ -161,6 +225,7 @@ class MutationSyncer implements MutationHandler {
         _currentSyncState.copyWith(
           status: SyncStatus.syncing,
           pendingCount: _cachedPendingCount,
+          clearNextRetryAt: true,
         ),
       );
 
@@ -639,6 +704,7 @@ class MutationSyncer implements MutationHandler {
           're-check after resubscribe hydrates ownership '
           '(${rechecks + 1}/$_maxAbortRecheck).',
         );
+        _stashAwaitedInsertKeys(mutation);
         return _SyncStep.pauseQueue;
       }
       SdkLogger.w(
@@ -700,6 +766,7 @@ class MutationSyncer implements MutationHandler {
           'Timeout syncing ${mutation.reducerName}: $e. Effect not '
           'present; keeping in queue for retry.',
         );
+        _stashAwaitedInsertKeys(mutation);
         return _SyncStep.pauseQueue;
       case _TimeoutOutcome.undetectable:
         SdkLogger.w(
@@ -707,6 +774,7 @@ class MutationSyncer implements MutationHandler {
           'be verified; keeping in queue for retry (at-least-once — the '
           'server may or may not have executed it).',
         );
+        _stashAwaitedInsertKeys(mutation);
         return _SyncStep.pauseQueue;
     }
   }
@@ -738,22 +806,35 @@ class MutationSyncer implements MutationHandler {
         recentFailures = _currentSyncState.recentFailures;
       }
 
+      if (remaining.isNotEmpty && _connection.state is Connected) {
+        _scheduleRetry();
+        _updateSyncState(
+          _currentSyncState.copyWith(
+            status: SyncStatus.waitingToRetry,
+            pendingCount: _cachedPendingCount,
+            lastSyncTime: DateTime.now(),
+            nextRetryAt: _nextRetryAt,
+            failedCount: failedCount,
+            recentFailures: recentFailures,
+          ),
+        );
+        return;
+      }
+
+      if (remaining.isEmpty) {
+        cancelRetry();
+        _retryAttempt = 0;
+      }
       _updateSyncState(
         _currentSyncState.copyWith(
           status: SyncStatus.idle,
           pendingCount: _cachedPendingCount,
           lastSyncTime: DateTime.now(),
+          clearNextRetryAt: true,
           failedCount: failedCount,
           recentFailures: recentFailures,
         ),
       );
-
-      if (remaining.isNotEmpty && _connection.state is Connected) {
-        _scheduleRetry();
-      } else if (remaining.isEmpty) {
-        cancelRetry();
-        _retryAttempt = 0;
-      }
     } catch (e) {
       SdkLogger.e('syncPendingMutations: post-sync state update failed: $e');
     }
@@ -765,6 +846,7 @@ class MutationSyncer implements MutationHandler {
 
     final delay = retryDelayForAttempt(_retryAttempt);
     _retryAttempt++;
+    _nextRetryAt = DateTime.now().add(delay);
 
     SdkLogger.d(
       'Scheduling sync retry in ${delay.inSeconds}s (attempt $_retryAttempt)',
@@ -772,6 +854,7 @@ class MutationSyncer implements MutationHandler {
 
     _retryTimer = Timer(delay, () {
       if (_disposed) return;
+      _nextRetryAt = null;
       if (_connection.state is Connected) {
         SdkLogger.d('Auto-retry: syncing pending mutations');
         syncPendingMutations();
