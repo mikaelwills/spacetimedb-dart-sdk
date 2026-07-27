@@ -993,12 +993,16 @@ class SubscriptionManager {
     final message = SubscribeMessage(queries, querySetId: querySetId);
     _connection.send(message.encode());
 
-    final waiter = Completer<void>();
-    _subscribeWaiters[querySetId] = waiter;
+    final waiter = _subscribeWaiters.putIfAbsent(
+      querySetId,
+      Completer<void>.new,
+    );
     try {
       await waiter.future;
     } finally {
-      _subscribeWaiters.remove(querySetId);
+      if (identical(_subscribeWaiters[querySetId], waiter)) {
+        _subscribeWaiters.remove(querySetId);
+      }
     }
   }
 }
