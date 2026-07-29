@@ -366,27 +366,29 @@ class SubscriptionManager {
       try {
         final entries = _subscriptionsByQuerySetId.entries.toList();
         SdkLogger.i(
-          'Re-subscribing to ${entries.length} query sets in place...',
+          'Re-subscribing to ${entries.length} query sets concurrently...',
         );
-        for (final entry in entries) {
-          if (!_connection.isConnected) {
-            allResubscribed = false;
-            break;
-          }
-          final ok = await _sendSubscribeAndWait(entry.key, entry.value)
-              .then((_) => true)
-              .timeout(
-                const Duration(seconds: 30),
-                onTimeout: () {
-                  SdkLogger.e(
-                    'subscribe(${entry.value}) timed out during reconnect '
-                    '(querySetId=${entry.key}); retaining it for the next '
-                    'reconnect',
-                  );
-                  return false;
-                },
-              );
-          if (!ok) allResubscribed = false;
+        if (!_connection.isConnected) {
+          allResubscribed = false;
+        } else {
+          final results = await Future.wait([
+            for (final entry in entries)
+              _sendSubscribeAndWait(entry.key, entry.value)
+                  .then((_) => true)
+                  .timeout(
+                    const Duration(seconds: 30),
+                    onTimeout: () {
+                      SdkLogger.e(
+                        'subscribe(${entry.value}) timed out during reconnect '
+                        '(querySetId=${entry.key}); retaining it for the next '
+                        'reconnect',
+                      );
+                      return false;
+                    },
+                  ),
+          ]);
+          if (results.any((ok) => !ok)) allResubscribed = false;
+          if (!_connection.isConnected) allResubscribed = false;
         }
       } finally {
         _reconnectInFlight = false;

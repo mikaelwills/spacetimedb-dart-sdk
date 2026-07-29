@@ -149,25 +149,6 @@ class MutationSyncer implements MutationHandler {
     syncPendingMutations();
   }
 
-  void _stashAwaitedInsertKeys(PendingMutation mutation) {
-    _awaitedOwnershipKeys.clear();
-    final changes = mutation.optimisticChanges;
-    if (changes == null) return;
-    for (final change in changes) {
-      if (change.type != OptimisticChangeType.insert) continue;
-      final table = _cache.getTableByName(change.tableName);
-      if (table == null || !table.decoder.supportsJsonSerialization) continue;
-      final row = table.decoder.fromJson(change.newRowJson!);
-      if (row == null) continue;
-      final pk = table.decoder.getPrimaryKey(row);
-      if (pk == null) continue;
-      if (table.ownedKeys(pk).isNotEmpty) continue;
-      _awaitedOwnershipKeys
-          .putIfAbsent(change.tableName, () => <dynamic>{})
-          .add(pk);
-    }
-  }
-
   Future<void> syncPendingMutations() async {
     if (_disposed) return;
     if (_syncLoopActive) {
@@ -184,71 +165,6 @@ class MutationSyncer implements MutationHandler {
     } finally {
       _syncLoopActive = false;
     }
-  }
-
-  bool _takeResyncRequest() {
-    if (!_resyncRequested) return false;
-    _resyncRequested = false;
-    if (_disposed) return false;
-    if (_connection.state is! Connected) return false;
-    return _cachedPendingCount > 0;
-  }
-
-  Future<void> _runSyncCycle() async {
-    if (_connection.state is! Connected) {
-      SdkLogger.d('syncPendingMutations: not connected, skipping');
-      return;
-    }
-
-    SdkLogger.d('syncPendingMutations: starting');
-    _isSyncing = true;
-    _awaitedOwnershipKeys.clear();
-    final cycleFailures = <MutationSyncResult>[];
-
-    try {
-      final pending = await _storage.getPendingMutations();
-      if (pending.isEmpty) {
-        SdkLogger.d('syncPendingMutations: no pending mutations, setting idle');
-        _cachedPendingCount = 0;
-        _updateSyncState(
-          _currentSyncState.copyWith(
-            status: SyncStatus.idle,
-            pendingCount: 0,
-            clearNextRetryAt: true,
-          ),
-        );
-        return;
-      }
-
-      _cachedPendingCount = pending.length;
-      _updateSyncState(
-        _currentSyncState.copyWith(
-          status: SyncStatus.syncing,
-          pendingCount: _cachedPendingCount,
-          clearNextRetryAt: true,
-        ),
-      );
-
-      SdkLogger.d('Syncing ${pending.length} pending mutations');
-
-      for (final mutation in pending) {
-        final step = await _processMutation(mutation, cycleFailures);
-        if (step == _SyncStep.stop) return;
-        if (step == _SyncStep.pauseQueue) break;
-      }
-    } finally {
-      _isSyncing = false;
-      SdkLogger.d('syncPendingMutations: finished (isSyncing=false)');
-    }
-
-    if (_disposed) {
-      SdkLogger.d(
-        'syncPendingMutations: disposed, skipping final state update',
-      );
-      return;
-    }
-
-    await _finalizeSyncCycle(cycleFailures);
   }
 
   @override
@@ -390,6 +306,90 @@ class MutationSyncer implements MutationHandler {
         _maxRetryDelay.inMilliseconds,
       ),
     );
+  }
+
+  bool _takeResyncRequest() {
+    if (!_resyncRequested) return false;
+    _resyncRequested = false;
+    if (_disposed) return false;
+    if (_connection.state is! Connected) return false;
+    return _cachedPendingCount > 0;
+  }
+
+  Future<void> _runSyncCycle() async {
+    if (_connection.state is! Connected) {
+      SdkLogger.d('syncPendingMutations: not connected, skipping');
+      return;
+    }
+
+    SdkLogger.d('syncPendingMutations: starting');
+    _isSyncing = true;
+    _awaitedOwnershipKeys.clear();
+    final cycleFailures = <MutationSyncResult>[];
+
+    try {
+      final pending = await _storage.getPendingMutations();
+      if (pending.isEmpty) {
+        SdkLogger.d('syncPendingMutations: no pending mutations, setting idle');
+        _cachedPendingCount = 0;
+        _updateSyncState(
+          _currentSyncState.copyWith(
+            status: SyncStatus.idle,
+            pendingCount: 0,
+            clearNextRetryAt: true,
+          ),
+        );
+        return;
+      }
+
+      _cachedPendingCount = pending.length;
+      _updateSyncState(
+        _currentSyncState.copyWith(
+          status: SyncStatus.syncing,
+          pendingCount: _cachedPendingCount,
+          clearNextRetryAt: true,
+        ),
+      );
+
+      SdkLogger.d('Syncing ${pending.length} pending mutations');
+
+      for (final mutation in pending) {
+        final step = await _processMutation(mutation, cycleFailures);
+        if (step == _SyncStep.stop) return;
+        if (step == _SyncStep.pauseQueue) break;
+      }
+    } finally {
+      _isSyncing = false;
+      SdkLogger.d('syncPendingMutations: finished (isSyncing=false)');
+    }
+
+    if (_disposed) {
+      SdkLogger.d(
+        'syncPendingMutations: disposed, skipping final state update',
+      );
+      return;
+    }
+
+    await _finalizeSyncCycle(cycleFailures);
+  }
+
+  void _stashAwaitedInsertKeys(PendingMutation mutation) {
+    _awaitedOwnershipKeys.clear();
+    final changes = mutation.optimisticChanges;
+    if (changes == null) return;
+    for (final change in changes) {
+      if (change.type != OptimisticChangeType.insert) continue;
+      final table = _cache.getTableByName(change.tableName);
+      if (table == null || !table.decoder.supportsJsonSerialization) continue;
+      final row = table.decoder.fromJson(change.newRowJson!);
+      if (row == null) continue;
+      final pk = table.decoder.getPrimaryKey(row);
+      if (pk == null) continue;
+      if (table.ownedKeys(pk).isNotEmpty) continue;
+      _awaitedOwnershipKeys
+          .putIfAbsent(change.tableName, () => <dynamic>{})
+          .add(pk);
+    }
   }
 
   bool _isPureInsert(PendingMutation mutation) {
