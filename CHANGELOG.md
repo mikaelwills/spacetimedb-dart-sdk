@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 2.4.0 - 2026-07-31
+
+Offline-queue durability fixes plus concurrent reconnect resubscribe. A paused mutation queue could sit idle for a full backoff interval (up to 60s) with work still queued, and reported itself as idle while doing so. Minor bump: `SyncStatus` gains a variant, which is breaking for exhaustive switches.
+
+### Breaking
+
+- **`SyncStatus` has a new variant, `waitingToRetry`.** An exhaustive `switch` over `SyncStatus` in consumer code will no longer compile until the new case is handled. A `SyncState` now reports `waitingToRetry` (not `idle`) whenever the queue has pending work and a retry timer is armed. Consumers treating `status != syncing` as "nothing in flight" should read `hasPending` or the new `isWaitingToRetry` instead.
+
+### Added
+
+- **`SyncState.nextRetryAt`.** The wall-clock time the armed retry will fire, so a consumer can render "retrying in Ns" rather than a spinner that appears stuck. Null when no retry is armed. `copyWith` takes `clearNextRetryAt: true` to unset it.
+- **`SyncState.isWaitingToRetry`** convenience getter, alongside the existing `isIdle` / `isSyncing`.
+- **Ownership-gain wake.** When a mutation is held in the queue waiting for the server to take ownership of a row it inserted, the sync cycle now resumes as soon as that ownership actually arrives, instead of waiting out the backoff timer. `TableCache.applyServerDelta` gained an optional `onOwnershipGained` callback (source-compatible; existing callers are unaffected) and the subscription layer wires it for transaction-update and reducer-result deltas. The retry timer remains as a backstop.
+
+### Fixed
+
+- **Dropped sync wakeup while a cycle was in flight.** A resume trigger arriving during an active sync cycle was silently discarded by the in-progress guard, leaving the queue parked until the next timer fire. Triggers are now latched and a follow-up cycle runs, coalescing a burst into one follow-up.
+- **Interleaved sync cycles over one queue.** The in-progress flag cleared before the cycle's finalize step had finished its storage read, so a trigger landing in that window started a second concurrent cycle. Same mutation could be sent more than once, burning abort-recheck budget and backoff-ladder positions twice.
+- **Sync state reported `idle` with work still queued.** A paused queue with an armed retry timer was indistinguishable from an empty one, so consumer indicators stayed visible but stopped moving. See the breaking note above.
+- **Subscribe waiter clobbered on resubscribe.** `subscribe()` issued while disconnected parked a waiter that a later reconnect-resubscribe overwrote, so the original future never completed — a consumer awaiting it hung indefinitely and the query set was retained forever. The parked waiter is now reused.
+
+### Changed
+
+- **Reconnect re-subscribes all query sets concurrently instead of serially.** `SubscriptionManager` previously replayed query sets one at a time on reconnect, each awaiting its `SubscribeApplied` (and its own 30-second timeout) before the next was sent — N query sets cost N sequential round-trips and a worst case of N × 30s stuck reconnecting. All `Subscribe` messages are now sent up front and awaited together, so the worst case is bounded by a single 30-second window regardless of set count, and a real link pays one round-trip of inter-set latency instead of one per set. Per-set semantics are unchanged: a timed-out or interrupted set is retained for the next reconnect, a partial resubscribe still skips reconnect eviction and keeps cached rows, and `subscriptionsReady` still flips only once every set has re-applied. No API changes.
+
+Queue-wide pausing on a stuck mutation, same-mutation retry ordering, and the give-up path after repeated aborts are unchanged and intentional.
+
 ## 2.3.1 - 2026-07-20
 
 Code-generation fixes, all surfaced by consumers integrating generated clients. No runtime-API changes. Generated clients from 2.3.0 keep working; regenerating against 2.3.1 is additive.

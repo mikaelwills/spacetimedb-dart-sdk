@@ -9,25 +9,6 @@ class ReducerGenerator {
 
   ReducerGenerator(this.reducers, {this.typeSpace, this.typeDefs});
 
-  Iterable<Directive> _refTypeImports() {
-    final defs = typeDefs;
-    if (defs == null) return const [];
-    final seen = <String>{};
-    final imports = <Directive>[];
-    for (final reducer in reducers) {
-      for (final param in reducer.params.elements) {
-        if (!param.type.isRef) continue;
-        final refTypeName = param.type.refTypeName(defs);
-        if (refTypeName == null) continue;
-        final fileName = toSnakeCase(refTypeName);
-        if (seen.add(fileName)) {
-          imports.add(Directive.import('$fileName.dart'));
-        }
-      }
-    }
-    return imports;
-  }
-
   String generate() {
     final lib = Library(
       (b) =>
@@ -69,6 +50,25 @@ class ReducerGenerator {
       header:
           '// GENERATED REDUCER ARGUMENT CLASSES AND DECODERS - DO NOT MODIFY BY HAND',
     );
+  }
+
+  Iterable<Directive> _refTypeImports() {
+    final defs = typeDefs;
+    if (defs == null) return const [];
+    final seen = <String>{};
+    final imports = <Directive>[];
+    for (final reducer in reducers) {
+      for (final param in reducer.params.elements) {
+        if (!param.type.isRef) continue;
+        final refTypeName = param.type.refTypeName(defs);
+        if (refTypeName == null) continue;
+        final fileName = toSnakeCase(refTypeName);
+        if (seen.add(fileName)) {
+          imports.add(Directive.import('$fileName.dart'));
+        }
+      }
+    }
+    return imports;
   }
 
   Class _buildReducersClass() {

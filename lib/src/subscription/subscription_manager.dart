@@ -366,27 +366,29 @@ class SubscriptionManager {
       try {
         final entries = _subscriptionsByQuerySetId.entries.toList();
         SdkLogger.i(
-          'Re-subscribing to ${entries.length} query sets in place...',
+          'Re-subscribing to ${entries.length} query sets concurrently...',
         );
-        for (final entry in entries) {
-          if (!_connection.isConnected) {
-            allResubscribed = false;
-            break;
-          }
-          final ok = await _sendSubscribeAndWait(entry.key, entry.value)
-              .then((_) => true)
-              .timeout(
-                const Duration(seconds: 30),
-                onTimeout: () {
-                  SdkLogger.e(
-                    'subscribe(${entry.value}) timed out during reconnect '
-                    '(querySetId=${entry.key}); retaining it for the next '
-                    'reconnect',
-                  );
-                  return false;
-                },
-              );
-          if (!ok) allResubscribed = false;
+        if (!_connection.isConnected) {
+          allResubscribed = false;
+        } else {
+          final results = await Future.wait([
+            for (final entry in entries)
+              _sendSubscribeAndWait(entry.key, entry.value)
+                  .then((_) => true)
+                  .timeout(
+                    const Duration(seconds: 30),
+                    onTimeout: () {
+                      SdkLogger.e(
+                        'subscribe(${entry.value}) timed out during reconnect '
+                        '(querySetId=${entry.key}); retaining it for the next '
+                        'reconnect',
+                      );
+                      return false;
+                    },
+                  ),
+          ]);
+          if (results.any((ok) => !ok)) allResubscribed = false;
+          if (!_connection.isConnected) allResubscribed = false;
         }
       } finally {
         _reconnectInFlight = false;
@@ -734,6 +736,7 @@ class SubscriptionManager {
     );
 
     final touchedTables = <String>{};
+    final ownershipGains = <(String, dynamic)>[];
 
     for (final querySet in message.querySets) {
       if (!_subscriptionsByQuerySetId.containsKey(querySet.querySetId)) {
@@ -767,6 +770,8 @@ class SubscriptionManager {
               ),
               reconcile: true,
               onProtectedKeyCommitted: onProtectedKeyCommitted,
+              onOwnershipGained:
+                  (pk) => ownershipGains.add((tableUpdate.tableName, pk)),
             );
           } else if (rowGroup is EventTableRows) {
             table.applyTransactionUpdate(
@@ -780,6 +785,9 @@ class SubscriptionManager {
     }
 
     _mutationSyncer?.persistTableSnapshots(onlyTables: touchedTables);
+    for (final (tableName, pk) in ownershipGains) {
+      _mutationSyncer?.notifyOwnershipGained(tableName, pk);
+    }
   }
 
   void _handleReducerResult(ReducerResultMessage message) {
@@ -859,6 +867,7 @@ class SubscriptionManager {
     required bool reconcile,
   }) {
     final touchedKeysByTable = <String, Set<dynamic>>{};
+    final ownershipGains = <(String, dynamic)>[];
     for (final querySet in message.querySets) {
       if (!_subscriptionsByQuerySetId.containsKey(querySet.querySetId)) {
         continue;
@@ -897,6 +906,8 @@ class SubscriptionManager {
                 reconcile: reconcile,
                 onProtectedKeyCommitted:
                     reconcile ? onProtectedKeyCommitted : null,
+                onOwnershipGained:
+                    (pk) => ownershipGains.add((tableUpdate.tableName, pk)),
               ),
             );
           } else if (rowGroup is EventTableRows) {
@@ -914,6 +925,9 @@ class SubscriptionManager {
           }
         }
       }
+    }
+    for (final (tableName, pk) in ownershipGains) {
+      _mutationSyncer?.notifyOwnershipGained(tableName, pk);
     }
     return touchedKeysByTable;
   }
@@ -993,12 +1007,16 @@ class SubscriptionManager {
     final message = SubscribeMessage(queries, querySetId: querySetId);
     _connection.send(message.encode());
 
-    final waiter = Completer<void>();
-    _subscribeWaiters[querySetId] = waiter;
+    final waiter = _subscribeWaiters.putIfAbsent(
+      querySetId,
+      Completer<void>.new,
+    );
     try {
       await waiter.future;
     } finally {
-      _subscribeWaiters.remove(querySetId);
+      if (identical(_subscribeWaiters[querySetId], waiter)) {
+        _subscribeWaiters.remove(querySetId);
+      }
     }
   }
 }
