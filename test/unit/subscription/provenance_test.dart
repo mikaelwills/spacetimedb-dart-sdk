@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
+import 'package:spacetimedb_sdk/protocol.dart';
 
 import '../../generated/folder.dart';
 import '../../mocks/mock_connection.dart';
@@ -1949,4 +1950,155 @@ void main() {
       expect(table.iter().map((f) => f.path), isNot(contains('/a/guess')));
     });
   });
+
+  group('committed self-commit carrying zero query sets', () {
+    late MockConnection mockConnection;
+    late SubscriptionManager subscriptionManager;
+    late List<String> logLines;
+    late SdkLogLevel savedLevel;
+    late SdkLogCallback? savedOnLog;
+
+    setUp(() {
+      logLines = [];
+      savedLevel = SdkLogger.level;
+      savedOnLog = SdkLogger.onLog;
+      SdkLogger.level = SdkLogLevel.debug;
+      SdkLogger.onLog = (tag, msg) => logLines.add(msg);
+
+      mockConnection = MockConnection();
+      subscriptionManager = SubscriptionManager(
+        mockConnection,
+        offlineStorage: InMemoryOfflineStorage(),
+      );
+      subscriptionManager.cache.registerDecoder<Folder>(
+        'folder',
+        FolderDecoder(),
+      );
+    });
+
+    tearDown(() async {
+      await subscriptionManager.dispose();
+      SdkLogger.onLog = savedOnLog;
+      SdkLogger.level = savedLevel;
+    });
+
+    Future<int> subscribeAndInsertOptimistically(Folder row) async {
+      mockConnection.mockState = const Connected();
+
+      final subscribeA = subscriptionManager.subscribe([
+        "SELECT * FROM folder WHERE path LIKE '/a/%'",
+      ]);
+      mockConnection.simulateIncoming(
+        _createSubscribeApplied(requestId: 0, querySetId: 1),
+      );
+      await subscribeA.timeout(_timeout);
+
+      unawaited(
+        subscriptionManager.reducers.call(
+          'create_folder',
+          Uint8List(0),
+          optimisticChanges: [OptimisticChange.insert('folder', row.toJson())],
+        ),
+      );
+      await pumpEventQueue();
+
+      return mockConnection.getLastSentRequestId();
+    }
+
+    void expectRoutedToSelfCommit() {
+      expect(
+        logLines,
+        contains(
+          allOf(
+            contains('REDUCER_RESULT:'),
+            contains('querySets=0'),
+            contains('isOurs=true'),
+            contains('hasOptimistic=true'),
+          ),
+        ),
+      );
+      expect(
+        logLines,
+        isNot(contains(contains('confirmOrRollbackWithTouchedKeys'))),
+      );
+    }
+
+    test('outcome tag 1 (OkEmpty), still subscribed — the committed row the '
+        'caller inserted optimistically must survive', () async {
+      final committed = Folder(
+        path: '/a/msg',
+        name: 'Guitar Frequencies',
+        createdAt: Int64(0),
+      );
+      final numericRequestId = await subscribeAndInsertOptimistically(
+        committed,
+      );
+
+      final table = subscriptionManager.cache.getTableByName('folder');
+      if (table == null) fail('folder table was not registered');
+      expect(table.iter().map((f) => f.path), contains('/a/msg'));
+
+      mockConnection.simulateIncoming(
+        _createReducerResultOkEmpty(requestId: numericRequestId),
+      );
+      await pumpEventQueue();
+
+      expectRoutedToSelfCommit();
+      expect(table.iter().map((f) => f.path), contains('/a/msg'));
+    });
+
+    test('outcome tag 0 (Ok) with an empty decoded query-set list, still '
+        'subscribed — the committed row the caller inserted optimistically '
+        'must survive', () async {
+      final committed = Folder(
+        path: '/a/msg',
+        name: 'Guitar Frequencies',
+        createdAt: Int64(0),
+      );
+      final numericRequestId = await subscribeAndInsertOptimistically(
+        committed,
+      );
+
+      final table = subscriptionManager.cache.getTableByName('folder');
+      if (table == null) fail('folder table was not registered');
+      expect(table.iter().map((f) => f.path), contains('/a/msg'));
+
+      mockConnection.simulateIncoming(
+        _createReducerResultCommittedNoQuerySets(requestId: numericRequestId),
+      );
+      await pumpEventQueue();
+
+      expectRoutedToSelfCommit();
+      expect(table.iter().map((f) => f.path), contains('/a/msg'));
+    });
+  });
+}
+
+Uint8List _createReducerResultOkEmpty({required int requestId}) {
+  final encoder = BsatnEncoder();
+  encoder.writeU8(0);
+  encoder.writeU8(6);
+
+  encoder.writeU32(requestId);
+  encoder.writeU64(Int64(0));
+
+  encoder.writeU8(1);
+
+  return encoder.toBytes();
+}
+
+Uint8List _createReducerResultCommittedNoQuerySets({required int requestId}) {
+  final encoder = BsatnEncoder();
+  encoder.writeU8(0);
+  encoder.writeU8(6);
+
+  encoder.writeU32(requestId);
+  encoder.writeU64(Int64(0));
+
+  encoder.writeU8(0);
+  encoder.writeU32(0);
+
+  encoder.writeU32(0);
+
+  return encoder.toBytes();
 }

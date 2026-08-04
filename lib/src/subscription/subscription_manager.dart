@@ -978,6 +978,9 @@ class SubscriptionManager {
       final touchedKeys = touchedKeysByTable[tableName] ?? const {};
       switch (entry.type) {
         case OptimisticChangeType.insert:
+          if (message.querySets.isEmpty) {
+            break;
+          }
           if (skippedTables.contains(tableName) &&
               !appliedTables.contains(tableName) &&
               _isTableCoveredByLiveQuerySet(tableName)) {
