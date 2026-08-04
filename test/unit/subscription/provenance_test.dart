@@ -142,7 +142,34 @@ Uint8List _createReducerResultCommittedMultiQuerySet({
   return encoder.toBytes();
 }
 
+Uint8List _createReducerResultOkEmpty({required int requestId}) {
+  final encoder = BsatnEncoder();
+  encoder.writeU8(0);
+  encoder.writeU8(6);
 
+  encoder.writeU32(requestId);
+  encoder.writeU64(Int64(0));
+
+  encoder.writeU8(1);
+
+  return encoder.toBytes();
+}
+
+Uint8List _createReducerResultCommittedNoQuerySets({required int requestId}) {
+  final encoder = BsatnEncoder();
+  encoder.writeU8(0);
+  encoder.writeU8(6);
+
+  encoder.writeU32(requestId);
+  encoder.writeU64(Int64(0));
+
+  encoder.writeU8(0);
+  encoder.writeU32(0);
+
+  encoder.writeU32(0);
+
+  return encoder.toBytes();
+}
 
 Uint8List _createReducerResultFailed({
   required int requestId,
@@ -2072,33 +2099,358 @@ void main() {
       expect(table.iter().map((f) => f.path), contains('/a/msg'));
     });
   });
-}
+  group('zero-query-set retention must not become durable state', () {
+    late MockConnection mockConnection;
+    late InMemoryOfflineStorage storage;
+    late SubscriptionManager subscriptionManager;
 
-Uint8List _createReducerResultOkEmpty({required int requestId}) {
-  final encoder = BsatnEncoder();
-  encoder.writeU8(0);
-  encoder.writeU8(6);
+    setUp(() {
+      storage = InMemoryOfflineStorage();
+      mockConnection = MockConnection();
+      subscriptionManager = SubscriptionManager(
+        mockConnection,
+        offlineStorage: storage,
+      );
+      subscriptionManager.cache.registerDecoder<Folder>(
+        'folder',
+        FolderDecoder(),
+      );
+    });
 
-  encoder.writeU32(requestId);
-  encoder.writeU64(Int64(0));
+    tearDown(() async {
+      await subscriptionManager.dispose();
+    });
 
-  encoder.writeU8(1);
+    Future<int> subscribeAndInsertOptimistically(Folder row) async {
+      mockConnection.mockState = const Connected();
 
-  return encoder.toBytes();
-}
+      final subscribeA = subscriptionManager.subscribe([
+        "SELECT * FROM folder WHERE path LIKE '/a/%'",
+      ]);
+      mockConnection.simulateIncoming(
+        _createSubscribeApplied(requestId: 0, querySetId: 1),
+      );
+      await subscribeA.timeout(_timeout);
 
-Uint8List _createReducerResultCommittedNoQuerySets({required int requestId}) {
-  final encoder = BsatnEncoder();
-  encoder.writeU8(0);
-  encoder.writeU8(6);
+      unawaited(
+        subscriptionManager.reducers.call(
+          'create_folder',
+          Uint8List(0),
+          optimisticChanges: [OptimisticChange.insert('folder', row.toJson())],
+        ),
+      );
+      await pumpEventQueue();
 
-  encoder.writeU32(requestId);
-  encoder.writeU64(Int64(0));
+      return mockConnection.getLastSentRequestId();
+    }
 
-  encoder.writeU8(0);
-  encoder.writeU32(0);
+    test('a client-guessed pk retained by a zero-query-set commit is evicted '
+        'by the next authoritative snapshot, leaving exactly the server row',
+        () async {
+      final guessed = Folder(
+        path: '/a/guess',
+        name: 'Guessed Pk',
+        createdAt: Int64(0),
+      );
+      final numericRequestId = await subscribeAndInsertOptimistically(guessed);
 
-  encoder.writeU32(0);
+      final table = subscriptionManager.cache.getTableByName('folder');
+      if (table == null) fail('folder table was not registered');
 
-  return encoder.toBytes();
+      mockConnection.simulateIncoming(
+        _createReducerResultCommittedNoQuerySets(requestId: numericRequestId),
+      );
+      await pumpEventQueue();
+
+      expect(table.iter().map((f) => f.path), contains('/a/guess'));
+
+      final real = Folder(
+        path: '/a/real',
+        name: 'Server Assigned Pk',
+        createdAt: Int64(0),
+      );
+      mockConnection.simulateIncoming(
+        _createSubscribeApplied(
+          requestId: 0,
+          querySetId: 1,
+          rowsByTable: {
+            'folder': [real],
+          },
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(table.iter().map((f) => f.path), equals(['/a/real']));
+    });
+
+    test('a client-guessed pk retained by a zero-query-set commit is not '
+        'written to offline storage by a later unrelated transaction on the '
+        'same table', () async {
+      final guessed = Folder(
+        path: '/a/guess',
+        name: 'Guessed Pk',
+        createdAt: Int64(0),
+      );
+      final numericRequestId = await subscribeAndInsertOptimistically(guessed);
+
+      final table = subscriptionManager.cache.getTableByName('folder');
+      if (table == null) fail('folder table was not registered');
+
+      mockConnection.simulateIncoming(
+        _createReducerResultCommittedNoQuerySets(requestId: numericRequestId),
+      );
+      await pumpEventQueue();
+
+      expect(table.iter().map((f) => f.path), contains('/a/guess'));
+      expect(table.ownedKeys('/a/guess'), isEmpty);
+
+      final other = Folder(
+        path: '/a/other',
+        name: 'Foreign Row',
+        createdAt: Int64(0),
+      );
+      mockConnection.simulateIncoming(
+        _createReducerResultCommitted(
+          requestId: 4242,
+          querySetId: 1,
+          tableName: 'folder',
+          inserts: [other],
+        ),
+      );
+      await pumpEventQueue();
+      await pumpEventQueue();
+
+      final snapshot = await storage.loadTableSnapshot('folder') ?? [];
+      expect(snapshot.map((r) => r['path']), contains('/a/other'));
+      expect(snapshot.map((r) => r['path']), isNot(contains('/a/guess')));
+    });
+
+    test('once the server takes ownership of the retained pk, the row is '
+        'persisted normally', () async {
+      final committed = Folder(
+        path: '/a/msg',
+        name: 'Guitar Frequencies',
+        createdAt: Int64(0),
+      );
+      final numericRequestId = await subscribeAndInsertOptimistically(
+        committed,
+      );
+
+      final table = subscriptionManager.cache.getTableByName('folder');
+      if (table == null) fail('folder table was not registered');
+
+      mockConnection.simulateIncoming(
+        _createReducerResultCommittedNoQuerySets(requestId: numericRequestId),
+      );
+      await pumpEventQueue();
+
+      mockConnection.simulateIncoming(
+        _createReducerResultCommitted(
+          requestId: 4242,
+          querySetId: 1,
+          tableName: 'folder',
+          inserts: [committed],
+        ),
+      );
+      await pumpEventQueue();
+      await pumpEventQueue();
+
+      expect(table.ownedKeys('/a/msg'), isNotEmpty);
+
+      final snapshot = await storage.loadTableSnapshot('folder') ?? [];
+      expect(snapshot.map((r) => r['path']), contains('/a/msg'));
+    });
+  });
+
+  group('dropIfOffline self-commit carrying optimistic changes', () {
+    late MockConnection mockConnection;
+    late SubscriptionManager subscriptionManager;
+    late InMemoryOfflineStorage offlineStorage;
+    late List<String> logLines;
+    late SdkLogLevel savedLevel;
+    late SdkLogCallback? savedOnLog;
+
+    setUp(() {
+      logLines = [];
+      savedLevel = SdkLogger.level;
+      savedOnLog = SdkLogger.onLog;
+      SdkLogger.level = SdkLogLevel.debug;
+      SdkLogger.onLog = (tag, msg) => logLines.add(msg);
+
+      mockConnection = MockConnection();
+      offlineStorage = InMemoryOfflineStorage();
+      subscriptionManager = SubscriptionManager(
+        mockConnection,
+        offlineStorage: offlineStorage,
+      );
+      subscriptionManager.cache.registerDecoder<Folder>(
+        'folder',
+        FolderDecoder(),
+      );
+    });
+
+    tearDown(() async {
+      await subscriptionManager.dispose();
+      SdkLogger.onLog = savedOnLog;
+      SdkLogger.level = savedLevel;
+    });
+
+    Future<int> subscribeAndSendDirectlyWithOptimistic(Folder row) async {
+      mockConnection.mockState = const Connected();
+
+      final subscribeA = subscriptionManager.subscribe([
+        "SELECT * FROM folder WHERE path LIKE '/a/%'",
+      ]);
+      mockConnection.simulateIncoming(
+        _createSubscribeApplied(requestId: 0, querySetId: 1),
+      );
+      await subscribeA.timeout(_timeout);
+
+      unawaited(
+        subscriptionManager.reducers
+            .call(
+              'create_folder',
+              Uint8List(0),
+              dropIfOffline: true,
+              optimisticChanges: [
+                OptimisticChange.insert('folder', row.toJson()),
+              ],
+            )
+            .catchError((_) => TransactionResult.dropped(reducerName: 'x')),
+      );
+      await pumpEventQueue();
+
+      return mockConnection.getLastSentRequestId();
+    }
+
+    test('committed on a REGISTERED query set carrying the inserted row — the '
+        'row must survive', () async {
+      final committed = Folder(
+        path: '/a/msg',
+        name: 'Guitar Frequencies',
+        createdAt: Int64(0),
+      );
+      final numericRequestId = await subscribeAndSendDirectlyWithOptimistic(
+        committed,
+      );
+
+      final table = subscriptionManager.cache.getTableByName('folder');
+      if (table == null) fail('folder table was not registered');
+      expect(table.iter().map((f) => f.path), contains('/a/msg'));
+
+      mockConnection.simulateIncoming(
+        _createReducerResultCommitted(
+          requestId: numericRequestId,
+          querySetId: 1,
+          tableName: 'folder',
+          inserts: [committed],
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(
+        logLines,
+        contains(
+          allOf(
+            contains('REDUCER_RESULT:'),
+            contains('isOurs=true'),
+            contains('hasOptimistic=true'),
+          ),
+        ),
+      );
+      expect(table.iter().map((f) => f.path), contains('/a/msg'));
+    });
+
+    test('committed on an UNREGISTERED query set — the optimistically '
+        'inserted row must survive', () async {
+      final committed = Folder(
+        path: '/a/msg',
+        name: 'Guitar Frequencies',
+        createdAt: Int64(0),
+      );
+      final numericRequestId = await subscribeAndSendDirectlyWithOptimistic(
+        committed,
+      );
+
+      final table = subscriptionManager.cache.getTableByName('folder');
+      if (table == null) fail('folder table was not registered');
+      expect(table.iter().map((f) => f.path), contains('/a/msg'));
+
+      mockConnection.simulateIncoming(
+        _createReducerResultCommitted(
+          requestId: numericRequestId,
+          querySetId: 99,
+          tableName: 'folder',
+          inserts: const [],
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(table.iter().map((f) => f.path), contains('/a/msg'));
+    });
+
+    test('committed OkEmpty (no query sets) — the optimistically inserted row '
+        'must survive', () async {
+      final committed = Folder(
+        path: '/a/msg',
+        name: 'Guitar Frequencies',
+        createdAt: Int64(0),
+      );
+      final numericRequestId = await subscribeAndSendDirectlyWithOptimistic(
+        committed,
+      );
+
+      final table = subscriptionManager.cache.getTableByName('folder');
+      if (table == null) fail('folder table was not registered');
+      expect(table.iter().map((f) => f.path), contains('/a/msg'));
+
+      mockConnection.simulateIncoming(
+        _createReducerResultOkEmpty(requestId: numericRequestId),
+      );
+      await pumpEventQueue();
+
+      expect(table.iter().map((f) => f.path), contains('/a/msg'));
+    });
+
+    test('committed OkEmpty — the surviving row must also be durably '
+        'persisted, since a dropIfOffline call is never queued to disk',
+        () async {
+      final committed = Folder(
+        path: '/a/msg',
+        name: 'Guitar Frequencies',
+        createdAt: Int64(0),
+      );
+      final numericRequestId = await subscribeAndSendDirectlyWithOptimistic(
+        committed,
+      );
+
+      final table = subscriptionManager.cache.getTableByName('folder');
+      if (table == null) fail('folder table was not registered');
+
+      mockConnection.simulateIncoming(
+        _createReducerResultOkEmpty(requestId: numericRequestId),
+      );
+      await pumpEventQueue();
+
+      expect(table.iter().map((f) => f.path), contains('/a/msg'));
+
+      expect(
+        await offlineStorage.getPendingMutations(),
+        isEmpty,
+        reason:
+            'dropIfOffline bypasses the queue, so the snapshot is the only '
+            'durable copy of this row',
+      );
+
+      final snapshot = await offlineStorage.loadTableSnapshot('folder');
+      expect(
+        snapshot?.map((r) => r['path']),
+        contains('/a/msg'),
+        reason:
+            'the server committed this row and it survives in the live cache, '
+            'but it is excluded from every persisted snapshot, so it is lost '
+            'on restart with no queued mutation to replay it',
+      );
+    });
+  });
 }

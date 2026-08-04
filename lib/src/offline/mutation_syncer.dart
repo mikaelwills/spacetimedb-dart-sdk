@@ -90,6 +90,7 @@ class MutationSyncer implements MutationHandler {
     SdkLogger.d(
       'onMutationQueued called: requestId=$requestId, changes=${changes?.length ?? 0}',
     );
+    _optimisticState.markRequestDurablyQueued(requestId);
     _cachedPendingCount++;
     _updateSyncState(
       _currentSyncState.copyWith(pendingCount: _cachedPendingCount),
@@ -245,6 +246,7 @@ class MutationSyncer implements MutationHandler {
 
       final pending = await _storage.getPendingMutations();
       for (final mutation in pending) {
+        _optimisticState.markRequestDurablyQueued(mutation.requestId);
         _optimisticState.applyOptimisticChanges(
           mutation.requestId,
           mutation.optimisticChanges,
@@ -265,10 +267,24 @@ class MutationSyncer implements MutationHandler {
         if (_cache.isEventTable(tableName)) continue;
         final table = _cache.getTableByName(tableName);
         if (table != null && table.decoder.supportsJsonSerialization) {
+          final retained = <Map<String, dynamic>>[];
+          for (final row in _optimisticState
+              .retainedUnownedInsertRowsForTable(tableName)) {
+            final pk = table.decoder.getPrimaryKey(
+              table.decoder.fromJson(row) as dynamic,
+            );
+            if (pk == null) continue;
+            if (table.ownedKeys(pk).isNotEmpty) {
+              _optimisticState.releaseRetainedUnownedInsert(tableName, pk);
+              continue;
+            }
+            retained.add(row);
+          }
           final rows = table.toSerializable(
-            excludeRows: _optimisticState.optimisticPkInsertRowsForTable(
-              tableName,
-            ),
+            excludeRows: [
+              ..._optimisticState.optimisticPkInsertRowsForTable(tableName),
+              ...retained,
+            ],
             excludeRequestIds: _optimisticState
                 .optimisticNoPkInsertRequestIdsForTable(tableName),
           );

@@ -41,8 +41,37 @@ class OptimisticStateManager {
   final Map<String, Map<dynamic, _StashedCommit>> _committedStash = {};
   final Map<String, Map<dynamic, _StashedCommit>> _committedBase = {};
   final Map<String, Map<String, Set<dynamic>>> _confirmedOverlayKeys = {};
+  final Map<String, Map<dynamic, Map<String, dynamic>>> _retainedUnowned = {};
+  final Set<String> _durablyQueuedRequestIds = {};
 
   OptimisticStateManager(this._cache);
+
+  void markRequestDurablyQueued(String requestId) {
+    _durablyQueuedRequestIds.add(requestId);
+  }
+
+  bool isRequestDurablyQueued(String requestId) =>
+      _durablyQueuedRequestIds.contains(requestId);
+
+  void retainUnownedInsert(
+    String tableName,
+    dynamic primaryKey,
+    Map<String, dynamic>? rowJson,
+  ) {
+    if (primaryKey == null || rowJson == null) return;
+    (_retainedUnowned[tableName] ??= {})[primaryKey] = rowJson;
+  }
+
+  void releaseRetainedUnownedInsert(String tableName, dynamic primaryKey) {
+    final byKey = _retainedUnowned[tableName];
+    if (byKey == null) return;
+    byKey.remove(primaryKey);
+    if (byKey.isEmpty) _retainedUnowned.remove(tableName);
+  }
+
+  List<Map<String, dynamic>> retainedUnownedInsertRowsForTable(
+    String tableName,
+  ) => _retainedUnowned[tableName]?.values.toList() ?? const [];
 
   bool hasOptimisticChange(String requestId) => _entries.containsKey(requestId);
 
@@ -237,6 +266,7 @@ class OptimisticStateManager {
 
   void clearConfirmedOverlay(String requestId) {
     _confirmedOverlayKeys.remove(requestId);
+    _durablyQueuedRequestIds.remove(requestId);
   }
 
   void confirmOrRollbackWithTouchedKeys(
@@ -300,6 +330,8 @@ class OptimisticStateManager {
     _entries.clear();
     _committedStash.clear();
     _confirmedOverlayKeys.clear();
+    _retainedUnowned.clear();
+    _durablyQueuedRequestIds.clear();
   }
 
   void stashCommittedState(

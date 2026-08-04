@@ -281,6 +281,7 @@ class ReducerCaller {
       reducerName: reducerName,
       args: args,
       hasOptimisticChanges: hasOptimistic,
+      uuidRequestId: hasOptimistic ? requestId.toString() : null,
     );
 
     if (hasOptimistic) {

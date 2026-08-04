@@ -954,6 +954,7 @@ class SubscriptionManager {
       reconcile: true,
     );
 
+    final confirmedTables = <String>{};
     final skippedTables = <String>{};
     final appliedTables = <String>{};
     for (final querySet in message.querySets) {
@@ -975,10 +976,19 @@ class SubscriptionManager {
         tableName,
       );
       if (stillPending.contains(pk)) continue;
+      confirmedTables.add(tableName);
       final touchedKeys = touchedKeysByTable[tableName] ?? const {};
       switch (entry.type) {
         case OptimisticChangeType.insert:
           if (message.querySets.isEmpty) {
+            if (table.ownedKeys(pk).isEmpty &&
+                _optimisticState.isRequestDurablyQueued(effectiveRequestId)) {
+              _optimisticState.retainUnownedInsert(
+                tableName,
+                pk,
+                entry.newRowJson,
+              );
+            }
             break;
           }
           if (skippedTables.contains(tableName) &&
@@ -996,7 +1006,7 @@ class SubscriptionManager {
     }
 
     _mutationSyncer?.persistTableSnapshots(
-      onlyTables: touchedKeysByTable.keys.toSet(),
+      onlyTables: {...touchedKeysByTable.keys, ...confirmedTables},
     );
   }
 
