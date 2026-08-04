@@ -687,6 +687,13 @@ class SubscriptionManager {
     };
   }
 
+  bool _isTableCoveredByLiveQuerySet(String tableName) {
+    for (final querySetId in _subscriptionsByQuerySetId.keys) {
+      if (_tablesForQuerySetId(querySetId).contains(tableName)) return true;
+    }
+    return false;
+  }
+
   void _handleUnsubscribeApplied(UnsubscribeApplied message) {
     final querySetId = message.querySetId;
     _subscriptionsByQuerySetId.remove(querySetId);
@@ -947,6 +954,17 @@ class SubscriptionManager {
       reconcile: true,
     );
 
+    final skippedTables = <String>{};
+    final appliedTables = <String>{};
+    for (final querySet in message.querySets) {
+      final registered = _subscriptionsByQuerySetId.containsKey(
+        querySet.querySetId,
+      );
+      for (final tableUpdate in querySet.tables) {
+        (registered ? appliedTables : skippedTables).add(tableUpdate.tableName);
+      }
+    }
+
     for (final entry in confirmedEntries) {
       final pk = entry.primaryKey;
       if (pk == null) continue;
@@ -960,6 +978,11 @@ class SubscriptionManager {
       final touchedKeys = touchedKeysByTable[tableName] ?? const {};
       switch (entry.type) {
         case OptimisticChangeType.insert:
+          if (skippedTables.contains(tableName) &&
+              !appliedTables.contains(tableName) &&
+              _isTableCoveredByLiveQuerySet(tableName)) {
+            break;
+          }
           if (!touchedKeys.contains(pk)) {
             table.deleteRow(pk);
           }

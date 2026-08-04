@@ -111,6 +111,38 @@ Uint8List _createReducerResultCommitted({
   return encoder.toBytes();
 }
 
+Uint8List _createReducerResultCommittedMultiQuerySet({
+  required int requestId,
+  required List<MapEntry<int, MapEntry<String, List<Folder>>>> querySets,
+}) {
+  final encoder = BsatnEncoder();
+  encoder.writeU8(0);
+  encoder.writeU8(6);
+
+  encoder.writeU32(requestId);
+  encoder.writeU64(Int64(0));
+
+  encoder.writeU8(0);
+  encoder.writeU32(0);
+
+  encoder.writeU32(querySets.length);
+  for (final querySet in querySets) {
+    encoder.writeU32(querySet.key);
+
+    encoder.writeU32(1);
+    encoder.writeString(querySet.value.key);
+
+    encoder.writeU32(1);
+    encoder.writeU8(0);
+    _writeFolderRowList(encoder, querySet.value.value);
+    _writeFolderRowList(encoder, const []);
+  }
+
+  return encoder.toBytes();
+}
+
+
+
 Uint8List _createReducerResultFailed({
   required int requestId,
   required String message,
@@ -1702,6 +1734,219 @@ void main() {
       await laterSubscribe.timeout(_timeout);
 
       expect(table.iter(), contains('mid-reconnect-insert'));
+    });
+  });
+
+  group('self-commit labelled with an unregistered query-set id', () {
+    late MockConnection mockConnection;
+    late SubscriptionManager subscriptionManager;
+
+    setUp(() {
+      mockConnection = MockConnection();
+      subscriptionManager = SubscriptionManager(
+        mockConnection,
+        offlineStorage: InMemoryOfflineStorage(),
+      );
+      subscriptionManager.cache.registerDecoder<Folder>(
+        'folder',
+        FolderDecoder(),
+      );
+    });
+
+    tearDown(() async {
+      await subscriptionManager.dispose();
+    });
+
+    Future<int> subscribeAndInsertOptimistically(Folder row) async {
+      mockConnection.mockState = const Connected();
+
+      final subscribeA = subscriptionManager.subscribe([
+        "SELECT * FROM folder WHERE path LIKE '/a/%'",
+      ]);
+      mockConnection.simulateIncoming(
+        _createSubscribeApplied(requestId: 0, querySetId: 1),
+      );
+      await subscribeA.timeout(_timeout);
+
+      unawaited(
+        subscriptionManager.reducers.call(
+          'create_folder',
+          Uint8List(0),
+          optimisticChanges: [OptimisticChange.insert('folder', row.toJson())],
+        ),
+      );
+      await pumpEventQueue();
+
+      return mockConnection.getLastSentRequestId();
+    }
+
+    test('still subscribed, commit carries a never-registered id and the same '
+        'pk — the row must survive', () async {
+      final committed = Folder(
+        path: '/a/msg',
+        name: 'Guitar Frequencies',
+        createdAt: Int64(0),
+      );
+      final numericRequestId = await subscribeAndInsertOptimistically(
+        committed,
+      );
+
+      final table = subscriptionManager.cache.getTableByName('folder');
+      if (table == null) fail('folder table was not registered');
+      expect(table.iter().map((f) => f.path), contains('/a/msg'));
+
+      mockConnection.simulateIncoming(
+        _createReducerResultCommitted(
+          requestId: numericRequestId,
+          querySetId: 99,
+          tableName: 'folder',
+          inserts: [committed],
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(table.iter().map((f) => f.path), contains('/a/msg'));
+    });
+
+    test('registered query set, committed self-commit with the same pk — the '
+        'row is present exactly once and the count is flat', () async {
+      final committed = Folder(
+        path: '/a/msg',
+        name: 'Guitar Frequencies',
+        createdAt: Int64(0),
+      );
+      final numericRequestId = await subscribeAndInsertOptimistically(
+        committed,
+      );
+
+      final table = subscriptionManager.cache.getTableByName('folder');
+      if (table == null) fail('folder table was not registered');
+      final before = table.iter().length;
+
+      mockConnection.simulateIncoming(
+        _createReducerResultCommitted(
+          requestId: numericRequestId,
+          querySetId: 1,
+          tableName: 'folder',
+          inserts: [committed],
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(table.iter().length, equals(before));
+      expect(
+        table.iter().where((f) => f.path == '/a/msg').length,
+        equals(1),
+      );
+    });
+
+    test('explicitly unsubscribed, commit carries the dead id and the same pk '
+        '— the row must still be reaped', () async {
+      final committed = Folder(
+        path: '/a/msg',
+        name: 'Guitar Frequencies',
+        createdAt: Int64(0),
+      );
+      final numericRequestId = await subscribeAndInsertOptimistically(
+        committed,
+      );
+
+      final table = subscriptionManager.cache.getTableByName('folder');
+      if (table == null) fail('folder table was not registered');
+      expect(table.iter().map((f) => f.path), contains('/a/msg'));
+
+      subscriptionManager.unsubscribe(1);
+
+      mockConnection.simulateIncoming(
+        _createReducerResultCommitted(
+          requestId: numericRequestId,
+          querySetId: 1,
+          tableName: 'folder',
+          inserts: [committed],
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(table.iter().map((f) => f.path), isNot(contains('/a/msg')));
+    });
+
+    test('a retained row plus a later authoritative SubscribeApplied carrying '
+        'the same pk converges to exactly one row', () async {
+      final committed = Folder(
+        path: '/a/msg',
+        name: 'Guitar Frequencies',
+        createdAt: Int64(0),
+      );
+      final numericRequestId = await subscribeAndInsertOptimistically(
+        committed,
+      );
+
+      final table = subscriptionManager.cache.getTableByName('folder');
+      if (table == null) fail('folder table was not registered');
+
+      mockConnection.simulateIncoming(
+        _createReducerResultCommitted(
+          requestId: numericRequestId,
+          querySetId: 99,
+          tableName: 'folder',
+          inserts: [committed],
+        ),
+      );
+      await pumpEventQueue();
+
+      final laterSubscribe = subscriptionManager.subscribe([
+        "SELECT * FROM folder WHERE path LIKE '/a/%'",
+      ]);
+      mockConnection.simulateIncoming(
+        _createSubscribeApplied(
+          requestId: 0,
+          querySetId: 2,
+          rowsByTable: {
+            'folder': [committed],
+          },
+        ),
+      );
+      await laterSubscribe.timeout(_timeout);
+
+      expect(
+        table.iter().where((f) => f.path == '/a/msg').length,
+        equals(1),
+      );
+    });
+
+    test('multi-query-set commit: the registered set carries the real '
+        'server-assigned pk and an unrelated set is unregistered — the '
+        'guessed-pk phantom must still be reaped', () async {
+      final guessed = Folder(
+        path: '/a/guess',
+        name: 'Guessed Pk',
+        createdAt: Int64(0),
+      );
+      final numericRequestId = await subscribeAndInsertOptimistically(guessed);
+
+      final table = subscriptionManager.cache.getTableByName('folder');
+      if (table == null) fail('folder table was not registered');
+      expect(table.iter().map((f) => f.path), contains('/a/guess'));
+
+      final real = Folder(
+        path: '/a/real',
+        name: 'Server Assigned Pk',
+        createdAt: Int64(0),
+      );
+
+      mockConnection.simulateIncoming(
+        _createReducerResultCommittedMultiQuerySet(
+          requestId: numericRequestId,
+          querySets: [
+            MapEntry(1, MapEntry('folder', [real])),
+            const MapEntry(99, MapEntry('folder', <Folder>[])),
+          ],
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(table.iter().map((f) => f.path), contains('/a/real'));
+      expect(table.iter().map((f) => f.path), isNot(contains('/a/guess')));
     });
   });
 }
