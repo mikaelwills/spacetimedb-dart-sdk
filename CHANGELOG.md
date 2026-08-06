@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- **`SpacetimeDbConnection.setKeepAliveWorkInFlight(bool)`.** Tells the app-level keep-alive monitor that a long server-side operation is in flight, so a silent inbound stream is not mistaken for a dead socket. A no-op when the app-level monitor is not running, so behaviour is unchanged for consumers who have not opted into `appLevelKeepAlive`.
+
+### Fixed
+
+- **The keep-alive monitor no longer declares a live connection dead during a long subscription assemble.** A subscription snapshot arrives as a single inbound frame, so while the server assembles one there is zero inbound traffic to re-arm the idle timer on — a connection that is provably alive was indistinguishable from a dead one and got torn down mid-hydration, restarting the hydration from scratch and self-perpetuating. `SubscriptionManager` now asserts the in-flight signal for as long as any query set is awaiting its `SubscribeApplied`, and clears it on the force-completion path so a dropped connection cannot latch it on.
+
+  Detection is **deferred, not disabled**: the monitor keeps probing on its normal cadence, and after `KeepAliveMonitor.maxDeferredPings` (3) consecutive unanswered pings the connection is declared dead regardless. Any inbound frame resets the budget, so the allowance is spent per silent gap rather than accumulating across a multi-query-set resubscribe. With a 10s/5s configuration this bounds the deferral at ~45s; with the 30s/5s defaults, ~105s.
+
 ## 2.4.0 - 2026-07-31
 
 Offline-queue durability fixes plus concurrent reconnect resubscribe. A paused mutation queue could sit idle for a full backoff interval (up to 60s) with work still queued, and reported itself as idle while doing so. Minor bump: `SyncStatus` gains a variant, which is breaking for exhaustive switches.

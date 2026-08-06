@@ -59,6 +59,8 @@ class MockOfflineConnection implements SpacetimeDbConnection {
   @override
   Future<void> retryConnection() async => connect();
   @override
+  void setKeepAliveWorkInFlight(bool inFlight) {}
+  @override
   void enableAutoReconnect(bool enabled) {}
   @override
   void updateToken(String token) {}

@@ -323,6 +323,7 @@ class SubscriptionManager {
         waiter.complete();
       }
     }
+    _connection.setKeepAliveWorkInFlight(false);
   }
 
   void _startConnectionMonitoring() {
@@ -383,6 +384,7 @@ class SubscriptionManager {
                         '(querySetId=${entry.key}); retaining it for the next '
                         'reconnect',
                       );
+                      _completeSubscribeWaiter(entry.key);
                       return false;
                     },
                   ),
@@ -1047,12 +1049,18 @@ class SubscriptionManager {
       querySetId,
       Completer<void>.new,
     );
+    _syncKeepAliveWorkInFlight();
     try {
       await waiter.future;
     } finally {
       if (identical(_subscribeWaiters[querySetId], waiter)) {
         _subscribeWaiters.remove(querySetId);
       }
+      _syncKeepAliveWorkInFlight();
     }
+  }
+
+  void _syncKeepAliveWorkInFlight() {
+    _connection.setKeepAliveWorkInFlight(_subscribeWaiters.isNotEmpty);
   }
 }

@@ -103,7 +103,41 @@ class SpacetimeDbConnection {
   }
 
   Future<void> connect() async {
-    if (_state is! Disconnected) {
+    if (!config.retryInitialConnect) {
+      return _connectOnce();
+    }
+    var attempt = 0;
+    while (true) {
+      attempt++;
+      try {
+        return await _connectOnce();
+      } on SpacetimeDbAuthException {
+        rethrow;
+      } catch (e) {
+        if (attempt >= config.maxReconnectAttempts) {
+          SdkLogger.e(
+            'Initial connect failed after $attempt attempt(s); giving up',
+          );
+          _updateState(
+            const FatalError(message: 'Max initial connect attempts reached'),
+          );
+          rethrow;
+        }
+        _reconnectAttempts = attempt - 1;
+        final delay = _getReconnectDelay();
+        SdkLogger.w(
+          'Initial connect attempt $attempt failed ($e); '
+          'retrying in ${delay.inSeconds}s',
+        );
+        _updateState(Reconnecting(attempt: attempt, nextDelay: delay));
+        await Future<void>.delayed(delay);
+        if (_state is FatalError) rethrow;
+      }
+    }
+  }
+
+  Future<void> _connectOnce() async {
+    if (_state is! Disconnected && _state is! Reconnecting) {
       SdkLogger.i('Already connected or connecting');
       return;
     }
@@ -150,10 +184,7 @@ class SpacetimeDbConnection {
       _negotiatedProtocol = normalizeWsProtocol(_channel!.protocol);
       SdkLogger.i('Negotiated WebSocket protocol: ${_negotiatedProtocol.name}');
       _setupMessageListener();
-      // On VM the WS-level ping (wired above) handles dead-socket
-      // detection natively. On web we still need the app-layer
-      // KeepAliveMonitor because browsers don't expose WS ping.
-      if (kIsWeb) {
+      if (kIsWeb || config.appLevelKeepAlive) {
         _setupKeepAlive();
       }
       _updateState(const Connected());
@@ -213,6 +244,10 @@ class SpacetimeDbConnection {
     }
     _outboundQueue.add(Uint8List.fromList(data));
     _scheduleOutboundFlush();
+  }
+
+  void setKeepAliveWorkInFlight(bool inFlight) {
+    _keepAlive?.setWorkInFlight(inFlight);
   }
 
   void enableAutoReconnect(bool enabled) {
@@ -426,6 +461,7 @@ class SpacetimeDbConnection {
   }
 
   void _setupKeepAlive() {
+    _keepAlive?.stop();
     _keepAlive = KeepAliveMonitor(
       onSendPing: () {
         try {

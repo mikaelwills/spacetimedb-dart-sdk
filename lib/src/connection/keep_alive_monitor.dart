@@ -32,11 +32,15 @@ class KeepAliveMonitor {
   final Duration _idleThreshold;
   final Duration _pongTimeout;
 
+  static const int maxDeferredPings = 3;
+
   // State
   Timer? _idleTimer;
   Timer? _timeoutTimer;
   bool _isAwaitingPong = false;
   bool _stopped = false;
+  bool _workInFlight = false;
+  int _deferredPings = 0;
 
   KeepAliveMonitor({
     required void Function() onSendPing,
@@ -46,7 +50,15 @@ class KeepAliveMonitor {
   }) : _sendPingCallback = onSendPing,
        _onTimeoutCallback = onDisconnect,
        _idleThreshold = idleThreshold,
-       _pongTimeout = pongTimeout;
+       _pongTimeout = pongTimeout {
+    _armIdleTimer();
+  }
+
+  void setWorkInFlight(bool inFlight) {
+    if (_stopped) return;
+    _workInFlight = inFlight;
+    if (!inFlight) _deferredPings = 0;
+  }
 
   /// Call this EVERY time a message is received from the WebSocket
   ///
@@ -60,9 +72,9 @@ class KeepAliveMonitor {
       _timeoutTimer?.cancel();
       _timeoutTimer = null;
     }
+    _deferredPings = 0;
 
-    _idleTimer?.cancel();
-    _idleTimer = Timer(_idleThreshold, _triggerPing);
+    _armIdleTimer();
   }
 
   /// Stop all monitoring and clean up timers
@@ -73,6 +85,13 @@ class KeepAliveMonitor {
     _timeoutTimer?.cancel();
     _timeoutTimer = null;
     _isAwaitingPong = false;
+    _workInFlight = false;
+    _deferredPings = 0;
+  }
+
+  void _armIdleTimer() {
+    _idleTimer?.cancel();
+    _idleTimer = Timer(_idleThreshold, _triggerPing);
   }
 
   void _triggerPing() {
@@ -83,6 +102,15 @@ class KeepAliveMonitor {
 
     _timeoutTimer = Timer(_pongTimeout, () {
       if (_stopped) return;
+
+      if (_workInFlight && _deferredPings < maxDeferredPings) {
+        _deferredPings++;
+        _isAwaitingPong = false;
+        _timeoutTimer = null;
+        _armIdleTimer();
+        return;
+      }
+
       stop();
       _onTimeoutCallback();
     });

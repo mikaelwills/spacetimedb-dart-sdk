@@ -230,19 +230,47 @@ class MutationSyncer implements MutationHandler {
     try {
       await ensureInitialized();
 
-      for (final tableName in _cache.registeredTableNames) {
+      final registered = _cache.registeredTableNames.toList();
+      SdkLogger.w(
+        'CACHE_LOAD: begin, registeredTables=${registered.length} '
+        '[${registered.join(',')}]',
+      );
+      var loadedTables = 0;
+      var loadedRows = 0;
+
+      for (final tableName in registered) {
         if (_cache.isEventTable(tableName)) continue;
         final rows = await _storage.loadTableSnapshot(tableName);
-        if (rows != null && rows.isNotEmpty) {
-          final table = _cache.getTableByName(tableName);
-          if (table != null && table.decoder.supportsJsonSerialization) {
-            table.loadFromSerializable(rows);
-            SdkLogger.d(
-              'Loaded ${rows.length} rows from offline cache for "$tableName"',
-            );
-          }
+        if (rows == null || rows.isEmpty) {
+          SdkLogger.w(
+            'CACHE_LOAD: no snapshot on disk for "$tableName" '
+            '(null=${rows == null})',
+          );
+          continue;
         }
+        final table = _cache.getTableByName(tableName);
+        if (table == null) {
+          SdkLogger.w('CACHE_LOAD: table "$tableName" absent from cache');
+          continue;
+        }
+        if (!table.decoder.supportsJsonSerialization) {
+          SdkLogger.w(
+            'CACHE_LOAD: decoder for "$tableName" cannot deserialize JSON, '
+            'skipping ${rows.length} rows',
+          );
+          continue;
+        }
+        table.loadFromSerializable(rows);
+        loadedTables++;
+        loadedRows += rows.length;
+        SdkLogger.d(
+          'Loaded ${rows.length} rows from offline cache for "$tableName"',
+        );
       }
+
+      SdkLogger.w(
+        'CACHE_LOAD: done, tables=$loadedTables rows=$loadedRows',
+      );
 
       final pending = await _storage.getPendingMutations();
       for (final mutation in pending) {
@@ -254,8 +282,8 @@ class MutationSyncer implements MutationHandler {
       }
 
       await updatePendingCount();
-    } catch (e) {
-      SdkLogger.e('Error loading from offline cache: $e');
+    } catch (e, st) {
+      SdkLogger.e('Error loading from offline cache: $e\n$st');
     }
   }
 

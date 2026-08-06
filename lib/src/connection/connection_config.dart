@@ -21,6 +21,10 @@ class ConnectionConfig {
   /// Matches the TypeScript SDK's 256 KiB cap.
   final int maxV3OutboundFrameBytes;
 
+  final bool appLevelKeepAlive;
+
+  final bool retryInitialConnect;
+
   const ConnectionConfig({
     this.maxReconnectAttempts = 10,
     this.baseReconnectDelay = const Duration(seconds: 1),
@@ -31,6 +35,8 @@ class ConnectionConfig {
     this.connectTimeout = const Duration(seconds: 10),
     this.outboundBatching = OutboundBatchingPolicy.opportunistic,
     this.maxV3OutboundFrameBytes = 256 * 1024,
+    this.appLevelKeepAlive = false,
+    this.retryInitialConnect = false,
   });
 
   static const mobile = ConnectionConfig(
@@ -69,6 +75,8 @@ class ConnectionConfig {
         'autoReconnect: $autoReconnect, '
         'connectTimeout: $connectTimeout, '
         'outboundBatching: $outboundBatching, '
-        'maxV3OutboundFrameBytes: $maxV3OutboundFrameBytes)';
+        'maxV3OutboundFrameBytes: $maxV3OutboundFrameBytes, '
+        'appLevelKeepAlive: $appLevelKeepAlive, '
+        'retryInitialConnect: $retryInitialConnect)';
   }
 }
