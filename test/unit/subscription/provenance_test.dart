@@ -1978,6 +1978,151 @@ void main() {
     });
   });
 
+  group('duplicate commit after the row arrived by subscription', () {
+    late MockConnection mockConnection;
+    late SubscriptionManager subscriptionManager;
+
+    setUp(() {
+      mockConnection = MockConnection();
+      subscriptionManager = SubscriptionManager(
+        mockConnection,
+        offlineStorage: InMemoryOfflineStorage(),
+      );
+      subscriptionManager.cache.registerDecoder<Folder>(
+        'folder',
+        FolderDecoder(),
+      );
+    });
+
+    tearDown(() async {
+      await subscriptionManager.dispose();
+    });
+
+    test('a registered rowless commit for a pk the server already delivered '
+        'must not delete the server-owned row', () async {
+      mockConnection.mockState = const Connected();
+
+      final subscribeA = subscriptionManager.subscribe([
+        "SELECT * FROM folder WHERE path LIKE '/a/%'",
+      ]);
+      mockConnection.simulateIncoming(
+        _createSubscribeApplied(requestId: 0, querySetId: 1),
+      );
+      await subscribeA.timeout(_timeout);
+
+      final queued = Folder(
+        path: '/a/msg',
+        name: 'Guitar Frequencies',
+        createdAt: Int64(0),
+      );
+
+      unawaited(
+        subscriptionManager.reducers.call(
+          'create_folder',
+          Uint8List(0),
+          optimisticChanges: [
+            OptimisticChange.insert('folder', queued.toJson()),
+          ],
+        ),
+      );
+      await pumpEventQueue();
+
+      final numericRequestId = mockConnection.getLastSentRequestId();
+
+      final table = subscriptionManager.cache.getTableByName('folder');
+      if (table == null) fail('folder table was not registered');
+      expect(table.iter().map((f) => f.path), contains('/a/msg'));
+
+      mockConnection.simulateIncoming(
+        _createSubscribeApplied(
+          requestId: 1,
+          querySetId: 1,
+          rowsByTable: {
+            'folder': [queued],
+          },
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(
+        table.ownedKeys('/a/msg'),
+        isNotEmpty,
+        reason: 'SubscribeApplied must grant ownership for the pk',
+      );
+
+      final ownedCount = subscriptionManager.rowProvenanceCountForTable(
+        'folder',
+      );
+      final rowCount = table.iter().length;
+
+      mockConnection.simulateIncoming(
+        _createReducerResultCommitted(
+          requestId: numericRequestId,
+          querySetId: 1,
+          tableName: 'folder',
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(table.iter().map((f) => f.path), contains('/a/msg'));
+      expect(table.iter().length, equals(rowCount));
+      expect(
+        subscriptionManager.rowProvenanceCountForTable('folder'),
+        equals(ownedCount),
+      );
+    });
+
+    test('a genuine Failed result still rolls back its unowned optimistic '
+        'insert', () async {
+      mockConnection.mockState = const Connected();
+
+      final subscribeA = subscriptionManager.subscribe([
+        "SELECT * FROM folder WHERE path LIKE '/a/%'",
+      ]);
+      mockConnection.simulateIncoming(
+        _createSubscribeApplied(requestId: 0, querySetId: 1),
+      );
+      await subscribeA.timeout(_timeout);
+
+      final rejected = Folder(
+        path: '/a/rejected',
+        name: 'Server Says No',
+        createdAt: Int64(0),
+      );
+
+      unawaited(
+        subscriptionManager.reducers.call(
+          'create_folder',
+          Uint8List(0),
+          optimisticChanges: [
+            OptimisticChange.insert('folder', rejected.toJson()),
+          ],
+        ),
+      );
+      await pumpEventQueue();
+
+      final table = subscriptionManager.cache.getTableByName('folder');
+      if (table == null) fail('folder table was not registered');
+      expect(table.iter().map((f) => f.path), contains('/a/rejected'));
+      expect(table.ownedKeys('/a/rejected'), isEmpty);
+
+      mockConnection.simulateIncoming(
+        _createReducerResultFailed(
+          requestId: mockConnection.getLastSentRequestId(),
+          message: 'create_folder failed: permission denied',
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(table.iter().map((f) => f.path), isNot(contains('/a/rejected')));
+      expect(
+        subscriptionManager.rowProvenanceCountForTable('folder'),
+        equals(0),
+      );
+    });
+  });
+
+
   group('committed self-commit carrying zero query sets', () {
     late MockConnection mockConnection;
     late SubscriptionManager subscriptionManager;

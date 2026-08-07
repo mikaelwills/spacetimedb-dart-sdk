@@ -998,7 +998,7 @@ class SubscriptionManager {
               _isTableCoveredByLiveQuerySet(tableName)) {
             break;
           }
-          if (!touchedKeys.contains(pk)) {
+          if (!touchedKeys.contains(pk) && table.ownedKeys(pk).isEmpty) {
             table.deleteRow(pk);
           }
         case OptimisticChangeType.delete:
