@@ -350,14 +350,22 @@ class SubscriptionManager {
 
   bool _reconnectInFlight = false;
 
+  final Map<String, Set<dynamic>> _deferredEvictionCandidates = {};
+
   Future<void> _onReconnected() async {
     if (_subscriptionsByQuerySetId.isNotEmpty) {
       _subscriptionsReady.value = false;
 
       final oldKeysByTable = <String, Set<dynamic>>{
         for (final table in cache.allTables)
-          if (table.hasPrimaryKey) table.tableName: table.primaryKeys,
+          if (table.hasPrimaryKey)
+            table.tableName: {
+              ..._deferredEvictionCandidates[table.tableName] ?? const {},
+              for (final pk in table.primaryKeys)
+                if (table.ownedKeys(pk).isNotEmpty) pk,
+            },
       };
+      _deferredEvictionCandidates.clear();
       for (final table in cache.allTables) {
         if (table.hasPrimaryKey) table.clearOwners();
       }
@@ -401,6 +409,11 @@ class SubscriptionManager {
         _evictReconnectDeletes(oldKeysByTable);
         _subscriptionsReady.value = true;
       } else {
+        for (final entry in oldKeysByTable.entries) {
+          if (entry.value.isNotEmpty) {
+            _deferredEvictionCandidates[entry.key] = entry.value;
+          }
+        }
         SdkLogger.w(
           'Skipping reconnect eviction: resubscribe did not fully complete '
           '(connection dropped mid-reconnect); retaining cached rows and '
@@ -428,6 +441,12 @@ class SubscriptionManager {
       for (final pk in oldKeys) {
         if (optimisticPKs.contains(pk)) continue;
         if (table.ownedKeys(pk).isEmpty) toEvict.add(pk);
+      }
+      if (toEvict.isNotEmpty) {
+        SdkLogger.w(
+          'RECONNECT_EVICT: $tableName evicted ${toEvict.length} of '
+          '${oldKeys.length} previously-owned rows not re-delivered',
+        );
       }
       _evict(tableName, toEvict);
     }
