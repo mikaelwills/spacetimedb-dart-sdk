@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`SpacetimeDbConnection.clearToken()`.** Drops the connection's in-memory auth token. `updateToken` could only ever replace a token, so a consumer whose token was rejected had no way to retry without one — clearing it from their own storage was not enough, because the connection keeps its own copy and re-sent the rejected token on the next attempt. Rebuilding the whole client was the only workaround. Now a `401` can be recovered in place: clear the token, reconnect, get a fresh identity.
+
 - **`SpacetimeDbConnection.setKeepAliveWorkInFlight(bool)`.** Tells the app-level keep-alive monitor that a long server-side operation is in flight, so a silent inbound stream is not mistaken for a dead socket. A no-op when the app-level monitor is not running, so behaviour is unchanged for consumers who have not opted into `appLevelKeepAlive`.
 
 ### Fixed
