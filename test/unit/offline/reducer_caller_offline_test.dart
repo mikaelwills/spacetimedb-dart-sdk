@@ -64,6 +64,9 @@ class MockOfflineConnection implements SpacetimeDbConnection {
   void enableAutoReconnect(bool enabled) {}
   @override
   void updateToken(String token) {}
+
+  @override
+  void clearToken() {}
   @override
   String get host => 'mock://localhost';
   @override

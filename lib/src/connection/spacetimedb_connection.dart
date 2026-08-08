@@ -102,6 +102,11 @@ class SpacetimeDbConnection {
     SdkLogger.i('Authentication token updated');
   }
 
+  void clearToken() {
+    _currentToken = null;
+    SdkLogger.i('Authentication token cleared');
+  }
+
   Future<void> connect() async {
     if (!config.retryInitialConnect) {
       return _connectOnce();

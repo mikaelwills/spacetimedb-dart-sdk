@@ -104,6 +104,9 @@ class MockConnection implements SpacetimeDbConnection {
   @override
   void updateToken(String token) {}
 
+  @override
+  void clearToken() {}
+
   void simulateIncoming(Uint8List data) {
     _incomingController.add(data);
   }
