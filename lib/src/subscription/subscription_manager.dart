@@ -242,6 +242,9 @@ class SubscriptionManager {
     _dropQuerySetEverywhere(querySetId);
   }
 
+  bool forgetQuerySet(int querySetId) =>
+      _subscriptionsByQuerySetId.remove(querySetId) != null;
+
   void callProcedure(
     String procedureName,
     Uint8List args, {
