@@ -353,24 +353,15 @@ class SubscriptionManager {
 
   bool _reconnectInFlight = false;
 
-  final Map<String, Set<dynamic>> _deferredEvictionCandidates = {};
+  final Set<int> _appliedSetIds = {};
 
   Future<void> _onReconnected() async {
     if (_subscriptionsByQuerySetId.isNotEmpty) {
       _subscriptionsReady.value = false;
 
-      final oldKeysByTable = <String, Set<dynamic>>{
-        for (final table in cache.allTables)
-          if (table.hasPrimaryKey)
-            table.tableName: {
-              ..._deferredEvictionCandidates[table.tableName] ?? const {},
-              for (final pk in table.primaryKeys)
-                if (table.ownedKeys(pk).isNotEmpty) pk,
-            },
-      };
-      _deferredEvictionCandidates.clear();
+      _appliedSetIds.clear();
       for (final table in cache.allTables) {
-        if (table.hasPrimaryKey) table.clearOwners();
+        if (table.hasPrimaryKey) table.beginReconnectGeneration();
       }
 
       _reconnectInFlight = true;
@@ -408,19 +399,18 @@ class SubscriptionManager {
       }
 
       if (_disposed) return;
-      if (allResubscribed && _connection.isConnected) {
-        _evictReconnectDeletes(oldKeysByTable);
+      final everySetApplied = _subscriptionsByQuerySetId.keys.every(
+        _appliedSetIds.contains,
+      );
+      if (allResubscribed && _connection.isConnected && everySetApplied) {
+        _finalizeReconnectGeneration();
         _subscriptionsReady.value = true;
       } else {
-        for (final entry in oldKeysByTable.entries) {
-          if (entry.value.isNotEmpty) {
-            _deferredEvictionCandidates[entry.key] = entry.value;
-          }
-        }
         SdkLogger.w(
           'Skipping reconnect eviction: resubscribe did not fully complete '
-          '(connection dropped mid-reconnect); retaining cached rows and '
-          'subscription map for the next reconnect',
+          '(connection dropped mid-reconnect, or a query set never applied); '
+          'retaining cached rows, ownership and subscription map for the next '
+          'reconnect',
         );
       }
     }
@@ -431,27 +421,23 @@ class SubscriptionManager {
     }
   }
 
-  void _evictReconnectDeletes(Map<String, Set<dynamic>> oldKeysByTable) {
-    for (final entry in oldKeysByTable.entries) {
-      final tableName = entry.key;
-      final oldKeys = entry.value;
-      final table = cache.getTableByName(tableName);
-      if (table == null) continue;
-      final optimisticPKs = _optimisticState.optimisticPrimaryKeysForTable(
-        tableName,
+  void _finalizeReconnectGeneration() {
+    final liveSetIds = _subscriptionsByQuerySetId.keys.toSet();
+    for (final table in cache.allTables) {
+      if (!table.hasPrimaryKey) continue;
+      final pendingBefore = table.pendingOwnerEntryCount;
+      final evicted = table.finalizeReconnectGeneration(
+        protectedKeys: _optimisticState.optimisticPrimaryKeysForTable(
+          table.tableName,
+        ),
+        retainWhere: (owners) => !owners.any(liveSetIds.contains),
       );
-      final toEvict = <dynamic>[];
-      for (final pk in oldKeys) {
-        if (optimisticPKs.contains(pk)) continue;
-        if (table.ownedKeys(pk).isEmpty) toEvict.add(pk);
-      }
-      if (toEvict.isNotEmpty) {
+      if (evicted > 0) {
         SdkLogger.w(
-          'RECONNECT_EVICT: $tableName evicted ${toEvict.length} of '
-          '${oldKeys.length} previously-owned rows not re-delivered',
+          'RECONNECT_EVICT: ${table.tableName} evicted $evicted of '
+          '$pendingBefore previously-owned rows not re-delivered',
         );
       }
-      _evict(tableName, toEvict);
     }
   }
 
@@ -600,8 +586,9 @@ class SubscriptionManager {
     final serverRowsByTable = _groupRowsByTable(message.rows);
     final querySetTables = _tablesToApply(serverRowsByTable, querySetId);
     _applyInitialRows(querySetTables, serverRowsByTable, querySetId, context);
+    _appliedSetIds.add(querySetId);
 
-    await _mutationSyncer?.persistTableSnapshots();
+    await _mutationSyncer?.persistTableSnapshots(onlyTables: querySetTables);
   }
 
   Map<String, BsatnRowList> _groupRowsByTable(QueryRows rows) {
@@ -678,12 +665,6 @@ class SubscriptionManager {
       sizeHint: RowSizeHint.rowOffsets(offsets),
       rowsData: merged,
     );
-  }
-
-  void _evict(String tableName, List<dynamic> pks) {
-    if (pks.isEmpty) return;
-    final evictSet = pks.toSet();
-    cache.getTableByName(tableName)?.removeRowsWhere(evictSet.contains);
   }
 
   void _dropQuerySetEverywhere(int querySetId) {

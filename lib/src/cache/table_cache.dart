@@ -19,7 +19,9 @@ class TableCache<T> {
   final Map<dynamic, T> _rowsByPrimaryKey = {};
   final List<_CachedRow<T>> _rows = [];
 
-  final Map<dynamic, Set<int>> _rowOwners = {};
+  Map<dynamic, Set<int>> _rowOwners = {};
+
+  final Map<dynamic, Set<int>> _previousOwners = {};
 
   @internal
   @visibleForTesting
@@ -186,6 +188,7 @@ class TableCache<T> {
       final owners = _rowOwners.putIfAbsent(pk, () => <int>{});
       if (owners.isEmpty) onOwnershipGained?.call(pk);
       owners.add(querySetId);
+      _previousOwners.remove(pk);
     }
 
     final suppressInsertEvents = <dynamic>{};
@@ -207,6 +210,7 @@ class TableCache<T> {
     final toEvict = <dynamic>[];
     final surviving = <dynamic>[];
     for (final pk in changes.serverAbsentKeys) {
+      _previousOwners.remove(pk);
       final owners = _rowOwners[pk];
       if (owners == null) {
         if (trackImbalance && deletedRowValues.containsKey(pk)) {
@@ -296,6 +300,7 @@ class TableCache<T> {
 
     for (final pk in snapshotKeys) {
       _rowOwners.putIfAbsent(pk, () => <int>{}).add(querySetId);
+      _previousOwners.remove(pk);
     }
 
     if (!reconnectInFlight) {
@@ -335,6 +340,18 @@ class TableCache<T> {
         }
       }
     }
+    for (final entry in _previousOwners.entries.toList()) {
+      final pk = entry.key;
+      final owners = entry.value;
+      if (!owners.remove(querySetId)) continue;
+      if (owners.isEmpty) {
+        _previousOwners.remove(pk);
+        if (!_rowOwners.containsKey(pk) &&
+            (protectedKeys == null || !protectedKeys.contains(pk))) {
+          toEvict.add(pk);
+        }
+      }
+    }
     for (final pk in toEvict) {
       _evictRow(pk);
     }
@@ -348,11 +365,49 @@ class TableCache<T> {
   int get ownerEntryCount => _rowOwners.length;
 
   @internal
-  void clearOwners() => _rowOwners.clear();
+  Set<dynamic> ownedKeys(dynamic primaryKey) =>
+      _rowOwners[primaryKey] ?? _previousOwners[primaryKey] ?? const {};
 
   @internal
-  Set<dynamic> ownedKeys(dynamic primaryKey) =>
-      _rowOwners[primaryKey] ?? const {};
+  int get pendingOwnerEntryCount => _previousOwners.length;
+
+  @internal
+  void beginReconnectGeneration() {
+    if (_rowOwners.isEmpty) return;
+    for (final entry in _rowOwners.entries) {
+      final existing = _previousOwners[entry.key];
+      if (existing == null) {
+        _previousOwners[entry.key] = entry.value;
+      } else {
+        existing.addAll(entry.value);
+      }
+    }
+    _rowOwners = {};
+  }
+
+  @internal
+  int finalizeReconnectGeneration({
+    Set<dynamic>? protectedKeys,
+    bool Function(Set<int> owners)? retainWhere,
+  }) {
+    if (_previousOwners.isEmpty) return 0;
+    final evicted = <dynamic>[];
+    for (final entry in _previousOwners.entries) {
+      final pk = entry.key;
+      if (protectedKeys != null && protectedKeys.contains(pk)) continue;
+      if (retainWhere != null && retainWhere(entry.value)) continue;
+      evicted.add(pk);
+    }
+    _previousOwners.clear();
+    for (final pk in evicted) {
+      _evictRow(pk);
+    }
+    if (evicted.isNotEmpty) {
+      _refreshRowsNotifier();
+      _notifyRowListeners(evicted);
+    }
+    return evicted.length;
+  }
 
   /// Returns the number of rows in the cache
   ///
@@ -418,6 +473,7 @@ class TableCache<T> {
     _rowsByPrimaryKey.clear();
     _rows.clear();
     _rowOwners.clear();
+    _previousOwners.clear();
     _refreshRowsNotifier();
     if (_rowNotifiers.isNotEmpty) {
       _notifyRowListeners(_rowNotifiers.keys.toList());
@@ -507,6 +563,7 @@ class TableCache<T> {
     _rowsByPrimaryKey.clear();
     _rows.clear();
     _rowOwners.clear();
+    _previousOwners.clear();
     for (final json in jsonRows) {
       final row = decoder.fromJson(json);
       if (row == null) {
@@ -925,6 +982,7 @@ class TableCache<T> {
   void _evictRow(dynamic primaryKey) {
     _rowsByPrimaryKey.remove(primaryKey);
     _rowOwners.remove(primaryKey);
+    _previousOwners.remove(primaryKey);
   }
 }
 
