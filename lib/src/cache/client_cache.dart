@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import 'table_cache.dart';
 import 'row_decoder.dart';
 
@@ -108,6 +110,7 @@ class ClientCache {
     }
   }
 
+  @internal
   Map<String, List<Map<String, dynamic>>> serializeAllTables() {
     final result = <String, List<Map<String, dynamic>>>{};
     for (final entry in _tables.entries) {
@@ -119,6 +122,7 @@ class ClientCache {
     return result;
   }
 
+  @internal
   void loadSerializedTables(Map<String, List<Map<String, dynamic>>> data) {
     for (final entry in data.entries) {
       final table = _tables[entry.key];

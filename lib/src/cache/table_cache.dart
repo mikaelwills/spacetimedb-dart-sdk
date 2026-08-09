@@ -11,6 +11,7 @@ import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 
 class TableCache<T> {
   final String tableName;
+  @internal
   final RowDecoder<T> decoder;
   final bool isEvent;
   final bool hasPrimaryKey;
@@ -20,6 +21,7 @@ class TableCache<T> {
 
   final Map<dynamic, Set<int>> _rowOwners = {};
 
+  @internal
   @visibleForTesting
   int get ownershipImbalanceCount => _ownershipImbalanceCount;
   int _ownershipImbalanceCount = 0;
@@ -78,12 +80,14 @@ class TableCache<T> {
     this.isEvent = false,
   }) : hasPrimaryKey = decoder.hasPrimaryKey;
 
+  @internal
   void markSubscribed() {
     if (!_subscribedCompleter.isCompleted) {
       _subscribedCompleter.complete();
     }
   }
 
+  @internal
   void markSubscribeFailed(Object error) {
     if (!_subscribedCompleter.isCompleted) {
       _subscribedCompleter.completeError(error);
@@ -97,6 +101,7 @@ class TableCache<T> {
   /// caused the transaction (reducer name, caller, status, etc.).
   ///
   /// Phase 3 will add enhanced event streams that include the context.
+  @internal
   void applyTransactionUpdate(
     BsatnRowList deletes,
     BsatnRowList inserts,
@@ -122,6 +127,7 @@ class TableCache<T> {
   ///
   /// Used for touch-based optimistic confirmation. Returns all primary keys
   /// that were inserted, updated, or deleted in this transaction.
+  @internal
   Set<dynamic> applyTransactionUpdateAndCollectKeys(
     BsatnRowList deletes,
     BsatnRowList inserts,
@@ -148,6 +154,7 @@ class TableCache<T> {
     return changes.touchedKeys;
   }
 
+  @internal
   Set<dynamic> applyServerDelta(
     BsatnRowList deletes,
     BsatnRowList inserts,
@@ -256,6 +263,7 @@ class TableCache<T> {
     return changes.touchedKeys;
   }
 
+  @internal
   Set<dynamic> applySnapshot(
     BsatnRowList inserts,
     EventContext context, {
@@ -313,6 +321,7 @@ class TableCache<T> {
     return changes.insertedPrimaryKeys;
   }
 
+  @internal
   void dropQuerySet(int querySetId, {Set<dynamic>? protectedKeys}) {
     final toEvict = <dynamic>[];
     for (final entry in _rowOwners.entries.toList()) {
@@ -335,10 +344,13 @@ class TableCache<T> {
     }
   }
 
+  @internal
   int get ownerEntryCount => _rowOwners.length;
 
+  @internal
   void clearOwners() => _rowOwners.clear();
 
+  @internal
   Set<dynamic> ownedKeys(dynamic primaryKey) =>
       _rowOwners[primaryKey] ?? const {};
 
@@ -377,9 +389,11 @@ class TableCache<T> {
     return hasPrimaryKey ? _rowsByPrimaryKey.values : _rows.map((e) => e.row);
   }
 
+  @internal
   Set<dynamic> get primaryKeys =>
       hasPrimaryKey ? _rowsByPrimaryKey.keys.toSet() : const {};
 
+  @internal
   void applyDeletes(BsatnRowList deletes) {
     final rowBytes = deletes.getRows();
     for (final bytes in rowBytes) {
@@ -414,6 +428,7 @@ class TableCache<T> {
   ///
   /// Called when initial subscription data arrives. Emits events with
   /// SubscribeAppliedEvent so users can distinguish initial load from updates.
+  @internal
   Set<dynamic> applyInitialData(
     BsatnRowList inserts,
     EventContext context, {
@@ -429,6 +444,7 @@ class TableCache<T> {
     return changes.insertedPrimaryKeys;
   }
 
+  @internal
   void dispose() {
     if (!_subscribedCompleter.isCompleted) {
       _subscribedCompleter.complete();
@@ -444,6 +460,7 @@ class TableCache<T> {
     _onDeleteController.close();
   }
 
+  @internal
   List<Map<String, dynamic>> toSerializable({
     List<Map<String, dynamic>> excludeRows = const [],
     Set<String> excludeRequestIds = const {},
@@ -479,6 +496,7 @@ class TableCache<T> {
     return out;
   }
 
+  @internal
   void loadFromSerializable(List<Map<String, dynamic>> jsonRows) {
     if (!decoder.supportsJsonSerialization) {
       throw UnsupportedError(
@@ -508,6 +526,7 @@ class TableCache<T> {
     }
   }
 
+  @internal
   void insertRow(T row, {String? requestId}) {
     final primaryKey = decoder.getPrimaryKey(row);
     if (primaryKey != null) {
@@ -521,6 +540,7 @@ class TableCache<T> {
     }
   }
 
+  @internal
   @visibleForTesting
   void insertServerOwnedRow(T row, {int querySetId = 0}) {
     final primaryKey = decoder.getPrimaryKey(row);
@@ -530,6 +550,7 @@ class TableCache<T> {
     }
   }
 
+  @internal
   void updateRow(T row) {
     if (!hasPrimaryKey) {
       throw StateError(
@@ -547,6 +568,7 @@ class TableCache<T> {
     }
   }
 
+  @internal
   void deleteRow(dynamic primaryKey) {
     if (!hasPrimaryKey) {
       throw StateError(
@@ -561,6 +583,7 @@ class TableCache<T> {
     }
   }
 
+  @internal
   T? getRow(dynamic primaryKey) => _rowsByPrimaryKey[primaryKey];
 
   /// Returns a [ValueNotifier] that fires only when the row with this
@@ -595,6 +618,7 @@ class TableCache<T> {
     );
   }
 
+  @internal
   void emitBatch(List<TableEventSpec> specs, EventContext context) {
     _refreshRowsNotifier();
     if (specs.isEmpty) return;
@@ -627,6 +651,7 @@ class TableCache<T> {
     lastBatch.value = TransactionBatch<T>(context, events);
   }
 
+  @internal
   void removeRowsWhere(bool Function(dynamic pk) test) {
     final touchedKeys = <dynamic>[];
     if (_rowNotifiers.isNotEmpty) {
@@ -649,6 +674,7 @@ class TableCache<T> {
     }
   }
 
+  @internal
   void removeNoPkRow(Map<String, dynamic> rowJson, {String? requestId}) {
     if (hasPrimaryKey) return;
     if (requestId != null) {
@@ -669,6 +695,7 @@ class TableCache<T> {
     }
   }
 
+  @internal
   void clearNoPkRequestTag(String requestId) {
     if (hasPrimaryKey) return;
     for (final entry in _rows) {
@@ -676,6 +703,7 @@ class TableCache<T> {
     }
   }
 
+  @internal
   void clearUntaggedNoPkRows() {
     if (hasPrimaryKey) return;
     final before = _rows.length;
