@@ -475,12 +475,22 @@ class SpacetimeDbConnection {
           final message = OneOffQueryMessage(queryString: pingQuery);
           send(message.encode());
           _lastPingSent = DateTime.now();
+          final sinceLastRx = _lastMessageReceived != null
+              ? DateTime.now().difference(_lastMessageReceived!).inMilliseconds
+              : null;
+          SdkLogger.i('KEEPALIVE_PING sent (last inbound ${sinceLastRx}ms ago)');
         } catch (e) {
           SdkLogger.e('Failed to send keep-alive ping: $e');
         }
       },
       onDisconnect: () {
-        SdkLogger.i('Keep-alive timeout - connection declared dead');
+        final sinceLastRx = _lastMessageReceived != null
+            ? DateTime.now().difference(_lastMessageReceived!).inMilliseconds
+            : null;
+        SdkLogger.i(
+          'Keep-alive timeout - connection declared dead '
+          '(last inbound ${sinceLastRx}ms ago)',
+        );
         _handleStaleConnection();
       },
       idleThreshold: config.pingInterval,
