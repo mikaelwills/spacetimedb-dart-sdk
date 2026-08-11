@@ -11,6 +11,7 @@ class AtomicFileStore {
     final tempFile = File('${file.path}.tmp');
     final backupFile = File('${file.path}.bak');
 
+    await file.parent.create(recursive: true);
     await tempFile.writeAsString(content, flush: true);
 
     if (await file.exists()) {
