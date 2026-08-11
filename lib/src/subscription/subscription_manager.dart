@@ -74,7 +74,8 @@ class SubscriptionManager {
     this._connection, {
     OfflineStorage? offlineStorage,
     OfflineQueuePolicy queuePolicy = const OfflineQueuePolicy(),
-  }) {
+    bool retainRowsOnUnsubscribe = false,
+  }) : _retainRowsOnUnsubscribe = retainRowsOnUnsubscribe {
     _optimisticState = OptimisticStateManager(cache);
 
     if (offlineStorage != null) {
@@ -100,9 +101,51 @@ class SubscriptionManager {
       reducers = ReducerCaller(_connection);
     }
 
+    if (_retainRowsOnUnsubscribe) {
+      _mutationSyncer?.querySetTagResolver = _tagForQuerySetId;
+    }
+
     _startListening();
     _startConnectionMonitoring();
   }
+
+  final bool _retainRowsOnUnsubscribe;
+
+  /// Stable hash identifying a query set by its content: each query is
+  /// trimmed and internal whitespace runs collapse to one space (case is
+  /// preserved — SQL string literals are case-sensitive), the normalized
+  /// list is sorted, and FNV-1a 32-bit runs over the joined result. The
+  /// same queries in any order always produce the same hash, across
+  /// process restarts.
+  static int computeQuerySetHash(Iterable<String> queries) {
+    final normalized =
+        queries.map((q) => q.trim().replaceAll(RegExp(r'\s+'), ' ')).toList()
+          ..sort();
+    var hash = 0x811c9dc5;
+    void mix(int byte) {
+      hash ^= byte;
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+
+    for (final query in normalized) {
+      for (final unit in query.codeUnits) {
+        mix(unit & 0xFF);
+        mix((unit >> 8) & 0xFF);
+      }
+      mix(0x0A);
+    }
+    return hash;
+  }
+
+  int? _tagForQuerySetId(int querySetId) {
+    final queries = _subscriptionsByQuerySetId[querySetId];
+    return queries == null ? null : computeQuerySetHash(queries);
+  }
+
+  int? _retainTagFor(List<String>? queries) =>
+      _retainRowsOnUnsubscribe && queries != null
+          ? computeQuerySetHash(queries)
+          : null;
 
   Stream<SyncState> get onSyncStateChanged =>
       _mutationSyncer?.onSyncStateChanged ?? const Stream.empty();
@@ -238,12 +281,31 @@ class SubscriptionManager {
               : UnsubscribeFlags.defaultFlag,
     );
     _connection.send(message.encode());
-    _subscriptionsByQuerySetId.remove(querySetId);
-    _dropQuerySetEverywhere(querySetId);
+    final queries = _subscriptionsByQuerySetId.remove(querySetId);
+    final retainTag = _retainTagFor(queries);
+    _dropQuerySetEverywhere(querySetId, retainTag: retainTag);
+    if (retainTag != null) {
+      _mutationSyncer?.persistTableSnapshots(
+        onlyTables: _tablesFromQueries(queries!),
+      );
+    }
   }
 
-  bool forgetQuerySet(int querySetId) =>
-      _subscriptionsByQuerySetId.remove(querySetId) != null;
+  bool forgetQuerySet(int querySetId) {
+    final queries = _subscriptionsByQuerySetId.remove(querySetId);
+    if (queries == null) return false;
+    final retainTag = _retainTagFor(queries);
+    if (retainTag != null) {
+      for (final table in cache.allTables) {
+        if (!table.hasPrimaryKey) continue;
+        table.convertQuerySetToRetainTag(querySetId, retainTag);
+      }
+      _mutationSyncer?.persistTableSnapshots(
+        onlyTables: _tablesFromQueries(queries),
+      );
+    }
+    return true;
+  }
 
   void callProcedure(
     String procedureName,
@@ -614,6 +676,7 @@ class SubscriptionManager {
     int querySetId,
     EventContext context,
   ) {
+    final retainTag = _tagForQuerySetId(querySetId);
     for (final tableName in querySetTables) {
       final table = cache.getTableByName(tableName);
       if (table == null) continue;
@@ -632,6 +695,7 @@ class SubscriptionManager {
           querySetId: querySetId,
           protectedKeys: protectedKeys,
           reconnectInFlight: _reconnectInFlight,
+          retainTag: retainTag,
         );
       } else {
         _optimisticState.clearNonOptimisticRows(tableName);
@@ -667,7 +731,7 @@ class SubscriptionManager {
     );
   }
 
-  void _dropQuerySetEverywhere(int querySetId) {
+  void _dropQuerySetEverywhere(int querySetId, {int? retainTag}) {
     for (final table in cache.allTables) {
       if (!table.hasPrimaryKey) continue;
       table.dropQuerySet(
@@ -675,6 +739,7 @@ class SubscriptionManager {
         protectedKeys: _optimisticState.optimisticPrimaryKeysForTable(
           table.tableName,
         ),
+        retainTag: retainTag,
       );
     }
   }
@@ -684,13 +749,13 @@ class SubscriptionManager {
     caseSensitive: false,
   );
 
-  Set<String> _tablesForQuerySetId(int querySetId) {
-    final queries = _subscriptionsByQuerySetId[querySetId] ?? const [];
-    return <String>{
-      for (final query in queries)
-        for (final match in _fromRegex.allMatches(query)) match.group(1)!,
-    };
-  }
+  Set<String> _tablesForQuerySetId(int querySetId) =>
+      _tablesFromQueries(_subscriptionsByQuerySetId[querySetId] ?? const []);
+
+  Set<String> _tablesFromQueries(List<String> queries) => <String>{
+    for (final query in queries)
+      for (final match in _fromRegex.allMatches(query)) match.group(1)!,
+  };
 
   bool _isTableCoveredByLiveQuerySet(String tableName) {
     for (final querySetId in _subscriptionsByQuerySetId.keys) {

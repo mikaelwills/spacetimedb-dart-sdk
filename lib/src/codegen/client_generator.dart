@@ -368,7 +368,7 @@ final connection = SpacetimeDbConnection(
   ssl: ssl,
   config: config,
 );
-final subscriptionManager = SubscriptionManager(connection, offlineStorage: offlineStorage, queuePolicy: queuePolicy);
+final subscriptionManager = SubscriptionManager(connection, offlineStorage: offlineStorage, queuePolicy: queuePolicy, retainRowsOnUnsubscribe: retainRowsOnUnsubscribe);
 
 $registerTables
 $registerViews
@@ -437,6 +437,14 @@ return client;
                       ..named = true
                       ..defaultTo = const Code('const OfflineQueuePolicy()')
                       ..type = refer('OfflineQueuePolicy'),
+              ),
+              Parameter(
+                (p) =>
+                    p
+                      ..name = 'retainRowsOnUnsubscribe'
+                      ..named = true
+                      ..defaultTo = const Code('false')
+                      ..type = refer('bool'),
               ),
               Parameter(
                 (p) =>

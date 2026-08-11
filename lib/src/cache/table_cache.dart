@@ -23,10 +23,38 @@ class TableCache<T> {
 
   final Map<dynamic, Set<int>> _previousOwners = {};
 
+  final Map<dynamic, Set<int>> _retainedTags = {};
+
   @internal
   @visibleForTesting
   int get ownershipImbalanceCount => _ownershipImbalanceCount;
   int _ownershipImbalanceCount = 0;
+
+  /// Rows evicted because their last owning query set was unsubscribed
+  /// (`dropQuerySet`). Monotonic per table instance. Together with
+  /// [reconcileEvictionCount] and [sweepEvictionCount] this lets a consumer
+  /// distinguish explained cache shrinkage from anomalies.
+  int get unsubscribeEvictionCount => _unsubscribeEvictionCount;
+  int _unsubscribeEvictionCount = 0;
+
+  /// Rows evicted by snapshot reconciliation: previously owned or retained
+  /// under the arriving query set's tag, but absent from its snapshot.
+  int get reconcileEvictionCount => _reconcileEvictionCount;
+  int _reconcileEvictionCount = 0;
+
+  /// Rows evicted by the unowned-row sweep that runs when a snapshot applies
+  /// outside a reconnect window (stale disk-loaded rows).
+  int get sweepEvictionCount => _sweepEvictionCount;
+  int _sweepEvictionCount = 0;
+
+  @internal
+  @visibleForTesting
+  Set<int> retainedTagsFor(dynamic primaryKey) =>
+      _retainedTags[primaryKey] ?? const {};
+
+  @internal
+  @visibleForTesting
+  int get retainedTagEntryCount => _retainedTags.length;
 
   final Map<dynamic, _AutoDisposeNotifier<T?>> _rowNotifiers = {};
 
@@ -274,6 +302,7 @@ class TableCache<T> {
     required int querySetId,
     Set<dynamic>? protectedKeys,
     bool reconnectInFlight = false,
+    int? retainTag,
   }) {
     final changes = _applyChanges(
       BsatnRowList.empty(),
@@ -298,6 +327,21 @@ class TableCache<T> {
       }
     }
 
+    if (retainTag != null && _retainedTags.isNotEmpty) {
+      for (final entry in _retainedTags.entries.toList()) {
+        final pk = entry.key;
+        final tags = entry.value;
+        if (!tags.remove(retainTag)) continue;
+        if (tags.isEmpty) _retainedTags.remove(pk);
+        if (snapshotKeys.contains(pk)) continue;
+        if (tags.isNotEmpty) continue;
+        if (_rowOwners.containsKey(pk)) continue;
+        if (protectedKeys != null && protectedKeys.contains(pk)) continue;
+        toEvict.add(pk);
+      }
+    }
+    _reconcileEvictionCount += toEvict.length;
+
     for (final pk in snapshotKeys) {
       _rowOwners.putIfAbsent(pk, () => <int>{}).add(querySetId);
       _previousOwners.remove(pk);
@@ -310,7 +354,9 @@ class TableCache<T> {
         if (snapshotKeys.contains(pk)) continue;
         if (protectedKeys != null && protectedKeys.contains(pk)) continue;
         if (_rowOwners.containsKey(pk)) continue;
+        if (_retainedTags.containsKey(pk)) continue;
         toEvict.add(pk);
+        _sweepEvictionCount++;
       }
     }
 
@@ -327,8 +373,20 @@ class TableCache<T> {
   }
 
   @internal
-  void dropQuerySet(int querySetId, {Set<dynamic>? protectedKeys}) {
+  void dropQuerySet(
+    int querySetId, {
+    Set<dynamic>? protectedKeys,
+    int? retainTag,
+  }) {
     final toEvict = <dynamic>[];
+    void evictOrRetain(dynamic pk) {
+      if (retainTag != null) {
+        _retainedTags.putIfAbsent(pk, () => <int>{}).add(retainTag);
+        return;
+      }
+      toEvict.add(pk);
+    }
+
     for (final entry in _rowOwners.entries.toList()) {
       final pk = entry.key;
       final owners = entry.value;
@@ -336,7 +394,7 @@ class TableCache<T> {
       if (owners.isEmpty) {
         _rowOwners.remove(pk);
         if (protectedKeys == null || !protectedKeys.contains(pk)) {
-          toEvict.add(pk);
+          evictOrRetain(pk);
         }
       }
     }
@@ -348,16 +406,41 @@ class TableCache<T> {
         _previousOwners.remove(pk);
         if (!_rowOwners.containsKey(pk) &&
             (protectedKeys == null || !protectedKeys.contains(pk))) {
-          toEvict.add(pk);
+          evictOrRetain(pk);
         }
       }
     }
+    _unsubscribeEvictionCount += toEvict.length;
     for (final pk in toEvict) {
       _evictRow(pk);
     }
     if (toEvict.isNotEmpty) {
       _refreshRowsNotifier();
       _notifyRowListeners(toEvict);
+    }
+  }
+
+  @internal
+  void convertQuerySetToRetainTag(int querySetId, int retainTag) {
+    for (final entry in _rowOwners.entries.toList()) {
+      final pk = entry.key;
+      final owners = entry.value;
+      if (!owners.remove(querySetId)) continue;
+      if (owners.isEmpty) {
+        _rowOwners.remove(pk);
+        _retainedTags.putIfAbsent(pk, () => <int>{}).add(retainTag);
+      }
+    }
+    for (final entry in _previousOwners.entries.toList()) {
+      final pk = entry.key;
+      final owners = entry.value;
+      if (!owners.remove(querySetId)) continue;
+      if (owners.isEmpty) {
+        _previousOwners.remove(pk);
+        if (!_rowOwners.containsKey(pk)) {
+          _retainedTags.putIfAbsent(pk, () => <int>{}).add(retainTag);
+        }
+      }
     }
   }
 
@@ -474,6 +557,7 @@ class TableCache<T> {
     _rows.clear();
     _rowOwners.clear();
     _previousOwners.clear();
+    _retainedTags.clear();
     _refreshRowsNotifier();
     if (_rowNotifiers.isNotEmpty) {
       _notifyRowListeners(_rowNotifiers.keys.toList());
@@ -564,6 +648,7 @@ class TableCache<T> {
     _rows.clear();
     _rowOwners.clear();
     _previousOwners.clear();
+    _retainedTags.clear();
     for (final json in jsonRows) {
       final row = decoder.fromJson(json);
       if (row == null) {
@@ -580,6 +665,53 @@ class TableCache<T> {
     _refreshRowsNotifier();
     if (_rowNotifiers.isNotEmpty) {
       _notifyRowListeners(_rowNotifiers.keys.toList());
+    }
+  }
+
+  @internal
+  List<Map<String, dynamic>> tagsToSerializable(
+    int? Function(int querySetId) resolveQuerySetTag,
+  ) {
+    final effective = <dynamic, Set<int>>{
+      for (final entry in _retainedTags.entries) entry.key: {...entry.value},
+    };
+    void fold(Map<dynamic, Set<int>> owners) {
+      for (final entry in owners.entries) {
+        for (final querySetId in entry.value) {
+          final tag = resolveQuerySetTag(querySetId);
+          if (tag == null) continue;
+          effective.putIfAbsent(entry.key, () => <int>{}).add(tag);
+        }
+      }
+    }
+
+    fold(_rowOwners);
+    fold(_previousOwners);
+    return [
+      for (final entry in effective.entries)
+        if (_rowsByPrimaryKey.containsKey(entry.key))
+          {'pk': entry.key.toString(), 'tags': entry.value.toList()},
+    ];
+  }
+
+  @internal
+  void loadRetainedTags(List<Map<String, dynamic>> tagRows) {
+    if (tagRows.isEmpty) return;
+    final pksByString = <String, dynamic>{
+      for (final pk in _rowsByPrimaryKey.keys) pk.toString(): pk,
+    };
+    for (final tagRow in tagRows) {
+      final pkString = tagRow['pk'];
+      final tags = tagRow['tags'];
+      if (pkString is! String || tags is! List) continue;
+      final pk = pksByString[pkString];
+      if (pk == null) continue;
+      final parsed = <int>{
+        for (final tag in tags)
+          if (tag is int) tag,
+      };
+      if (parsed.isEmpty) continue;
+      _retainedTags.putIfAbsent(pk, () => <int>{}).addAll(parsed);
     }
   }
 
@@ -720,6 +852,7 @@ class TableCache<T> {
     for (final key in matchedKeys) {
       _rowsByPrimaryKey.remove(key);
       _rowOwners.remove(key);
+      _retainedTags.remove(key);
     }
     _rows.removeWhere((entry) {
       final pk = decoder.getPrimaryKey(entry.row);
@@ -983,6 +1116,7 @@ class TableCache<T> {
     _rowsByPrimaryKey.remove(primaryKey);
     _rowOwners.remove(primaryKey);
     _previousOwners.remove(primaryKey);
+    _retainedTags.remove(primaryKey);
   }
 }
 

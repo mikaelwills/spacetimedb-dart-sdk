@@ -31,6 +31,8 @@ class MutationSyncer implements MutationHandler {
   final SendReducer _send;
   final OfflineQueuePolicy _policy;
 
+  int? Function(int querySetId)? querySetTagResolver;
+
   bool _isSyncing = false;
   bool _syncLoopActive = false;
   bool _resyncRequested = false;
@@ -261,6 +263,12 @@ class MutationSyncer implements MutationHandler {
           continue;
         }
         table.loadFromSerializable(rows);
+        if (querySetTagResolver != null && table.hasPrimaryKey) {
+          final tagRows = await _storage.loadTableSnapshot(
+            tagSnapshotName(tableName),
+          );
+          if (tagRows != null) table.loadRetainedTags(tagRows);
+        }
         loadedTables++;
         loadedRows += rows.length;
         SdkLogger.d(
@@ -268,9 +276,7 @@ class MutationSyncer implements MutationHandler {
         );
       }
 
-      SdkLogger.w(
-        'CACHE_LOAD: done, tables=$loadedTables rows=$loadedRows',
-      );
+      SdkLogger.w('CACHE_LOAD: done, tables=$loadedTables rows=$loadedRows');
 
       final pending = await _storage.getPendingMutations();
       for (final mutation in pending) {
@@ -296,8 +302,9 @@ class MutationSyncer implements MutationHandler {
         final table = _cache.getTableByName(tableName);
         if (table != null && table.decoder.supportsJsonSerialization) {
           final retained = <Map<String, dynamic>>[];
-          for (final row in _optimisticState
-              .retainedUnownedInsertRowsForTable(tableName)) {
+          for (final row in _optimisticState.retainedUnownedInsertRowsForTable(
+            tableName,
+          )) {
             final pk = table.decoder.getPrimaryKey(
               table.decoder.fromJson(row) as dynamic,
             );
@@ -317,6 +324,13 @@ class MutationSyncer implements MutationHandler {
                 .optimisticNoPkInsertRequestIdsForTable(tableName),
           );
           await _storage.saveTableSnapshot(tableName, rows);
+          final resolver = querySetTagResolver;
+          if (resolver != null && table.hasPrimaryKey) {
+            await _storage.saveTableSnapshot(
+              tagSnapshotName(tableName),
+              table.tagsToSerializable(resolver),
+            );
+          }
           await _storage.setLastSyncTime(tableName, DateTime.now());
         }
       }
@@ -324,6 +338,9 @@ class MutationSyncer implements MutationHandler {
       SdkLogger.e('Error persisting table snapshots: $e');
     }
   }
+
+  @visibleForTesting
+  static String tagSnapshotName(String tableName) => '__tags__$tableName';
 
   Future<void> dispose() async {
     _disposed = true;
