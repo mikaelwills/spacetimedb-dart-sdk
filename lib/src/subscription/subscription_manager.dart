@@ -417,13 +417,31 @@ class SubscriptionManager {
 
   final Set<int> _appliedSetIds = {};
 
+  int _consecutiveEvictionSkips = 0;
+
+  /// How many reconnects in a row abandoned their ownership generation without
+  /// finalizing. Anything above zero means rows are being carried forward
+  /// unreconciled; a climbing value means the cache is not converging.
+  @visibleForTesting
+  int get consecutiveEvictionSkips => _consecutiveEvictionSkips;
+
   Future<void> _onReconnected() async {
     if (_subscriptionsByQuerySetId.isNotEmpty) {
       _subscriptionsReady.value = false;
 
       _appliedSetIds.clear();
+      var carriedPending = 0;
       for (final table in cache.allTables) {
-        if (table.hasPrimaryKey) table.beginReconnectGeneration();
+        if (!table.hasPrimaryKey) continue;
+        carriedPending += table.pendingOwnerEntryCount;
+        table.beginReconnectGeneration();
+      }
+      if (carriedPending > 0) {
+        SdkLogger.w(
+          'RECONNECT_GENERATION: opening over $carriedPending row(s) still '
+          'pending from an earlier unfinalized reconnect '
+          '(consecutive skips so far: $_consecutiveEvictionSkips)',
+        );
       }
 
       _reconnectInFlight = true;
@@ -466,13 +484,18 @@ class SubscriptionManager {
       );
       if (allResubscribed && _connection.isConnected && everySetApplied) {
         _finalizeReconnectGeneration();
+        _consecutiveEvictionSkips = 0;
         _subscriptionsReady.value = true;
       } else {
+        _consecutiveEvictionSkips++;
         SdkLogger.w(
           'Skipping reconnect eviction: resubscribe did not fully complete '
           '(connection dropped mid-reconnect, or a query set never applied); '
           'retaining cached rows, ownership and subscription map for the next '
-          'reconnect',
+          'reconnect | consecutive skips: $_consecutiveEvictionSkips, '
+          'allResubscribed=$allResubscribed, '
+          'connected=${_connection.isConnected}, '
+          'everySetApplied=$everySetApplied',
         );
       }
     }
@@ -485,21 +508,32 @@ class SubscriptionManager {
 
   void _finalizeReconnectGeneration() {
     final liveSetIds = _subscriptionsByQuerySetId.keys.toSet();
+    var totalPending = 0;
+    var totalEvicted = 0;
     for (final table in cache.allTables) {
       if (!table.hasPrimaryKey) continue;
       final pendingBefore = table.pendingOwnerEntryCount;
+      totalPending += pendingBefore;
       final evicted = table.finalizeReconnectGeneration(
         protectedKeys: _optimisticState.optimisticPrimaryKeysForTable(
           table.tableName,
         ),
         retainWhere: (owners) => !owners.any(liveSetIds.contains),
       );
+      totalEvicted += evicted;
       if (evicted > 0) {
         SdkLogger.w(
           'RECONNECT_EVICT: ${table.tableName} evicted $evicted of '
           '$pendingBefore previously-owned rows not re-delivered',
         );
       }
+    }
+    if (_consecutiveEvictionSkips > 0 || totalPending > 0) {
+      SdkLogger.w(
+        'RECONNECT_GENERATION: finalized after $_consecutiveEvictionSkips '
+        'skipped attempt(s), reconciled $totalPending pending row(s), '
+        'evicted $totalEvicted',
+      );
     }
   }
 

@@ -5,15 +5,15 @@ import 'dart:async';
 import 'package:spacetimedb_sdk/codegen.dart';
 import 'reducers.dart';
 import 'reducer_args.dart';
-import 'cadence_item.dart';
-import 'entity.dart';
-import 'optional_item.dart';
 import 'note.dart';
-import 'tagged_item.dart';
-import 'folder.dart';
-import 'single_field.dart';
-import 'scheduled_task.dart';
 import 'session_marker.dart';
+import 'single_field.dart';
+import 'tagged_item.dart';
+import 'cadence_item.dart';
+import 'scheduled_task.dart';
+import 'optional_item.dart';
+import 'folder.dart';
+import 'entity.dart';
 
 class SpacetimeDbClient {
   SpacetimeDbClient._({
@@ -72,34 +72,26 @@ class SpacetimeDbClient {
     subscriptions.clearSyncErrors();
   }
 
-  TableCache<CadenceItem> get cadenceItem {
-    return subscriptions.cache.getTableByTypedName<CadenceItem>('cadence_item');
+  TableCache<Note> get note {
+    return subscriptions.cache.getTableByTypedName<Note>('note');
   }
 
-  TableCache<Entity> get entity {
-    return subscriptions.cache.getTableByTypedName<Entity>('entity');
-  }
-
-  TableCache<OptionalItem> get optionalItem {
-    return subscriptions.cache.getTableByTypedName<OptionalItem>(
-      'optional_item',
+  TableCache<SessionMarker> get sessionMarker {
+    return subscriptions.cache.getTableByTypedName<SessionMarker>(
+      'session_marker',
     );
   }
 
-  TableCache<Note> get note {
-    return subscriptions.cache.getTableByTypedName<Note>('note');
+  TableCache<SingleField> get singleField {
+    return subscriptions.cache.getTableByTypedName<SingleField>('single_field');
   }
 
   TableCache<TaggedItem> get taggedItem {
     return subscriptions.cache.getTableByTypedName<TaggedItem>('tagged_item');
   }
 
-  TableCache<Folder> get folder {
-    return subscriptions.cache.getTableByTypedName<Folder>('folder');
-  }
-
-  TableCache<SingleField> get singleField {
-    return subscriptions.cache.getTableByTypedName<SingleField>('single_field');
+  TableCache<CadenceItem> get cadenceItem {
+    return subscriptions.cache.getTableByTypedName<CadenceItem>('cadence_item');
   }
 
   TableCache<ScheduledTask> get scheduledTask {
@@ -108,10 +100,18 @@ class SpacetimeDbClient {
     );
   }
 
-  TableCache<SessionMarker> get sessionMarker {
-    return subscriptions.cache.getTableByTypedName<SessionMarker>(
-      'session_marker',
+  TableCache<OptionalItem> get optionalItem {
+    return subscriptions.cache.getTableByTypedName<OptionalItem>(
+      'optional_item',
     );
+  }
+
+  TableCache<Folder> get folder {
+    return subscriptions.cache.getTableByTypedName<Folder>('folder');
+  }
+
+  TableCache<Entity> get entity {
+    return subscriptions.cache.getTableByTypedName<Entity>('entity');
   }
 
   TableCache<Note> get allNotes {
@@ -157,38 +157,38 @@ class SpacetimeDbClient {
       retainRowsOnUnsubscribe: retainRowsOnUnsubscribe,
     );
 
-    subscriptionManager.cache.registerDecoder<CadenceItem>(
-      'cadence_item',
-      CadenceItemDecoder(),
-    );
-    subscriptionManager.cache.registerDecoder<Entity>(
-      'entity',
-      EntityDecoder(),
-    );
-    subscriptionManager.cache.registerDecoder<OptionalItem>(
-      'optional_item',
-      OptionalItemDecoder(),
-    );
     subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
-    subscriptionManager.cache.registerDecoder<TaggedItem>(
-      'tagged_item',
-      TaggedItemDecoder(),
-    );
-    subscriptionManager.cache.registerDecoder<Folder>(
-      'folder',
-      FolderDecoder(),
+    subscriptionManager.cache.registerDecoder<SessionMarker>(
+      'session_marker',
+      SessionMarkerDecoder(),
     );
     subscriptionManager.cache.registerDecoder<SingleField>(
       'single_field',
       SingleFieldDecoder(),
     );
+    subscriptionManager.cache.registerDecoder<TaggedItem>(
+      'tagged_item',
+      TaggedItemDecoder(),
+    );
+    subscriptionManager.cache.registerDecoder<CadenceItem>(
+      'cadence_item',
+      CadenceItemDecoder(),
+    );
     subscriptionManager.cache.registerDecoder<ScheduledTask>(
       'scheduled_task',
       ScheduledTaskDecoder(),
     );
-    subscriptionManager.cache.registerDecoder<SessionMarker>(
-      'session_marker',
-      SessionMarkerDecoder(),
+    subscriptionManager.cache.registerDecoder<OptionalItem>(
+      'optional_item',
+      OptionalItemDecoder(),
+    );
+    subscriptionManager.cache.registerDecoder<Folder>(
+      'folder',
+      FolderDecoder(),
+    );
+    subscriptionManager.cache.registerDecoder<Entity>(
+      'entity',
+      EntityDecoder(),
     );
 
     subscriptionManager.cache.registerDecoder<Note>('all_notes', NoteDecoder());

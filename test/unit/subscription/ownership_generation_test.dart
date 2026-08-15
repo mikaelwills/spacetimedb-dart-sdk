@@ -215,6 +215,31 @@ void main() {
             'deleted nothing.',
       );
     });
+    test('a finalized generation leaves no skips recorded', () async {
+      final ta = subscriptionManager.cache.getTableByName('ta');
+      if (ta == null) fail('table not registered');
+
+      await mockConnection.connect();
+      final pending = subscriptionManager.subscribe(['SELECT * FROM ta']);
+      mockConnection.simulateIncoming(
+        _createSubscribeApplied(
+          requestId: 0,
+          querySetId: 1,
+          rowsByTable: {
+            'ta': ['a1'],
+          },
+        ),
+      );
+      await pending.timeout(_timeout);
+
+      mockConnection.mockState = const Disconnected();
+      mockConnection.mockState = const Connected();
+      await pumpEventQueue();
+      await pumpEventQueue();
+
+      expect(subscriptionManager.consecutiveEvictionSkips, 0);
+      expect(ta.iter(), contains('a1'));
+    });
   });
 
   group('P3 — ownership guards stay live during the resubscribe window', () {
