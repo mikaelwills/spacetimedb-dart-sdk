@@ -69,6 +69,12 @@ sealed class AlgebraicType {
           if (name is Map && name['some'] == '__time_duration_micros__') {
             return const TimeDurationType();
           }
+          if (name is Map && name['some'] == '__connection_id__') {
+            return const ConnectionIdType();
+          }
+          if (name is Map && name['some'] == '__uuid__') {
+            return const UuidType();
+          }
         }
       }
       final elements =
@@ -133,6 +139,8 @@ sealed class AlgebraicType {
     PrimitiveType(kind: PrimitiveKind.bool_) => 'bool',
     PrimitiveType(kind: PrimitiveKind.string) => 'String',
     IdentityType() => 'Identity',
+    ConnectionIdType() => 'ConnectionId',
+    UuidType() => 'Uuid',
     TimestampType() => 'Int64',
     TimeDurationType() => 'Int64',
     ScheduleAtType() => 'ScheduleAt',
@@ -160,6 +168,8 @@ sealed class AlgebraicType {
     PrimitiveType(kind: PrimitiveKind.bool_) => 'writeBool',
     PrimitiveType(kind: PrimitiveKind.string) => 'writeString',
     IdentityType() => 'writeIdentity',
+    ConnectionIdType() => 'writeConnectionId',
+    UuidType() => 'writeUuid',
     TimestampType() => 'writeI64',
     TimeDurationType() => 'writeI64',
     ByteArrayType() => 'writeByteArray',
@@ -180,6 +190,8 @@ sealed class AlgebraicType {
     PrimitiveType(kind: PrimitiveKind.bool_) => 'readBool',
     PrimitiveType(kind: PrimitiveKind.string) => 'readString',
     IdentityType() => 'readIdentity',
+    ConnectionIdType() => 'readConnectionId',
+    UuidType() => 'readUuid',
     TimestampType() => 'readI64',
     TimeDurationType() => 'readI64',
     ByteArrayType() => 'readByteArray',
@@ -193,6 +205,8 @@ sealed class AlgebraicType {
   }) => switch (this) {
     PrimitiveType() ||
     IdentityType() ||
+    ConnectionIdType() ||
+    UuidType() ||
     TimestampType() ||
     TimeDurationType() ||
     ByteArrayType() => 'encoder.$encoderMethod($valueName)',
@@ -238,6 +252,8 @@ sealed class AlgebraicType {
       switch (this) {
         PrimitiveType() ||
         IdentityType() ||
+        ConnectionIdType() ||
+        UuidType() ||
         TimestampType() ||
         TimeDurationType() ||
         ByteArrayType() => 'decoder.$decoderMethod()',
@@ -283,6 +299,8 @@ sealed class AlgebraicType {
   bool get isPrimitive => switch (this) {
     PrimitiveType() => true,
     IdentityType() => true,
+    ConnectionIdType() => true,
+    UuidType() => true,
     TimestampType() => true,
     TimeDurationType() => true,
     ByteArrayType() => true,
@@ -368,6 +386,14 @@ class PrimitiveType extends AlgebraicType {
 
 class IdentityType extends AlgebraicType {
   const IdentityType();
+}
+
+class ConnectionIdType extends AlgebraicType {
+  const ConnectionIdType();
+}
+
+class UuidType extends AlgebraicType {
+  const UuidType();
 }
 
 class TimestampType extends AlgebraicType {

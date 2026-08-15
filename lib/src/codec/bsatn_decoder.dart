@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:fixnum/fixnum.dart';
 import 'package:spacetimedb_sdk/src/auth/identity.dart';
 import 'package:spacetimedb_sdk/src/exceptions.dart';
+import 'package:spacetimedb_sdk/src/types/connection_id.dart';
+import 'package:spacetimedb_sdk/src/types/uuid.dart';
 
 /// Decodes BSATN (Binary Spacetime Algebraic Type Notation) format into Dart values
 ///
@@ -195,6 +197,14 @@ class BsatnDecoder {
 
   Identity readIdentity() {
     return Identity(readBytes(32));
+  }
+
+  ConnectionId readConnectionId() {
+    return ConnectionId(readBytes(ConnectionId.byteLength));
+  }
+
+  Uuid readUuid() {
+    return Uuid.fromLittleEndianBytes(readBytes(Uuid.byteLength));
   }
 
   List<int> readByteArray() {

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`ConnectionId` and `Uuid` codegen support.** Schemas using either type now generate; previously the whole schema failed with `Unknown algebraic type shape: [U128]` and no code was emitted. Both are 16-byte types usable as a primary key: `ConnectionId` renders as hex, `Uuid` as RFC 4122.
+
 - **`retainRowsOnUnsubscribe` (opt-in, default off).** Unsubscribe keeps the set's rows, tagged by query hash, instead of evicting; re-subscribing the same queries paints from them and reconciles against the snapshot. Tags persist with the offline snapshot. Off = behaviour unchanged.
 
 - **Per-table eviction counters by cause** on `TableCache`: `unsubscribeEvictionCount`, `reconcileEvictionCount`, `sweepEvictionCount`.

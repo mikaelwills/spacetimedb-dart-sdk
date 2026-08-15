@@ -94,6 +94,8 @@ class SchemaNormalizer {
   String _typeKey(AlgebraicType type) => switch (type) {
     PrimitiveType(kind: final k) => 'p:$k',
     IdentityType() => 'identity',
+    ConnectionIdType() => 'connectionid',
+    UuidType() => 'uuid',
     TimestampType() => 'timestamp',
     TimeDurationType() => 'timeduration',
     ScheduleAtType() => 'scheduleat',

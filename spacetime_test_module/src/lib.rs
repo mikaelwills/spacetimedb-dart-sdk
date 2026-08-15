@@ -32,6 +32,15 @@ pub struct Folder {
     pub created_at: u64,
 }
 
+/// Table exercising the U128 marker types end to end through real codegen
+#[table(accessor = session_marker, public)]
+pub struct SessionMarker {
+    #[primary_key]
+    pub connection_id: spacetimedb::ConnectionId,
+    pub request_id: spacetimedb::Uuid,
+    pub label: String,
+}
+
 /// Reducer to create a new note
 #[reducer]
 pub fn create_note(ctx: &ReducerContext, title: String, content: String) {

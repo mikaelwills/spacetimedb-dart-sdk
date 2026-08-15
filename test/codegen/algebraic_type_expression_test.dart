@@ -1,4 +1,5 @@
 import 'package:spacetimedb_sdk/src/codegen/models/type_models.dart';
+import 'package:spacetimedb_sdk/src/exceptions.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -540,6 +541,84 @@ void main() {
         },
       };
       expect(AlgebraicType.fromJson(json), isA<IrSumType>());
+    });
+  });
+
+  group('AlgebraicType.fromJson detects U128 special types', () {
+    Map<String, dynamic> connectionIdJson() => {
+      'Product': {
+        'elements': [
+          {
+            'name': {'some': '__connection_id__'},
+            'algebraic_type': {'U128': []},
+          },
+        ],
+      },
+    };
+
+    Map<String, dynamic> uuidJson() => {
+      'Product': {
+        'elements': [
+          {
+            'name': {'some': '__uuid__'},
+            'algebraic_type': {'U128': []},
+          },
+        ],
+      },
+    };
+
+    test('ConnectionId special product collapses to ConnectionIdType', () {
+      expect(
+        AlgebraicType.fromJson(connectionIdJson()),
+        isA<ConnectionIdType>(),
+      );
+    });
+
+    test('Uuid special product collapses to UuidType', () {
+      expect(AlgebraicType.fromJson(uuidJson()), isA<UuidType>());
+    });
+
+    test('ConnectionIdType maps to the ConnectionId Dart type', () {
+      expect(
+        AlgebraicType.fromJson(connectionIdJson()).toDartTypeName(),
+        'ConnectionId',
+      );
+    });
+
+    test('UuidType maps to the Uuid Dart type', () {
+      expect(AlgebraicType.fromJson(uuidJson()).toDartTypeName(), 'Uuid');
+    });
+
+    test('ConnectionIdType emits its own codec methods', () {
+      final type = AlgebraicType.fromJson(connectionIdJson());
+      expect(
+        type.encodeExpression('value'),
+        'encoder.writeConnectionId(value)',
+      );
+      expect(type.decodeExpression(), 'decoder.readConnectionId()');
+    });
+
+    test('UuidType emits its own codec methods', () {
+      final type = AlgebraicType.fromJson(uuidJson());
+      expect(type.encodeExpression('value'), 'encoder.writeUuid(value)');
+      expect(type.decodeExpression(), 'decoder.readUuid()');
+    });
+
+    test('an unnamed U128 product is still unsupported', () {
+      final json = {
+        'Product': {
+          'elements': [
+            {
+              'name': {'some': 'plain'},
+              'algebraic_type': {'U128': []},
+            },
+          ],
+        },
+      };
+      expect(
+        () => AlgebraicType.fromJson(json),
+        throwsA(isA<SpacetimeDbSchemaException>()),
+      );
     });
   });
 }

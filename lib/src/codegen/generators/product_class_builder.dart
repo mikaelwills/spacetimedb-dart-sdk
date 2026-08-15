@@ -258,6 +258,8 @@ class ProductClassBuilder {
   String _getToJsonExpression(String fieldName, AlgebraicType type) =>
       switch (type) {
         IdentityType() => '$fieldName.toJson()',
+        ConnectionIdType() => '$fieldName.toJson()',
+        UuidType() => '$fieldName.toJson()',
         TimestampType() => '$fieldName.toInt()',
         TimeDurationType() => '$fieldName.toInt()',
         ScheduleAtType() => '$fieldName.toJson()',
@@ -278,6 +280,8 @@ class ProductClassBuilder {
   String _getOptionToJsonExpression(String fieldName, AlgebraicType inner) =>
       switch (inner) {
         IdentityType() => '$fieldName?.toJson()',
+        ConnectionIdType() => '$fieldName?.toJson()',
+        UuidType() => '$fieldName?.toJson()',
         TimestampType() => '$fieldName?.toInt()',
         PrimitiveType(kind: PrimitiveKind.u64 || PrimitiveKind.i64) =>
           '$fieldName?.toInt()',
@@ -301,6 +305,9 @@ class ProductClassBuilder {
 
     return switch (type) {
       IdentityType() => "Identity.fromJson(json['$fieldName'] ?? '')",
+      ConnectionIdType() =>
+        "ConnectionId.fromJson(json['$fieldName'] as String)",
+      UuidType() => "Uuid.fromJson(json['$fieldName'] as String)",
       TimestampType() => "Int64(json['$fieldName'] ?? 0)",
       TimeDurationType() => "Int64(json['$fieldName'] ?? 0)",
       ScheduleAtType() =>
@@ -334,6 +341,10 @@ class ProductClassBuilder {
     return switch (inner) {
       IdentityType() =>
         "json['$fieldName'] == null ? null : Identity.fromJson(json['$fieldName'])",
+      ConnectionIdType() =>
+        "json['$fieldName'] == null ? null : ConnectionId.fromJson(json['$fieldName'] as String)",
+      UuidType() =>
+        "json['$fieldName'] == null ? null : Uuid.fromJson(json['$fieldName'] as String)",
       TimestampType() =>
         "json['$fieldName'] == null ? null : Int64(json['$fieldName'])",
       PrimitiveType(kind: PrimitiveKind.u64 || PrimitiveKind.i64) =>

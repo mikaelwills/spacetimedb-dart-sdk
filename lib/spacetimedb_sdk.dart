@@ -37,6 +37,8 @@ export 'src/auth/identity.dart';
 
 // Special types
 export 'src/types/schedule_at.dart';
+export 'src/types/connection_id.dart';
+export 'src/types/uuid.dart';
 
 // Offline support (consumer-facing)
 export 'src/offline/offline_storage.dart';
