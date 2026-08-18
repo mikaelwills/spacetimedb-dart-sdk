@@ -9,7 +9,7 @@
 
 ## Compatibility
 
-Works with SpacetimeDB 2.x servers (tested against 2.4.1). Negotiates the `v3.bsatn.spacetimedb` WebSocket subprotocol on 2.2.0+ servers and transparently falls back to `v2.bsatn.spacetimedb` on older 2.x servers. Uses client-assigned `QuerySetId` subscriptions, typed reducer return values, server-defined views, and BSATN binary wire format. If you need to connect to a v1-only server, use `spacetimedb_sdk 1.x`.
+Works with SpacetimeDB 2.x servers (tested against 2.8.2). Negotiates the `v3.bsatn.spacetimedb` WebSocket subprotocol on 2.2.0+ servers and transparently falls back to `v2.bsatn.spacetimedb` on older 2.x servers. Uses client-assigned `QuerySetId` subscriptions, typed reducer return values, server-defined views, and BSATN binary wire format. If you need to connect to a v1-only server, use `spacetimedb_sdk 1.x`.
 
 Built for collaborative editors, real-time games, multi-device sync, presence, chat.
 
