@@ -38,7 +38,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://install.spacetimedb.com | sh
 
 ```yaml
 dependencies:
-  spacetimedb_sdk: ^2.3.1
+  spacetimedb_sdk: ^2.5.0
 ```
 
 ### 3. Generate client code from your module
