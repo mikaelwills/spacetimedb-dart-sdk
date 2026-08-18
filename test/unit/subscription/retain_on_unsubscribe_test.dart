@@ -336,7 +336,8 @@ void main() {
       expect(
         chat.count(),
         1,
-        reason: 'retention off must keep default sweep behaviour '
+        reason:
+            'retention off must keep default sweep behaviour '
             'even when a stale tag sidecar exists on disk',
       );
     });

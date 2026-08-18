@@ -66,8 +66,7 @@ class SwapAlgoTable {
     rowOwners = {};
   }
 
-  Set<int> ownedKeys(int pk) =>
-      rowOwners[pk] ?? previousOwners[pk] ?? const {};
+  Set<int> ownedKeys(int pk) => rowOwners[pk] ?? previousOwners[pk] ?? const {};
 
   void applyReported(List<int> reported, int querySetId, OpCounter ops) {
     for (final pk in reported) {

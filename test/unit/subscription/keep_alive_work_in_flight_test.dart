@@ -53,59 +53,56 @@ void main() {
       );
     });
 
-    test(
-      'a resubscribe that hits its 30s timeout does not leave the signal '
-      'latched on',
-      () {
-        fakeAsync((async) {
-          final mockConnection = MockConnection();
-          final subscriptionManager = SubscriptionManager(mockConnection);
+    test('a resubscribe that hits its 30s timeout does not leave the signal '
+        'latched on', () {
+      fakeAsync((async) {
+        final mockConnection = MockConnection();
+        final subscriptionManager = SubscriptionManager(mockConnection);
 
-          mockConnection.connect();
-          async.flushMicrotasks();
+        mockConnection.connect();
+        async.flushMicrotasks();
 
-          subscriptionManager.subscribe(['SELECT * FROM notes']);
-          async.flushMicrotasks();
-          mockConnection.simulateIncoming(
-            _createSubscribeApplied(requestId: 0, querySetId: 1),
-          );
-          async.elapse(const Duration(milliseconds: 10));
-          expect(
-            mockConnection.keepAliveWorkInFlight,
-            isFalse,
-            reason: 'baseline: the first subscribe applied and cleared',
-          );
+        subscriptionManager.subscribe(['SELECT * FROM notes']);
+        async.flushMicrotasks();
+        mockConnection.simulateIncoming(
+          _createSubscribeApplied(requestId: 0, querySetId: 1),
+        );
+        async.elapse(const Duration(milliseconds: 10));
+        expect(
+          mockConnection.keepAliveWorkInFlight,
+          isFalse,
+          reason: 'baseline: the first subscribe applied and cleared',
+        );
 
-          mockConnection.disconnect();
-          async.elapse(const Duration(milliseconds: 10));
-          mockConnection.connect();
-          async.elapse(const Duration(milliseconds: 10));
+        mockConnection.disconnect();
+        async.elapse(const Duration(milliseconds: 10));
+        mockConnection.connect();
+        async.elapse(const Duration(milliseconds: 10));
 
-          expect(
-            mockConnection.keepAliveWorkInFlight,
-            isTrue,
-            reason: 'the resubscribe is in flight, deferral must be armed',
-          );
+        expect(
+          mockConnection.keepAliveWorkInFlight,
+          isTrue,
+          reason: 'the resubscribe is in flight, deferral must be armed',
+        );
 
-          async.elapse(const Duration(seconds: 45));
+        async.elapse(const Duration(seconds: 45));
 
-          expect(
-            mockConnection.keepAliveWorkInFlight,
-            isFalse,
-            reason:
-                'the 30s resubscribe timeout at subscription_manager.dart:380 '
-                'has elapsed and _onReconnected has given up on this query '
-                'set — no snapshot is coming, so the keep-alive deferral must '
-                'not stay armed. If it latches, a socket that dies later gets '
-                'maxDeferredPings of free grace instead of being killed on '
-                'the first missed pong, and normal liveness detection never '
-                'returns for the life of the connection.',
-          );
+        expect(
+          mockConnection.keepAliveWorkInFlight,
+          isFalse,
+          reason:
+              'the 30s resubscribe timeout at subscription_manager.dart:380 '
+              'has elapsed and _onReconnected has given up on this query '
+              'set — no snapshot is coming, so the keep-alive deferral must '
+              'not stay armed. If it latches, a socket that dies later gets '
+              'maxDeferredPings of free grace instead of being killed on '
+              'the first missed pong, and normal liveness detection never '
+              'returns for the life of the connection.',
+        );
 
-          subscriptionManager.dispose();
-          async.flushTimers();
-        });
-      },
-    );
+        subscriptionManager.dispose();
+        async.flushTimers();
+      });
+    });
   });
 }

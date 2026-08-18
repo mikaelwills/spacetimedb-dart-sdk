@@ -92,9 +92,7 @@ void main() {
       final bulkKeys = [for (var i = 0; i < bulkHeld; i++) _pk('bulk', i)];
 
       await mockConnection.connect();
-      final pendingLive = subscriptionManager.subscribe([
-        'SELECT * FROM live',
-      ]);
+      final pendingLive = subscriptionManager.subscribe(['SELECT * FROM live']);
       mockConnection.simulateIncoming(
         _createSubscribeApplied(
           requestId: 0,
@@ -104,9 +102,7 @@ void main() {
       );
       await pendingLive.timeout(_timeout);
 
-      final pendingBulk = subscriptionManager.subscribe([
-        'SELECT * FROM bulk',
-      ]);
+      final pendingBulk = subscriptionManager.subscribe(['SELECT * FROM bulk']);
       mockConnection.simulateIncoming(
         _createSubscribeApplied(
           requestId: 0,
@@ -179,9 +175,7 @@ void main() {
       final liveKeys = [for (var i = 0; i < 500; i++) _pk('live', i)];
 
       await mockConnection.connect();
-      final pendingLive = subscriptionManager.subscribe([
-        'SELECT * FROM live',
-      ]);
+      final pendingLive = subscriptionManager.subscribe(['SELECT * FROM live']);
       mockConnection.simulateIncoming(
         _createSubscribeApplied(
           requestId: 0,
@@ -191,9 +185,7 @@ void main() {
       );
       await pendingLive.timeout(_timeout);
 
-      final pendingIdle = subscriptionManager.subscribe([
-        'SELECT * FROM bulk',
-      ]);
+      final pendingIdle = subscriptionManager.subscribe(['SELECT * FROM bulk']);
       mockConnection.simulateIncoming(
         _createSubscribeApplied(
           requestId: 0,
@@ -246,43 +238,45 @@ void main() {
       );
     }
 
-    test('the reconciliation cost of a table is set by what the server '
-        'reported and what was evicted, never by how many rows it holds',
-        () async {
-      final small = await measureReconnect(
-        bulkHeld: 5000,
-        liveRows: 500,
-        deletedOnServer: 50,
-      );
-      await subscriptionManager.dispose();
-      final large = await measureReconnect(
-        bulkHeld: 200000,
-        liveRows: 500,
-        deletedOnServer: 50,
-      );
+    test(
+      'the reconciliation cost of a table is set by what the server '
+      'reported and what was evicted, never by how many rows it holds',
+      () async {
+        final small = await measureReconnect(
+          bulkHeld: 5000,
+          liveRows: 500,
+          deletedOnServer: 50,
+        );
+        await subscriptionManager.dispose();
+        final large = await measureReconnect(
+          bulkHeld: 200000,
+          liveRows: 500,
+          deletedOnServer: 50,
+        );
 
-      // ignore: avoid_print
-      print(
-        'RECONCILIATION OPS on the "live" table (500 rows held, 450 '
-        'reported, 50 evicted), while a sibling table holds:\n'
-        '  bulk=5000   -> live table cost ${small.liveOps} ops\n'
-        '  bulk=200000 -> live table cost ${large.liveOps} ops\n'
-        'sibling bulk table cost: ${small.bulkOps} vs ${large.bulkOps} ops '
-        '(scales with what the server RE-REPORTED for it, by construction)',
-      );
+        // ignore: avoid_print
+        print(
+          'RECONCILIATION OPS on the "live" table (500 rows held, 450 '
+          'reported, 50 evicted), while a sibling table holds:\n'
+          '  bulk=5000   -> live table cost ${small.liveOps} ops\n'
+          '  bulk=200000 -> live table cost ${large.liveOps} ops\n'
+          'sibling bulk table cost: ${small.bulkOps} vs ${large.bulkOps} ops '
+          '(scales with what the server RE-REPORTED for it, by construction)',
+        );
 
-      expect(
-        large.liveOps,
-        equals(small.liveOps),
-        reason:
-            'the live table holds the same 500 rows in both runs. A 40x '
-            'increase in rows held ELSEWHERE in the cache must not change its '
-            'reconciliation cost by a single op. Under the old code the '
-            'oldKeysByTable build read table.primaryKeys for EVERY table and '
-            'the eviction ran removeRowsWhere over the full key space, so '
-            'this number tracked total rows held.',
-      );
-    });
+        expect(
+          large.liveOps,
+          equals(small.liveOps),
+          reason:
+              'the live table holds the same 500 rows in both runs. A 40x '
+              'increase in rows held ELSEWHERE in the cache must not change its '
+              'reconciliation cost by a single op. Under the old code the '
+              'oldKeysByTable build read table.primaryKeys for EVERY table and '
+              'the eviction ran removeRowsWhere over the full key space, so '
+              'this number tracked total rows held.',
+        );
+      },
+    );
 
     test('a table with no live query set is not visited at all, however many '
         'rows it holds', () async {
@@ -302,7 +296,8 @@ void main() {
       expect(
         small.idleOps,
         0,
-        reason: 'no reconnect work may decode rows of a table nothing '
+        reason:
+            'no reconnect work may decode rows of a table nothing '
             're-subscribed',
       );
       expect(

@@ -15,50 +15,51 @@ void main() {
         host: 'localhost:3000',
         database: 'notesdb',
         config: config,
-        socketFactory: (uri, protocols, headers, {
-          connectTimeout = const Duration(seconds: 10),
-          pingInterval,
-        }) => socket,
+        socketFactory:
+            (
+              uri,
+              protocols,
+              headers, {
+              connectTimeout = const Duration(seconds: 10),
+              pingInterval,
+            }) => socket,
       );
     }
 
-    test(
-      'appLevelKeepAlive: a socket that accepts sends and never replies is '
-      'detected and closed',
-      () async {
-        final connection = build(
-          const ConnectionConfig(
-            autoReconnect: false,
-            pingInterval: Duration(milliseconds: 40),
-            pongTimeout: Duration(milliseconds: 40),
-            appLevelKeepAlive: true,
-          ),
-        );
-        addTearDown(connection.dispose);
+    test('appLevelKeepAlive: a socket that accepts sends and never replies is '
+        'detected and closed', () async {
+      final connection = build(
+        const ConnectionConfig(
+          autoReconnect: false,
+          pingInterval: Duration(milliseconds: 40),
+          pongTimeout: Duration(milliseconds: 40),
+          appLevelKeepAlive: true,
+        ),
+      );
+      addTearDown(connection.dispose);
 
-        await connection.connect();
-        expect(connection.isConnected, isTrue);
+      await connection.connect();
+      expect(connection.isConnected, isTrue);
 
-        await Future<void>.delayed(const Duration(milliseconds: 300));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
 
-        expect(
-          socket.sent,
-          isNotEmpty,
-          reason:
-              'with the app-level keep-alive on, the SDK must send at least '
-              'one application-level ping into a silent socket — without it '
-              'nothing in the SDK ever probes liveness on the VM',
-        );
-        expect(
-          socket.closeCalls,
-          greaterThan(0),
-          reason:
-              'no reply arrived within pongTimeout, so the SDK must declare '
-              'the socket stale and close the sink, which is what feeds the '
-              'existing onDone → reconnect path',
-        );
-      },
-    );
+      expect(
+        socket.sent,
+        isNotEmpty,
+        reason:
+            'with the app-level keep-alive on, the SDK must send at least '
+            'one application-level ping into a silent socket — without it '
+            'nothing in the SDK ever probes liveness on the VM',
+      );
+      expect(
+        socket.closeCalls,
+        greaterThan(0),
+        reason:
+            'no reply arrived within pongTimeout, so the SDK must declare '
+            'the socket stale and close the sink, which is what feeds the '
+            'existing onDone → reconnect path',
+      );
+    });
 
     test(
       'the keep-alive arms without any inbound message ever arriving',
@@ -204,38 +205,35 @@ void main() {
       },
     );
 
-    test(
-      'the deferral budget is spent per gap, not per connection: traffic '
-      'between two long gaps restores the full budget',
-      () async {
-        final connection = build(
-          const ConnectionConfig(
-            autoReconnect: false,
-            pingInterval: Duration(milliseconds: 40),
-            pongTimeout: Duration(milliseconds: 40),
-            appLevelKeepAlive: true,
-          ),
+    test('the deferral budget is spent per gap, not per connection: traffic '
+        'between two long gaps restores the full budget', () async {
+      final connection = build(
+        const ConnectionConfig(
+          autoReconnect: false,
+          pingInterval: Duration(milliseconds: 40),
+          pongTimeout: Duration(milliseconds: 40),
+          appLevelKeepAlive: true,
+        ),
+      );
+      addTearDown(connection.dispose);
+
+      await connection.connect();
+      connection.setKeepAliveWorkInFlight(true);
+
+      for (var gap = 0; gap < 3; gap++) {
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        expect(
+          socket.closeCalls,
+          0,
+          reason:
+              'gap $gap: the snapshot for the previous query set landed, so '
+              'the deferral budget must have been reset — a consumer with '
+              'many query sets in one resubscribe must not accumulate its '
+              'way to a spurious kill',
         );
-        addTearDown(connection.dispose);
-
-        await connection.connect();
-        connection.setKeepAliveWorkInFlight(true);
-
-        for (var gap = 0; gap < 3; gap++) {
-          await Future<void>.delayed(const Duration(milliseconds: 200));
-          expect(
-            socket.closeCalls,
-            0,
-            reason:
-                'gap $gap: the snapshot for the previous query set landed, so '
-                'the deferral budget must have been reset — a consumer with '
-                'many query sets in one resubscribe must not accumulate its '
-                'way to a spurious kill',
-          );
-          socket.deliver(Uint8List.fromList([0]));
-        }
-      },
-    );
+        socket.deliver(Uint8List.fromList([0]));
+      }
+    });
 
     test(
       'clearing the in-flight signal restores immediate dead-socket detection',

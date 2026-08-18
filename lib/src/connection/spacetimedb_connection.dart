@@ -141,79 +141,6 @@ class SpacetimeDbConnection {
     }
   }
 
-  Future<void> _connectOnce() async {
-    if (_state is! Disconnected && _state is! Reconnecting) {
-      SdkLogger.i('Already connected or connecting');
-      return;
-    }
-    _shouldReconnect = true;
-    _updateState(const Connecting());
-
-    try {
-      final protocol = ssl ? 'wss' : 'ws';
-      var uri = Uri.parse('$protocol://$host/v1/database/$database/subscribe');
-
-      final headers = <String, dynamic>{};
-
-      final queryParams = <String, String>{};
-      if (!brotliNativelySupported) {
-        // Server default is Brotli; pure-Dart `package:brotli` miscompiles on
-        // dart2js; older browsers lack DecompressionStream('br') (Chrome 138+
-        // / Firefox 142+). Ask server to skip compression when we can't
-        // decompress Brotli ourselves.
-        queryParams['compression'] = 'None';
-      }
-      if (kIsWeb && _currentToken != null) {
-        final wsToken = await _getWebSocketToken();
-        if (wsToken != null) {
-          queryParams['token'] = wsToken;
-        }
-      } else if (_currentToken != null) {
-        headers['Authorization'] = 'Bearer $_currentToken';
-      }
-      if (queryParams.isNotEmpty) {
-        uri = uri.replace(queryParameters: queryParams);
-      }
-
-      _channel = _socketFactory(
-        uri,
-        kPreferredWsProtocols,
-        headers,
-        connectTimeout: config.connectTimeout,
-        // On VM, IOWebSocketChannel uses this to send WS-level Ping
-        // frames. On web it's ignored (HtmlWebSocketChannel doesn't
-        // expose WS ping/pong to JS).
-        pingInterval: kIsWeb ? null : config.pingInterval,
-      );
-      await _channel!.ready;
-      _negotiatedProtocol = normalizeWsProtocol(_channel!.protocol);
-      SdkLogger.i('Negotiated WebSocket protocol: ${_negotiatedProtocol.name}');
-      _setupMessageListener();
-      if (kIsWeb || config.appLevelKeepAlive) {
-        _setupKeepAlive();
-      }
-      _updateState(const Connected());
-      _reconnectAttempts = 0;
-      _updateQuality();
-    } catch (e) {
-      SdkLogger.e('Connection failed: $e');
-      _updateState(const Disconnected());
-      _channel = null;
-
-      final errorString = e.toString();
-      if (errorString.contains('401') || errorString.contains('Unauthorized')) {
-        throw SpacetimeDbAuthException(
-          'Authentication failed (401). Token may be invalid or expired.',
-        );
-      }
-
-      throw SpacetimeDbConnectionException(
-        'Connection failed: $e',
-        lastKnownState: const Disconnected(),
-      );
-    }
-  }
-
   Future<void> disconnect() async {
     if (_state is Disconnected) {
       return;
@@ -301,6 +228,79 @@ class SpacetimeDbConnection {
     await _stateController.close();
     await _messageController.close();
     await _errorController.close();
+  }
+
+  Future<void> _connectOnce() async {
+    if (_state is! Disconnected && _state is! Reconnecting) {
+      SdkLogger.i('Already connected or connecting');
+      return;
+    }
+    _shouldReconnect = true;
+    _updateState(const Connecting());
+
+    try {
+      final protocol = ssl ? 'wss' : 'ws';
+      var uri = Uri.parse('$protocol://$host/v1/database/$database/subscribe');
+
+      final headers = <String, dynamic>{};
+
+      final queryParams = <String, String>{};
+      if (!brotliNativelySupported) {
+        // Server default is Brotli; pure-Dart `package:brotli` miscompiles on
+        // dart2js; older browsers lack DecompressionStream('br') (Chrome 138+
+        // / Firefox 142+). Ask server to skip compression when we can't
+        // decompress Brotli ourselves.
+        queryParams['compression'] = 'None';
+      }
+      if (kIsWeb && _currentToken != null) {
+        final wsToken = await _getWebSocketToken();
+        if (wsToken != null) {
+          queryParams['token'] = wsToken;
+        }
+      } else if (_currentToken != null) {
+        headers['Authorization'] = 'Bearer $_currentToken';
+      }
+      if (queryParams.isNotEmpty) {
+        uri = uri.replace(queryParameters: queryParams);
+      }
+
+      _channel = _socketFactory(
+        uri,
+        kPreferredWsProtocols,
+        headers,
+        connectTimeout: config.connectTimeout,
+        // On VM, IOWebSocketChannel uses this to send WS-level Ping
+        // frames. On web it's ignored (HtmlWebSocketChannel doesn't
+        // expose WS ping/pong to JS).
+        pingInterval: kIsWeb ? null : config.pingInterval,
+      );
+      await _channel!.ready;
+      _negotiatedProtocol = normalizeWsProtocol(_channel!.protocol);
+      SdkLogger.i('Negotiated WebSocket protocol: ${_negotiatedProtocol.name}');
+      _setupMessageListener();
+      if (kIsWeb || config.appLevelKeepAlive) {
+        _setupKeepAlive();
+      }
+      _updateState(const Connected());
+      _reconnectAttempts = 0;
+      _updateQuality();
+    } catch (e) {
+      SdkLogger.e('Connection failed: $e');
+      _updateState(const Disconnected());
+      _channel = null;
+
+      final errorString = e.toString();
+      if (errorString.contains('401') || errorString.contains('Unauthorized')) {
+        throw SpacetimeDbAuthException(
+          'Authentication failed (401). Token may be invalid or expired.',
+        );
+      }
+
+      throw SpacetimeDbConnectionException(
+        'Connection failed: $e',
+        lastKnownState: const Disconnected(),
+      );
+    }
   }
 
   Future<String?> _getWebSocketToken() async {
@@ -475,18 +475,26 @@ class SpacetimeDbConnection {
           final message = OneOffQueryMessage(queryString: pingQuery);
           send(message.encode());
           _lastPingSent = DateTime.now();
-          final sinceLastRx = _lastMessageReceived != null
-              ? DateTime.now().difference(_lastMessageReceived!).inMilliseconds
-              : null;
-          SdkLogger.i('KEEPALIVE_PING sent (last inbound ${sinceLastRx}ms ago)');
+          final sinceLastRx =
+              _lastMessageReceived != null
+                  ? DateTime.now()
+                      .difference(_lastMessageReceived!)
+                      .inMilliseconds
+                  : null;
+          SdkLogger.i(
+            'KEEPALIVE_PING sent (last inbound ${sinceLastRx}ms ago)',
+          );
         } catch (e) {
           SdkLogger.e('Failed to send keep-alive ping: $e');
         }
       },
       onDisconnect: () {
-        final sinceLastRx = _lastMessageReceived != null
-            ? DateTime.now().difference(_lastMessageReceived!).inMilliseconds
-            : null;
+        final sinceLastRx =
+            _lastMessageReceived != null
+                ? DateTime.now()
+                    .difference(_lastMessageReceived!)
+                    .inMilliseconds
+                : null;
         SdkLogger.i(
           'Keep-alive timeout - connection declared dead '
           '(last inbound ${sinceLastRx}ms ago)',

@@ -8,7 +8,9 @@ void main() {
     late Directory tempDir;
 
     setUp(() async {
-      tempDir = await Directory.systemTemp.createTemp('atomic_file_store_test_');
+      tempDir = await Directory.systemTemp.createTemp(
+        'atomic_file_store_test_',
+      );
     });
 
     tearDown(() async {
@@ -25,16 +27,18 @@ void main() {
       expect(await file.readAsString(), '[{"id":1}]');
     });
 
-    test('overwrites an existing file and keeps a backup of the old content',
-        () async {
-      final store = AtomicFileStore(tempDir.path);
-      final file = File('${tempDir.path}/table_agent.json');
-      await store.atomicWrite(file, 'old');
+    test(
+      'overwrites an existing file and keeps a backup of the old content',
+      () async {
+        final store = AtomicFileStore(tempDir.path);
+        final file = File('${tempDir.path}/table_agent.json');
+        await store.atomicWrite(file, 'old');
 
-      await store.atomicWrite(file, 'new');
+        await store.atomicWrite(file, 'new');
 
-      expect(await file.readAsString(), 'new');
-      expect(await File('${file.path}.bak').readAsString(), 'old');
-    });
+        expect(await file.readAsString(), 'new');
+        expect(await File('${file.path}.bak').readAsString(), 'old');
+      },
+    );
   });
 }

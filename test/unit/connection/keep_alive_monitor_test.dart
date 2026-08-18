@@ -16,11 +16,7 @@ void main() {
         );
 
         async.elapse(const Duration(milliseconds: 900));
-        expect(
-          pings,
-          0,
-          reason: 'no ping before the idle threshold elapses',
-        );
+        expect(pings, 0, reason: 'no ping before the idle threshold elapses');
 
         async.elapse(const Duration(milliseconds: 200));
         expect(
@@ -86,11 +82,7 @@ void main() {
         expect(pings, 1, reason: 'idle → one ping');
 
         async.elapse(const Duration(milliseconds: 500));
-        expect(
-          disconnects,
-          0,
-          reason: 'the reply arrived inside pongTimeout',
-        );
+        expect(disconnects, 0, reason: 'the reply arrived inside pongTimeout');
 
         monitor.stop();
       });

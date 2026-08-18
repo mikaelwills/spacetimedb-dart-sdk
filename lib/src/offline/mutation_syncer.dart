@@ -305,9 +305,9 @@ class MutationSyncer implements MutationHandler {
           for (final row in _optimisticState.retainedUnownedInsertRowsForTable(
             tableName,
           )) {
-            final pk = table.decoder.getPrimaryKey(
-              table.decoder.fromJson(row) as dynamic,
-            );
+            final decoded = table.decoder.fromJson(row);
+            if (decoded == null) continue;
+            final pk = table.decoder.getPrimaryKey(decoded);
             if (pk == null) continue;
             if (table.ownedKeys(pk).isNotEmpty) {
               _optimisticState.releaseRetainedUnownedInsert(tableName, pk);

@@ -39,7 +39,8 @@ void main() {
         expect(
           noteTable.isSubscribed,
           isFalse,
-          reason: 'markSubscribed deliberately NOT called — mirrors the window '
+          reason:
+              'markSubscribed deliberately NOT called — mirrors the window '
               'right after a reconnect drops subscriptions',
         );
 
@@ -82,7 +83,8 @@ void main() {
         expect(
           await storage.getPendingMutations(),
           hasLength(1),
-          reason: 'the !table.isSubscribed gate forces undetectable, so the '
+          reason:
+              'the !table.isSubscribed gate forces undetectable, so the '
               'genuinely-landed effect is NOT confirmed — it stays queued',
         );
         expect(

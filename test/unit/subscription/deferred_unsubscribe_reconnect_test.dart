@@ -74,58 +74,60 @@ void main() {
       await subscriptionManager.dispose();
     });
 
-    test('a set unsubscribed while disconnected is NOT revived on reconnect',
-        () async {
-      await mockConnection.connect();
+    test(
+      'a set unsubscribed while disconnected is NOT revived on reconnect',
+      () async {
+        await mockConnection.connect();
 
-      final futures = [
-        subscriptionManager.subscribe(['SELECT * FROM globals']),
-        subscriptionManager.subscribe([
-          "SELECT * FROM message WHERE agent_id = 'a1'",
-        ]),
-      ];
-      for (var id = 1; id <= 2; id++) {
-        mockConnection.simulateIncoming(
-          _createSubscribeApplied(requestId: 0, querySetId: id),
+        final futures = [
+          subscriptionManager.subscribe(['SELECT * FROM globals']),
+          subscriptionManager.subscribe([
+            "SELECT * FROM message WHERE agent_id = 'a1'",
+          ]),
+        ];
+        for (var id = 1; id <= 2; id++) {
+          mockConnection.simulateIncoming(
+            _createSubscribeApplied(requestId: 0, querySetId: id),
+          );
+        }
+        await Future.wait(futures).timeout(_timeout);
+        expect(subscriptionManager.subscriptionsReady.value, isTrue);
+
+        await mockConnection.disconnect();
+        await pumpEventQueue();
+        expect(mockConnection.isConnected, isFalse);
+
+        subscriptionManager.unsubscribe(2);
+
+        expect(
+          subscriptionManager.subscriptionsByQuerySetId.keys.toSet(),
+          {1},
+          reason:
+              'unsubscribe removes local state unconditionally; the wire send '
+              'is the only part gated on the socket',
         );
-      }
-      await Future.wait(futures).timeout(_timeout);
-      expect(subscriptionManager.subscriptionsReady.value, isTrue);
 
-      await mockConnection.disconnect();
-      await pumpEventQueue();
-      expect(mockConnection.isConnected, isFalse);
+        mockConnection.clearSent();
+        await mockConnection.connect();
+        await pumpEventQueue();
 
-      subscriptionManager.unsubscribe(2);
-
-      expect(
-        subscriptionManager.subscriptionsByQuerySetId.keys.toSet(),
-        {1},
-        reason:
-            'unsubscribe removes local state unconditionally; the wire send '
-            'is the only part gated on the socket',
-      );
-
-      mockConnection.clearSent();
-      await mockConnection.connect();
-      await pumpEventQueue();
-
-      final resubscribed =
-          _subscribeFrames(mockConnection.sentMessages).map(_sentQuerySetId);
-      expect(
-        resubscribed,
-        isNot(contains(2)),
-        reason:
-            'the set unsubscribed while disconnected must not be revived by '
-            '_onReconnected; reviving it creates a duplicate query set with '
-            'byte-identical queries alongside any live set for the same agent',
-      );
-      expect(resubscribed.toSet(), {1});
-    });
+        final resubscribed = _subscribeFrames(
+          mockConnection.sentMessages,
+        ).map(_sentQuerySetId);
+        expect(
+          resubscribed,
+          isNot(contains(2)),
+          reason:
+              'the set unsubscribed while disconnected must not be revived by '
+              '_onReconnected; reviving it creates a duplicate query set with '
+              'byte-identical queries alongside any live set for the same agent',
+        );
+        expect(resubscribed.toSet(), {1});
+      },
+    );
 
     test('deferred unsubscribe leaves the live set\'s rows intact when the '
-        'duplicate answers with a STIPULATED empty SubscribeApplied',
-        () async {
+        'duplicate answers with a STIPULATED empty SubscribeApplied', () async {
       subscriptionManager.cache.registerDecoder<String>(
         'message',
         _StringDecoder(),
@@ -175,8 +177,9 @@ void main() {
       await mockConnection.connect();
       await pumpEventQueue();
 
-      final revivedIds =
-          _subscribeFrames(mockConnection.sentMessages).map(_sentQuerySetId);
+      final revivedIds = _subscribeFrames(
+        mockConnection.sentMessages,
+      ).map(_sentQuerySetId);
       expect(
         revivedIds,
         isNot(contains(1)),

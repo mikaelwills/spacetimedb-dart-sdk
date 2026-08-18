@@ -238,47 +238,51 @@ void main() {
       );
     });
 
-    test('rows a query set DID own are still evicted when not re-delivered',
-        () async {
-      final covered = subscriptionManager.cache.getTableByName('covered');
-      if (covered == null) fail('tables not registered');
+    test(
+      'rows a query set DID own are still evicted when not re-delivered',
+      () async {
+        final covered = subscriptionManager.cache.getTableByName('covered');
+        if (covered == null) fail('tables not registered');
 
-      await mockConnection.connect();
-      final pending = subscriptionManager.subscribe(['SELECT * FROM covered']);
-      mockConnection.simulateIncoming(
-        _createSubscribeApplied(
-          requestId: 0,
-          querySetId: 1,
-          rowsByTable: {
-            'covered': ['c1', 'c2'],
-          },
-        ),
-      );
-      await pending.timeout(_timeout);
-      expect(covered.iter(), containsAll(['c1', 'c2']));
+        await mockConnection.connect();
+        final pending = subscriptionManager.subscribe([
+          'SELECT * FROM covered',
+        ]);
+        mockConnection.simulateIncoming(
+          _createSubscribeApplied(
+            requestId: 0,
+            querySetId: 1,
+            rowsByTable: {
+              'covered': ['c1', 'c2'],
+            },
+          ),
+        );
+        await pending.timeout(_timeout);
+        expect(covered.iter(), containsAll(['c1', 'c2']));
 
-      await mockConnection.disconnect();
-      await mockConnection.connect();
-      await pumpEventQueue();
-      mockConnection.simulateIncoming(
-        _createSubscribeApplied(
-          requestId: 0,
-          querySetId: 1,
-          rowsByTable: {
-            'covered': ['c1'],
-          },
-        ),
-      );
-      await pumpEventQueue();
+        await mockConnection.disconnect();
+        await mockConnection.connect();
+        await pumpEventQueue();
+        mockConnection.simulateIncoming(
+          _createSubscribeApplied(
+            requestId: 0,
+            querySetId: 1,
+            rowsByTable: {
+              'covered': ['c1'],
+            },
+          ),
+        );
+        await pumpEventQueue();
 
-      expect(covered.iter(), contains('c1'));
-      expect(
-        covered.iter(),
-        isNot(contains('c2')),
-        reason:
-            'c2 was owned by query set 1 and was not re-delivered, so it was '
-            'deleted server-side while disconnected and must be evicted',
-      );
-    });
+        expect(covered.iter(), contains('c1'));
+        expect(
+          covered.iter(),
+          isNot(contains('c2')),
+          reason:
+              'c2 was owned by query set 1 and was not re-delivered, so it was '
+              'deleted server-side while disconnected and must be evicted',
+        );
+      },
+    );
   });
 }

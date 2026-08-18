@@ -56,105 +56,111 @@ class _JsonStringDecoder extends RowDecoder<String> {
 }
 
 void main() {
-  group('P1 — a disk-loaded row and a pending-reclaim row are distinguishable', () {
-    late MockConnection mockConnection;
-    late SubscriptionManager subscriptionManager;
+  group(
+    'P1 — a disk-loaded row and a pending-reclaim row are distinguishable',
+    () {
+      late MockConnection mockConnection;
+      late SubscriptionManager subscriptionManager;
 
-    setUp(() {
-      mockConnection = MockConnection();
-      subscriptionManager = SubscriptionManager(mockConnection);
-      subscriptionManager.cache.registerDecoder<String>(
-        'covered',
-        _JsonStringDecoder(),
-      );
-      subscriptionManager.cache.registerDecoder<String>(
-        'uncovered',
-        _JsonStringDecoder(),
-      );
-    });
+      setUp(() {
+        mockConnection = MockConnection();
+        subscriptionManager = SubscriptionManager(mockConnection);
+        subscriptionManager.cache.registerDecoder<String>(
+          'covered',
+          _JsonStringDecoder(),
+        );
+        subscriptionManager.cache.registerDecoder<String>(
+          'uncovered',
+          _JsonStringDecoder(),
+        );
+      });
 
-    tearDown(() async {
-      await subscriptionManager.dispose();
-    });
+      tearDown(() async {
+        await subscriptionManager.dispose();
+      });
 
-    test('disk-loaded rows survive while a genuinely deleted owned row is '
-        'still reclaimed, and the two are told apart by ownership not by '
-        'guesswork', () async {
-      final uncovered = subscriptionManager.cache.getTableByName('uncovered');
-      final covered = subscriptionManager.cache.getTableByName('covered');
-      if (uncovered == null || covered == null) fail('tables not registered');
+      test('disk-loaded rows survive while a genuinely deleted owned row is '
+          'still reclaimed, and the two are told apart by ownership not by '
+          'guesswork', () async {
+        final uncovered = subscriptionManager.cache.getTableByName('uncovered');
+        final covered = subscriptionManager.cache.getTableByName('covered');
+        if (uncovered == null || covered == null) fail('tables not registered');
 
-      uncovered.loadFromSerializable([
-        {'v': 'd1'},
-        {'v': 'd2'},
-      ]);
+        uncovered.loadFromSerializable([
+          {'v': 'd1'},
+          {'v': 'd2'},
+        ]);
 
-      await mockConnection.connect();
-      final pending = subscriptionManager.subscribe(['SELECT * FROM covered']);
-      mockConnection.simulateIncoming(
-        _createSubscribeApplied(
-          requestId: 0,
-          querySetId: 1,
-          rowsByTable: {
-            'covered': ['c1', 'c2'],
-          },
-        ),
-      );
-      await pending.timeout(_timeout);
-      expect(covered.iter(), containsAll(['c1', 'c2']));
+        await mockConnection.connect();
+        final pending = subscriptionManager.subscribe([
+          'SELECT * FROM covered',
+        ]);
+        mockConnection.simulateIncoming(
+          _createSubscribeApplied(
+            requestId: 0,
+            querySetId: 1,
+            rowsByTable: {
+              'covered': ['c1', 'c2'],
+            },
+          ),
+        );
+        await pending.timeout(_timeout);
+        expect(covered.iter(), containsAll(['c1', 'c2']));
 
-      await mockConnection.disconnect();
-      await mockConnection.connect();
-      await pumpEventQueue();
+        await mockConnection.disconnect();
+        await mockConnection.connect();
+        await pumpEventQueue();
 
-      expect(
-        covered.ownedKeys('c1'),
-        isNotEmpty,
-        reason:
-            'P1 CORE: mid-resubscribe, c1 was owned by query set 1 before the '
-            'reconnect and has not yet been re-claimed. It is state (b) '
-            '"pending". A disk-loaded row is state (c) "never subscribed". '
-            'Today clearOwners() collapses both to isEmpty, so the eviction '
-            'decision cannot tell them apart and is a guess.',
-      );
-      expect(
-        uncovered.ownedKeys('d1'),
-        isEmpty,
-        reason:
-            'a disk-loaded row must remain unowned — this is the other half of '
-            'the distinction and is what the consumer test pins',
-      );
+        expect(
+          covered.ownedKeys('c1'),
+          isNotEmpty,
+          reason:
+              'P1 CORE: mid-resubscribe, c1 was owned by query set 1 before the '
+              'reconnect and has not yet been re-claimed. It is state (b) '
+              '"pending". A disk-loaded row is state (c) "never subscribed". '
+              'Today clearOwners() collapses both to isEmpty, so the eviction '
+              'decision cannot tell them apart and is a guess.',
+        );
+        expect(
+          uncovered.ownedKeys('d1'),
+          isEmpty,
+          reason:
+              'a disk-loaded row must remain unowned — this is the other half of '
+              'the distinction and is what the consumer test pins',
+        );
 
-      mockConnection.simulateIncoming(
-        _createSubscribeApplied(
-          requestId: 0,
-          querySetId: 1,
-          rowsByTable: {
-            'covered': ['c1'],
-          },
-        ),
-      );
-      await pumpEventQueue();
+        mockConnection.simulateIncoming(
+          _createSubscribeApplied(
+            requestId: 0,
+            querySetId: 1,
+            rowsByTable: {
+              'covered': ['c1'],
+            },
+          ),
+        );
+        await pumpEventQueue();
 
-      expect(
-        covered.iter(),
-        contains('c1'),
-        reason: 're-delivered rows stay',
-      );
-      expect(
-        covered.iter(),
-        isNot(contains('c2')),
-        reason:
-            'c2 was genuinely owned and was not re-delivered, so it was '
-            'deleted server-side and must still be reclaimed',
-      );
-      expect(
-        uncovered.iter(),
-        containsAll(['d1', 'd2']),
-        reason: 'disk-loaded rows were never subscription-delivered and survive',
-      );
-    });
-  });
+        expect(
+          covered.iter(),
+          contains('c1'),
+          reason: 're-delivered rows stay',
+        );
+        expect(
+          covered.iter(),
+          isNot(contains('c2')),
+          reason:
+              'c2 was genuinely owned and was not re-delivered, so it was '
+              'deleted server-side and must still be reclaimed',
+        );
+        expect(
+          uncovered.iter(),
+          containsAll(['d1', 'd2']),
+          reason:
+              'disk-loaded rows were never subscription-delivered and survive',
+        );
+      });
+    },
+  );
 
   group('P2 — a connection bounce during the resubscribe window', () {
     late MockConnection mockConnection;
@@ -265,9 +271,7 @@ void main() {
       if (guarded == null) fail('table not registered');
 
       await mockConnection.connect();
-      final pending = subscriptionManager.subscribe([
-        'SELECT * FROM guarded',
-      ]);
+      final pending = subscriptionManager.subscribe(['SELECT * FROM guarded']);
       mockConnection.simulateIncoming(
         _createSubscribeApplied(
           requestId: 0,

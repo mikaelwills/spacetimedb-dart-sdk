@@ -137,16 +137,6 @@ class SubscriptionManager {
     return hash;
   }
 
-  int? _tagForQuerySetId(int querySetId) {
-    final queries = _subscriptionsByQuerySetId[querySetId];
-    return queries == null ? null : computeQuerySetHash(queries);
-  }
-
-  int? _retainTagFor(List<String>? queries) =>
-      _retainRowsOnUnsubscribe && queries != null
-          ? computeQuerySetHash(queries)
-          : null;
-
   Stream<SyncState> get onSyncStateChanged =>
       _mutationSyncer?.onSyncStateChanged ?? const Stream.empty();
   Stream<MutationSyncResult> get onMutationSyncResult =>
@@ -178,6 +168,12 @@ class SubscriptionManager {
   @visibleForTesting
   Set<dynamic> optimisticKeysFor(String tableName) =>
       _optimisticState.optimisticPrimaryKeysForTable(tableName);
+
+  /// How many reconnects in a row abandoned their ownership generation without
+  /// finalizing. Anything above zero means rows are being carried forward
+  /// unreconciled; a climbing value means the cache is not converging.
+  @visibleForTesting
+  int get consecutiveEvictionSkips => _consecutiveEvictionSkips;
 
   Stream<TransactionUpdateMessage> get onTransactionUpdate =>
       _transactionUpdateController.stream;
@@ -375,6 +371,16 @@ class SubscriptionManager {
             _subscribeWaiters[id]!.isCompleted,
       );
 
+  int? _tagForQuerySetId(int querySetId) {
+    final queries = _subscriptionsByQuerySetId[querySetId];
+    return queries == null ? null : computeQuerySetHash(queries);
+  }
+
+  int? _retainTagFor(List<String>? queries) =>
+      _retainRowsOnUnsubscribe && queries != null
+          ? computeQuerySetHash(queries)
+          : null;
+
   void _completeSubscribeWaiter(int querySetId) {
     final waiter = _subscribeWaiters[querySetId];
     if (waiter != null && !waiter.isCompleted) {
@@ -418,12 +424,6 @@ class SubscriptionManager {
   final Set<int> _appliedSetIds = {};
 
   int _consecutiveEvictionSkips = 0;
-
-  /// How many reconnects in a row abandoned their ownership generation without
-  /// finalizing. Anything above zero means rows are being carried forward
-  /// unreconciled; a climbing value means the cache is not converging.
-  @visibleForTesting
-  int get consecutiveEvictionSkips => _consecutiveEvictionSkips;
 
   Future<void> _onReconnected() async {
     if (_subscriptionsByQuerySetId.isNotEmpty) {
