@@ -221,6 +221,64 @@ void main() {
     });
   });
 
+  group('unsubscribe racing an in-flight resubscribe', () {
+    test('the late SubscribeApplied re-own followed by UnsubscribeApplied '
+        'retains rows instead of hard-evicting them', () async {
+      await start(retain: true);
+      final id = await subscribeWithRows(_agentAQueries, ['a1', 'a2']);
+      subscriptionManager.unsubscribe(id);
+      expect(chat.count(), 2);
+
+      mockConnection.simulateIncoming(
+        _createSubscribeApplied(
+          requestId: 0,
+          querySetId: id,
+          rowsByTable: {
+            'chat': ['a1', 'a2'],
+          },
+        ),
+      );
+      await pumpEventQueue();
+      mockConnection.simulateIncoming(
+        _createUnsubscribeApplied(requestId: 0, querySetId: id),
+      );
+      await pumpEventQueue();
+
+      expect(chat.count(), 2);
+      final tag = SubscriptionManager.computeQuerySetHash(_agentAQueries);
+      expect(chat.retainedTagsFor('a1'), {tag});
+      expect(chat.retainedTagsFor('a2'), {tag});
+      expect(chat.unsubscribeEvictionCount, 0);
+    });
+
+    test('a second unsubscribe after the late SubscribeApplied re-own '
+        'retains rows instead of hard-evicting them', () async {
+      await start(retain: true);
+      final id = await subscribeWithRows(_agentAQueries, ['a1', 'a2']);
+      subscriptionManager.unsubscribe(id);
+      expect(chat.count(), 2);
+
+      mockConnection.simulateIncoming(
+        _createSubscribeApplied(
+          requestId: 0,
+          querySetId: id,
+          rowsByTable: {
+            'chat': ['a1', 'a2'],
+          },
+        ),
+      );
+      await pumpEventQueue();
+
+      subscriptionManager.unsubscribe(id);
+
+      expect(chat.count(), 2);
+      final tag = SubscriptionManager.computeQuerySetHash(_agentAQueries);
+      expect(chat.retainedTagsFor('a1'), {tag});
+      expect(chat.retainedTagsFor('a2'), {tag});
+      expect(chat.unsubscribeEvictionCount, 0);
+    });
+  });
+
   group('reconcile on resubscribe (slice 2)', () {
     test('re-subscribing the same query set evicts ghosts, keeps '
         're-delivered rows, clears tags and restores ownership', () async {

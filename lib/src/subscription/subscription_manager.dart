@@ -40,6 +40,7 @@ class SubscriptionManager {
   /// Tracks active subscriptions by client-assigned `QuerySetId` so we can
   /// re-subscribe on reconnect and route `SubscribeApplied`/`UnsubscribeApplied`.
   final Map<int, List<String>> _subscriptionsByQuerySetId = {};
+  final Map<int, List<String>> _everSubscribedQueriesByQuerySetId = {};
   int _nextQuerySetId = 1;
 
   final _subscribeWaiters = <int, Completer<void>>{};
@@ -202,6 +203,8 @@ class SubscriptionManager {
   Future<int> subscribe(List<String> queries) async {
     final querySetId = _nextQuerySetId++;
     _subscriptionsByQuerySetId[querySetId] = List.of(queries);
+    _everSubscribedQueriesByQuerySetId[querySetId] =
+        _subscriptionsByQuerySetId[querySetId]!;
     await _sendSubscribeAndWait(
       querySetId,
       _subscriptionsByQuerySetId[querySetId]!,
@@ -277,7 +280,9 @@ class SubscriptionManager {
               : UnsubscribeFlags.defaultFlag,
     );
     _connection.send(message.encode());
-    final queries = _subscriptionsByQuerySetId.remove(querySetId);
+    final queries =
+        _subscriptionsByQuerySetId.remove(querySetId) ??
+        _everSubscribedQueriesByQuerySetId[querySetId];
     final retainTag = _retainTagFor(queries);
     _dropQuerySetEverywhere(querySetId, retainTag: retainTag);
     if (retainTag != null) {
@@ -800,8 +805,16 @@ class SubscriptionManager {
 
   void _handleUnsubscribeApplied(UnsubscribeApplied message) {
     final querySetId = message.querySetId;
-    _subscriptionsByQuerySetId.remove(querySetId);
-    _dropQuerySetEverywhere(querySetId);
+    final queries =
+        _subscriptionsByQuerySetId.remove(querySetId) ??
+        _everSubscribedQueriesByQuerySetId[querySetId];
+    final retainTag = _retainTagFor(queries);
+    _dropQuerySetEverywhere(querySetId, retainTag: retainTag);
+    if (retainTag != null) {
+      _mutationSyncer?.persistTableSnapshots(
+        onlyTables: _tablesFromQueries(queries!),
+      );
+    }
 
     final rows = message.rows;
     if (rows == null) return;

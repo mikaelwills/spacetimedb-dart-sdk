@@ -7,13 +7,13 @@ import 'reducers.dart';
 import 'reducer_args.dart';
 import 'note.dart';
 import 'session_marker.dart';
-import 'single_field.dart';
 import 'tagged_item.dart';
 import 'cadence_item.dart';
-import 'scheduled_task.dart';
 import 'optional_item.dart';
-import 'folder.dart';
 import 'entity.dart';
+import 'folder.dart';
+import 'single_field.dart';
+import 'scheduled_task.dart';
 
 class SpacetimeDbClient {
   SpacetimeDbClient._({
@@ -82,10 +82,6 @@ class SpacetimeDbClient {
     );
   }
 
-  TableCache<SingleField> get singleField {
-    return subscriptions.cache.getTableByTypedName<SingleField>('single_field');
-  }
-
   TableCache<TaggedItem> get taggedItem {
     return subscriptions.cache.getTableByTypedName<TaggedItem>('tagged_item');
   }
@@ -94,24 +90,28 @@ class SpacetimeDbClient {
     return subscriptions.cache.getTableByTypedName<CadenceItem>('cadence_item');
   }
 
-  TableCache<ScheduledTask> get scheduledTask {
-    return subscriptions.cache.getTableByTypedName<ScheduledTask>(
-      'scheduled_task',
-    );
-  }
-
   TableCache<OptionalItem> get optionalItem {
     return subscriptions.cache.getTableByTypedName<OptionalItem>(
       'optional_item',
     );
   }
 
+  TableCache<Entity> get entity {
+    return subscriptions.cache.getTableByTypedName<Entity>('entity');
+  }
+
   TableCache<Folder> get folder {
     return subscriptions.cache.getTableByTypedName<Folder>('folder');
   }
 
-  TableCache<Entity> get entity {
-    return subscriptions.cache.getTableByTypedName<Entity>('entity');
+  TableCache<SingleField> get singleField {
+    return subscriptions.cache.getTableByTypedName<SingleField>('single_field');
+  }
+
+  TableCache<ScheduledTask> get scheduledTask {
+    return subscriptions.cache.getTableByTypedName<ScheduledTask>(
+      'scheduled_task',
+    );
   }
 
   TableCache<Note> get allNotes {
@@ -162,10 +162,6 @@ class SpacetimeDbClient {
       'session_marker',
       SessionMarkerDecoder(),
     );
-    subscriptionManager.cache.registerDecoder<SingleField>(
-      'single_field',
-      SingleFieldDecoder(),
-    );
     subscriptionManager.cache.registerDecoder<TaggedItem>(
       'tagged_item',
       TaggedItemDecoder(),
@@ -174,21 +170,25 @@ class SpacetimeDbClient {
       'cadence_item',
       CadenceItemDecoder(),
     );
-    subscriptionManager.cache.registerDecoder<ScheduledTask>(
-      'scheduled_task',
-      ScheduledTaskDecoder(),
-    );
     subscriptionManager.cache.registerDecoder<OptionalItem>(
       'optional_item',
       OptionalItemDecoder(),
+    );
+    subscriptionManager.cache.registerDecoder<Entity>(
+      'entity',
+      EntityDecoder(),
     );
     subscriptionManager.cache.registerDecoder<Folder>(
       'folder',
       FolderDecoder(),
     );
-    subscriptionManager.cache.registerDecoder<Entity>(
-      'entity',
-      EntityDecoder(),
+    subscriptionManager.cache.registerDecoder<SingleField>(
+      'single_field',
+      SingleFieldDecoder(),
+    );
+    subscriptionManager.cache.registerDecoder<ScheduledTask>(
+      'scheduled_task',
+      ScheduledTaskDecoder(),
     );
 
     subscriptionManager.cache.registerDecoder<Note>('all_notes', NoteDecoder());
