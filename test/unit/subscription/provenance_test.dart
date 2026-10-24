@@ -214,6 +214,56 @@ Uint8List _createTransactionUpdate({
   return encoder.toBytes();
 }
 
+typedef _RowGroup = ({List<Folder> inserts, List<Folder> deletes});
+
+void _writeRowGroups(
+  BsatnEncoder encoder,
+  String tableName,
+  List<_RowGroup> groups,
+) {
+  encoder.writeU32(1);
+  encoder.writeString(tableName);
+  encoder.writeU32(groups.length);
+  for (final group in groups) {
+    encoder.writeU8(0);
+    _writeFolderRowList(encoder, group.inserts);
+    _writeFolderRowList(encoder, group.deletes);
+  }
+}
+
+Uint8List _createTransactionUpdateGroups({
+  required int querySetId,
+  required String tableName,
+  required List<_RowGroup> groups,
+}) {
+  final encoder = BsatnEncoder();
+  encoder.writeU8(0);
+  encoder.writeU8(4);
+  encoder.writeU32(1);
+  encoder.writeU32(querySetId);
+  _writeRowGroups(encoder, tableName, groups);
+  return encoder.toBytes();
+}
+
+Uint8List _createReducerResultCommittedGroups({
+  required int requestId,
+  required int querySetId,
+  required String tableName,
+  required List<_RowGroup> groups,
+}) {
+  final encoder = BsatnEncoder();
+  encoder.writeU8(0);
+  encoder.writeU8(6);
+  encoder.writeU32(requestId);
+  encoder.writeU64(Int64(0));
+  encoder.writeU8(0);
+  encoder.writeU32(0);
+  encoder.writeU32(1);
+  encoder.writeU32(querySetId);
+  _writeRowGroups(encoder, tableName, groups);
+  return encoder.toBytes();
+}
+
 Uint8List _createUnsubscribeApplied({
   required int requestId,
   required int querySetId,
@@ -1333,6 +1383,205 @@ void main() {
       });
     },
   );
+
+  group('several row groups for one table in one query set', () {
+    late MockConnection mockConnection;
+    late SubscriptionManager subscriptionManager;
+    late TableCache<Folder> table;
+    late List<String> events;
+
+    final oldRow = Folder(path: '/m', name: 'x', createdAt: Int64(0));
+    final newRow = Folder(path: '/m', name: 'y', createdAt: Int64(0));
+    final insertGroup = (inserts: [newRow], deletes: <Folder>[]);
+    final deleteGroup = (inserts: <Folder>[], deletes: [oldRow]);
+    final stayGroup = (inserts: [newRow], deletes: [oldRow]);
+
+    setUp(() {
+      mockConnection = MockConnection();
+      subscriptionManager = SubscriptionManager(
+        mockConnection,
+        offlineStorage: InMemoryOfflineStorage(),
+      );
+      subscriptionManager.cache.registerDecoder<Folder>(
+        'folder',
+        FolderDecoder(),
+      );
+      table = subscriptionManager.cache.getTableByTypedName<Folder>('folder');
+      events = [];
+      table.onInsert.listen((e) => events.add('insert'));
+      table.onUpdate.listen((e) => events.add('update'));
+      table.onDelete.listen((e) => events.add('delete'));
+    });
+
+    tearDown(() async {
+      await subscriptionManager.dispose();
+    });
+
+    Future<void> subscribeHolding(List<Folder> rows) async {
+      mockConnection.mockState = const Connected();
+      final subscribed = subscriptionManager.subscribe([
+        "SELECT * FROM folder WHERE name = 'x'",
+        "SELECT * FROM folder WHERE name = 'y'",
+      ]);
+      mockConnection.simulateIncoming(
+        _createSubscribeApplied(
+          requestId: 0,
+          querySetId: 1,
+          rowsByTable: {'folder': rows},
+        ),
+      );
+      await subscribed.timeout(_timeout);
+      await pumpEventQueue();
+      events.clear();
+    }
+
+    Future<void> broadcast(List<_RowGroup> groups) async {
+      mockConnection.simulateIncoming(
+        _createTransactionUpdateGroups(
+          querySetId: 1,
+          tableName: 'folder',
+          groups: groups,
+        ),
+      );
+      await pumpEventQueue();
+    }
+
+    Future<void> foreignCommit(List<_RowGroup> groups) async {
+      mockConnection.simulateIncoming(
+        _createReducerResultCommittedGroups(
+          requestId: 999,
+          querySetId: 1,
+          tableName: 'folder',
+          groups: groups,
+        ),
+      );
+      await pumpEventQueue();
+    }
+
+    final orders = {
+      '[insert, delete]': [insertGroup, deleteGroup],
+      '[delete, insert]': [deleteGroup, insertGroup],
+    };
+
+    for (final MapEntry(key: order, value: groups) in orders.entries) {
+      test('broadcast: a row moving between two queries of the set stays '
+          'cached as one update, $order', () async {
+        await subscribeHolding([oldRow]);
+
+        await broadcast(groups);
+
+        expect(table.getRow('/m')?.name, 'y');
+        expect(events, ['update']);
+        expect(table.ownedKeys('/m'), contains(1));
+      });
+
+      test('foreign commit: a row moving between two queries of the set '
+          'stays cached as one update, $order', () async {
+        await subscribeHolding([oldRow]);
+
+        await foreignCommit(groups);
+
+        expect(table.getRow('/m')?.name, 'y');
+        expect(events, ['update']);
+        expect(table.ownedKeys('/m'), contains(1));
+      });
+
+      test('own commit with an optimistic update: a row moving between two '
+          'queries of the set stays cached and owned, $order', () async {
+        await subscribeHolding([oldRow]);
+        unawaited(
+          subscriptionManager.reducers.call(
+            'rename_folder',
+            Uint8List(0),
+            optimisticChanges: [
+              OptimisticChange.update(
+                'folder',
+                oldRow.toJson(),
+                newRow.toJson(),
+              ),
+            ],
+          ),
+        );
+        await pumpEventQueue();
+        final requestId = mockConnection.getLastSentRequestId();
+
+        mockConnection.simulateIncoming(
+          _createReducerResultCommittedGroups(
+            requestId: requestId,
+            querySetId: 1,
+            tableName: 'folder',
+            groups: groups,
+          ),
+        );
+        await pumpEventQueue();
+
+        expect(table.getRow('/m')?.name, 'y');
+        expect(table.ownedKeys('/m'), contains(1));
+      });
+    }
+
+    final overlapOrders = {
+      '[stays, leaves]': [stayGroup, deleteGroup],
+      '[leaves, stays]': [deleteGroup, stayGroup],
+    };
+
+    for (final MapEntry(key: order, value: groups) in overlapOrders.entries) {
+      test('broadcast: a row leaving one overlapping query while staying in '
+          'the other stays cached as one update, $order', () async {
+        await subscribeHolding([oldRow]);
+
+        await broadcast(groups);
+
+        expect(table.getRow('/m')?.name, 'y');
+        expect(events, ['update']);
+        expect(table.ownedKeys('/m'), contains(1));
+      });
+    }
+
+    test('broadcast: a row leaving every query of the set is evicted with '
+        'one delete event', () async {
+      await subscribeHolding([oldRow]);
+
+      await broadcast([deleteGroup, deleteGroup]);
+
+      expect(table.getRow('/m'), isNull);
+      expect(events, ['delete']);
+      expect(table.ownedKeys('/m'), isEmpty);
+    });
+
+    test('foreign commit: a row leaving every query of the set is evicted '
+        'with one delete event', () async {
+      await subscribeHolding([oldRow]);
+
+      await foreignCommit([deleteGroup, deleteGroup]);
+
+      expect(table.getRow('/m'), isNull);
+      expect(events, ['delete']);
+      expect(table.ownedKeys('/m'), isEmpty);
+    });
+
+    test('foreign commit: a row entering two queries of the set fires one '
+        'insert event', () async {
+      await subscribeHolding([]);
+
+      await foreignCommit([insertGroup, insertGroup]);
+
+      expect(table.getRow('/m')?.name, 'y');
+      expect(events, ['insert']);
+      expect(table.ownedKeys('/m'), contains(1));
+    });
+
+    test('broadcast: a row entering two queries of the set fires one insert '
+        'event', () async {
+      await subscribeHolding([]);
+
+      await broadcast([insertGroup, insertGroup]);
+
+      expect(table.getRow('/m')?.name, 'y');
+      expect(events, ['insert']);
+      expect(table.ownedKeys('/m'), contains(1));
+    });
+  });
 
   group('dropped-rows UnsubscribeApplied path', () {
     late MockConnection mockConnection;

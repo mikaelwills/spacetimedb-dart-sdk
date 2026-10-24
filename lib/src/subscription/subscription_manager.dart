@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 import 'package:spacetimedb_sdk/src/cache/client_cache.dart';
@@ -750,8 +751,35 @@ class SubscriptionManager {
     }
   }
 
-  BsatnRowList _mergeRowLists(BsatnRowList a, BsatnRowList b) {
-    final rows = [...a.getRows(), ...b.getRows()];
+  BsatnRowList _mergeRowLists(BsatnRowList a, BsatnRowList b) =>
+      _rowListFrom([...a.getRows(), ...b.getRows()]);
+
+  ({BsatnRowList deletes, BsatnRowList inserts})? _mergePersistentGroups(
+    TableUpdate tableUpdate,
+  ) {
+    final groups = tableUpdate.rows.whereType<PersistentTableRows>().toList();
+    if (groups.isEmpty) return null;
+    if (groups.length == 1) {
+      return (deletes: groups.single.deletes, inserts: groups.single.inserts);
+    }
+    return (
+      deletes: _distinctRowList(groups.map((group) => group.deletes)),
+      inserts: _distinctRowList(groups.map((group) => group.inserts)),
+    );
+  }
+
+  BsatnRowList _distinctRowList(Iterable<BsatnRowList> lists) {
+    final rows = LinkedHashSet<Uint8List>(
+      equals: listEquals,
+      hashCode: Object.hashAll,
+    );
+    for (final list in lists) {
+      rows.addAll(list.getRows());
+    }
+    return _rowListFrom(rows.toList());
+  }
+
+  BsatnRowList _rowListFrom(List<Uint8List> rows) {
     final offsets = <int>[];
     var offset = 0;
     for (final row in rows) {
@@ -882,21 +910,29 @@ class SubscriptionManager {
           );
         }
 
+        void applyDelta(BsatnRowList deletes, BsatnRowList inserts) {
+          table.applyServerDelta(
+            deletes,
+            inserts,
+            context,
+            querySetId: querySet.querySetId,
+            protectedKeys: _optimisticState.optimisticPrimaryKeysForTable(
+              tableUpdate.tableName,
+            ),
+            reconcile: true,
+            onProtectedKeyCommitted: onProtectedKeyCommitted,
+            onOwnershipGained:
+                (pk) => ownershipGains.add((tableUpdate.tableName, pk)),
+          );
+        }
+
+        final merged =
+            table.hasPrimaryKey ? _mergePersistentGroups(tableUpdate) : null;
+        if (merged != null) applyDelta(merged.deletes, merged.inserts);
+
         for (final rowGroup in tableUpdate.rows) {
-          if (rowGroup is PersistentTableRows) {
-            table.applyServerDelta(
-              rowGroup.deletes,
-              rowGroup.inserts,
-              context,
-              querySetId: querySet.querySetId,
-              protectedKeys: _optimisticState.optimisticPrimaryKeysForTable(
-                tableUpdate.tableName,
-              ),
-              reconcile: true,
-              onProtectedKeyCommitted: onProtectedKeyCommitted,
-              onOwnershipGained:
-                  (pk) => ownershipGains.add((tableUpdate.tableName, pk)),
-            );
+          if (rowGroup is PersistentTableRows && merged == null) {
+            applyDelta(rowGroup.deletes, rowGroup.inserts);
           } else if (rowGroup is EventTableRows) {
             table.applyTransactionUpdate(
               BsatnRowList.empty(),
@@ -1018,22 +1054,30 @@ class SubscriptionManager {
           tableUpdate.tableName,
           () => <dynamic>{},
         );
+        void applyDelta(BsatnRowList deletes, BsatnRowList inserts) {
+          touchedKeys.addAll(
+            table.applyServerDelta(
+              deletes,
+              inserts,
+              context,
+              querySetId: querySet.querySetId,
+              protectedKeys: protectedKeys,
+              reconcile: reconcile,
+              onProtectedKeyCommitted:
+                  reconcile ? onProtectedKeyCommitted : null,
+              onOwnershipGained:
+                  (pk) => ownershipGains.add((tableUpdate.tableName, pk)),
+            ),
+          );
+        }
+
+        final merged =
+            table.hasPrimaryKey ? _mergePersistentGroups(tableUpdate) : null;
+        if (merged != null) applyDelta(merged.deletes, merged.inserts);
+
         for (final rowGroup in tableUpdate.rows) {
-          if (rowGroup is PersistentTableRows) {
-            touchedKeys.addAll(
-              table.applyServerDelta(
-                rowGroup.deletes,
-                rowGroup.inserts,
-                context,
-                querySetId: querySet.querySetId,
-                protectedKeys: protectedKeys,
-                reconcile: reconcile,
-                onProtectedKeyCommitted:
-                    reconcile ? onProtectedKeyCommitted : null,
-                onOwnershipGained:
-                    (pk) => ownershipGains.add((tableUpdate.tableName, pk)),
-              ),
-            );
+          if (rowGroup is PersistentTableRows && merged == null) {
+            applyDelta(rowGroup.deletes, rowGroup.inserts);
           } else if (rowGroup is EventTableRows) {
             touchedKeys.addAll(
               table.applyTransactionUpdateAndCollectKeys(
