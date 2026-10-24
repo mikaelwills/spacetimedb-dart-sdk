@@ -59,8 +59,7 @@ class ReducerGenerator {
     final imports = <Directive>[];
     for (final reducer in reducers) {
       for (final param in reducer.params.elements) {
-        if (!param.type.isRef) continue;
-        final refTypeName = param.type.refTypeName(defs);
+        final refTypeName = param.type.nestedRef?.refTypeName(defs);
         if (refTypeName == null) continue;
         final fileName = toSnakeCase(refTypeName);
         if (seen.add(fileName)) {

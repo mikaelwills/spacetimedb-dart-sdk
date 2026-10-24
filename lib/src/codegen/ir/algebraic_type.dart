@@ -309,6 +309,13 @@ sealed class AlgebraicType {
 
   bool get isRef => this is RefType;
 
+  RefType? get nestedRef => switch (this) {
+    final RefType ref => ref,
+    ArrayType(element: final e) => e.nestedRef,
+    OptionType(element: final e) => e.nestedRef,
+    _ => null,
+  };
+
   bool get isInt => switch (this) {
     PrimitiveType(
       kind: PrimitiveKind.u8 ||

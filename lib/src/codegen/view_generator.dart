@@ -1,3 +1,4 @@
+import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
 
 enum ViewReturnType { array, option, single, query, unknown }
@@ -59,12 +60,18 @@ class ViewGenerator {
     if (type is! RefType) return null;
     final entry = schema.typeSpace.types[type.index];
     if (entry.product == null) return null;
-    for (final table in schema.tables) {
-      if (table.productTypeRef == type.index) {
-        return _toPascalCase(table.name);
-      }
+    final candidates = [
+      for (final table in schema.tables)
+        if (table.productTypeRef == type.index) _toPascalCase(table.name),
+    ];
+    if (candidates.isEmpty) return 'Type${type.index}';
+    final structName = type.refTypeName(schema.types);
+    if (structName != null) {
+      final className = toTypeClassName(structName);
+      if (candidates.contains(className)) return className;
     }
-    return 'Type${type.index}';
+    candidates.sort();
+    return candidates.first;
   }
 
   String? _rowTypeFromOption(AlgebraicType rt) {
