@@ -44,13 +44,15 @@ class DatabaseSchema {
         }
       }
     }
+    views.sort((a, b) => a.name.compareTo(b.name));
 
     return DatabaseSchema(
       databaseName: dbName,
       typeSpace: TypeSpace.fromJson(json['typespace'] ?? {}),
       tables:
           tablesJson is List
-              ? tablesJson.map((t) => TableSchema.fromJson(t)).toList()
+              ? (tablesJson.map((t) => TableSchema.fromJson(t)).toList()
+                ..sort((a, b) => a.name.compareTo(b.name)))
               : [],
       reducers:
           reducersJson is List
