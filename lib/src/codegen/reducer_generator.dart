@@ -6,8 +6,14 @@ class ReducerGenerator {
   final List<ReducerSchema> reducers;
   final TypeSpace? typeSpace;
   final List<TypeDef>? typeDefs;
+  final List<TableSchema> tables;
 
-  ReducerGenerator(this.reducers, {this.typeSpace, this.typeDefs});
+  ReducerGenerator(
+    this.reducers, {
+    this.typeSpace,
+    this.typeDefs,
+    this.tables = const [],
+  });
 
   String generate() {
     final lib = Library(
@@ -59,11 +65,10 @@ class ReducerGenerator {
     final imports = <Directive>[];
     for (final reducer in reducers) {
       for (final param in reducer.params.elements) {
-        final refTypeName = param.type.nestedRef?.refTypeName(defs);
-        if (refTypeName == null) continue;
-        final fileName = toSnakeCase(refTypeName);
+        final fileName = param.type.refImportFile(defs, tables);
+        if (fileName == null) continue;
         if (seen.add(fileName)) {
-          imports.add(Directive.import('$fileName.dart'));
+          imports.add(Directive.import(fileName));
         }
       }
     }
@@ -129,7 +134,7 @@ class ReducerGenerator {
     for (final param in reducer.params.elements) {
       final paramName = toCamelCase(param.name ?? 'unknown');
       encoderStatements.writeln(
-        '${param.type.encodeExpression(paramName, typeSpace: typeSpace, typeDefs: typeDefs)};',
+        '${param.type.encodeExpression(paramName, typeSpace: typeSpace, typeDefs: typeDefs, tables: tables)};',
       );
     }
     final defName = '${toCamelCase(reducer.name)}Def';
@@ -157,6 +162,7 @@ class ReducerGenerator {
         final dartType = param.type.toDartTypeName(
           typeSpace: typeSpace,
           typeDefs: typeDefs,
+          tables: tables,
         );
         m.optionalParameters.add(
           Parameter(
@@ -202,6 +208,7 @@ class ReducerGenerator {
       final dartType = param.type.toDartTypeName(
         typeSpace: typeSpace,
         typeDefs: typeDefs,
+        tables: tables,
       );
       callbackParams.write(', $dartType $paramName');
     }
@@ -253,6 +260,7 @@ class ReducerGenerator {
         final dartType = param.type.toDartTypeName(
           typeSpace: typeSpace,
           typeDefs: typeDefs,
+          tables: tables,
         );
         b.fields.add(
           Field(
@@ -297,7 +305,7 @@ class ReducerGenerator {
     for (final param in reducer.params.elements) {
       final paramName = toCamelCase(param.name ?? 'unknown');
       decodeBody.writeln(
-        'final $paramName = ${param.type.decodeExpression(typeSpace: typeSpace, typeDefs: typeDefs)};',
+        'final $paramName = ${param.type.decodeExpression(typeSpace: typeSpace, typeDefs: typeDefs, tables: tables)};',
       );
     }
     decodeBody.writeln('return $argsClassName(');

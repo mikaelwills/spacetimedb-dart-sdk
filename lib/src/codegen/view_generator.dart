@@ -1,4 +1,4 @@
-import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
+import 'package:spacetimedb_sdk/src/codegen/ir/ref_type_name.dart';
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
 
 enum ViewReturnType { array, option, single, query, unknown }
@@ -60,18 +60,14 @@ class ViewGenerator {
     if (type is! RefType) return null;
     final entry = schema.typeSpace.types[type.index];
     if (entry.product == null) return null;
-    final candidates = [
-      for (final table in schema.tables)
-        if (table.productTypeRef == type.index) _toPascalCase(table.name),
-    ];
-    if (candidates.isEmpty) return 'Type${type.index}';
-    final structName = type.refTypeName(schema.types);
-    if (structName != null) {
-      final className = toTypeClassName(structName);
-      if (candidates.contains(className)) return className;
+    if (!schema.tables.any((t) => t.productTypeRef == type.index)) {
+      return 'Type${type.index}';
     }
-    candidates.sort();
-    return candidates.first;
+    return resolveRefTypeName(
+      type.index,
+      schema.types,
+      schema.tables,
+    )?.className;
   }
 
   String? _rowTypeFromOption(AlgebraicType rt) {
@@ -110,14 +106,5 @@ class ViewGenerator {
     if (rt is! IrProductType || rt.elements.isEmpty) return null;
     final inner = rt.elements[0].type;
     return inner is RefType ? inner.index : null;
-  }
-
-  String _toPascalCase(String input) {
-    return input
-        .split('_')
-        .map((word) {
-          return word[0].toUpperCase() + word.substring(1).toLowerCase();
-        })
-        .join('');
   }
 }

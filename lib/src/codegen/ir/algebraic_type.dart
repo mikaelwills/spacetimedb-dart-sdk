@@ -1,6 +1,7 @@
 import 'package:spacetimedb_sdk/src/exceptions.dart';
-import '../codegen_emitter.dart';
+import '../models/table_models.dart';
 import '../models/type_models.dart';
+import 'ref_type_name.dart';
 
 enum PrimitiveKind {
   u8,
@@ -125,6 +126,7 @@ sealed class AlgebraicType {
   String toDartTypeName({
     TypeSpace? typeSpace,
     List<TypeDef>? typeDefs,
+    List<TableSchema>? tables,
   }) => switch (this) {
     PrimitiveType(kind: PrimitiveKind.u8) => 'int',
     PrimitiveType(kind: PrimitiveKind.u16) => 'int',
@@ -146,10 +148,15 @@ sealed class AlgebraicType {
     ScheduleAtType() => 'ScheduleAt',
     ByteArrayType() => 'List<int>',
     ArrayType(element: final inner) =>
-      'List<${inner.toDartTypeName(typeSpace: typeSpace, typeDefs: typeDefs)}>',
+      'List<${inner.toDartTypeName(typeSpace: typeSpace, typeDefs: typeDefs, tables: tables)}>',
     OptionType(element: final inner) =>
-      '${inner.toDartTypeName(typeSpace: typeSpace, typeDefs: typeDefs)}?',
-    RefType(index: final i) => _resolveRefTypeName(i, typeSpace, typeDefs),
+      '${inner.toDartTypeName(typeSpace: typeSpace, typeDefs: typeDefs, tables: tables)}?',
+    RefType(index: final i) => _resolveRefTypeName(
+      i,
+      typeSpace,
+      typeDefs,
+      tables,
+    ),
     IrProductType() => 'dynamic',
     IrSumType() => 'dynamic',
   };
@@ -202,6 +209,7 @@ sealed class AlgebraicType {
     String valueName, {
     TypeSpace? typeSpace,
     List<TypeDef>? typeDefs,
+    List<TableSchema>? tables,
   }) => switch (this) {
     PrimitiveType() ||
     IdentityType() ||
@@ -215,11 +223,13 @@ sealed class AlgebraicType {
       final innerDart = inner.toDartTypeName(
         typeSpace: typeSpace,
         typeDefs: typeDefs,
+        tables: tables,
       );
       final innerExpr = inner.encodeExpression(
         'item',
         typeSpace: typeSpace,
         typeDefs: typeDefs,
+        tables: tables,
       );
       return 'encoder.writeArray<$innerDart>($valueName, (item) => $innerExpr)';
     }(),
@@ -227,11 +237,13 @@ sealed class AlgebraicType {
       final innerDart = inner.toDartTypeName(
         typeSpace: typeSpace,
         typeDefs: typeDefs,
+        tables: tables,
       );
       final innerExpr = inner.encodeExpression(
         'value',
         typeSpace: typeSpace,
         typeDefs: typeDefs,
+        tables: tables,
       );
       return 'encoder.writeOption<$innerDart>($valueName, (value) => $innerExpr)';
     }(),
@@ -248,53 +260,64 @@ sealed class AlgebraicType {
       ),
   };
 
-  String decodeExpression({TypeSpace? typeSpace, List<TypeDef>? typeDefs}) =>
-      switch (this) {
-        PrimitiveType() ||
-        IdentityType() ||
-        ConnectionIdType() ||
-        UuidType() ||
-        TimestampType() ||
-        TimeDurationType() ||
-        ByteArrayType() => 'decoder.$decoderMethod()',
-        ScheduleAtType() => 'ScheduleAt.decodeBsatn(decoder)',
-        ArrayType(element: final inner) => () {
-          final innerDart = inner.toDartTypeName(
-            typeSpace: typeSpace,
-            typeDefs: typeDefs,
-          );
-          final innerExpr = inner.decodeExpression(
-            typeSpace: typeSpace,
-            typeDefs: typeDefs,
-          );
-          return 'decoder.readArray<$innerDart>(() => $innerExpr)';
-        }(),
-        OptionType(element: final inner) => () {
-          final innerDart = inner.toDartTypeName(
-            typeSpace: typeSpace,
-            typeDefs: typeDefs,
-          );
-          final innerExpr = inner.decodeExpression(
-            typeSpace: typeSpace,
-            typeDefs: typeDefs,
-          );
-          return 'decoder.readOption<$innerDart>(() => $innerExpr)';
-        }(),
-        RefType() => () {
-          final name = toDartTypeName(typeSpace: typeSpace, typeDefs: typeDefs);
-          return '$name.decodeBsatn(decoder)';
-        }(),
-        IrProductType() =>
-          throw StateError(
-            'codegen: unhandled IrProductType in decodeExpression '
-            '(inline product types are not supported; use a RefType)',
-          ),
-        IrSumType() =>
-          throw StateError(
-            'codegen: unhandled IrSumType in decodeExpression '
-            '(inline sum types are not supported; use a RefType)',
-          ),
-      };
+  String decodeExpression({
+    TypeSpace? typeSpace,
+    List<TypeDef>? typeDefs,
+    List<TableSchema>? tables,
+  }) => switch (this) {
+    PrimitiveType() ||
+    IdentityType() ||
+    ConnectionIdType() ||
+    UuidType() ||
+    TimestampType() ||
+    TimeDurationType() ||
+    ByteArrayType() => 'decoder.$decoderMethod()',
+    ScheduleAtType() => 'ScheduleAt.decodeBsatn(decoder)',
+    ArrayType(element: final inner) => () {
+      final innerDart = inner.toDartTypeName(
+        typeSpace: typeSpace,
+        typeDefs: typeDefs,
+        tables: tables,
+      );
+      final innerExpr = inner.decodeExpression(
+        typeSpace: typeSpace,
+        typeDefs: typeDefs,
+        tables: tables,
+      );
+      return 'decoder.readArray<$innerDart>(() => $innerExpr)';
+    }(),
+    OptionType(element: final inner) => () {
+      final innerDart = inner.toDartTypeName(
+        typeSpace: typeSpace,
+        typeDefs: typeDefs,
+        tables: tables,
+      );
+      final innerExpr = inner.decodeExpression(
+        typeSpace: typeSpace,
+        typeDefs: typeDefs,
+        tables: tables,
+      );
+      return 'decoder.readOption<$innerDart>(() => $innerExpr)';
+    }(),
+    RefType() => () {
+      final name = toDartTypeName(
+        typeSpace: typeSpace,
+        typeDefs: typeDefs,
+        tables: tables,
+      );
+      return '$name.decodeBsatn(decoder)';
+    }(),
+    IrProductType() =>
+      throw StateError(
+        'codegen: unhandled IrProductType in decodeExpression '
+        '(inline product types are not supported; use a RefType)',
+      ),
+    IrSumType() =>
+      throw StateError(
+        'codegen: unhandled IrSumType in decodeExpression '
+        '(inline sum types are not supported; use a RefType)',
+      ),
+  };
 
   bool get isPrimitive => switch (this) {
     PrimitiveType() => true,
@@ -339,13 +362,11 @@ sealed class AlgebraicType {
     _ => false,
   };
 
-  String? refTypeName(List<TypeDef> typeDefs) => switch (this) {
-    RefType(index: final i) => () {
-      final typeDef = typeDefs.where((td) => td.typeRef == i).firstOrNull;
-      return (typeDef != null && typeDef.name.isNotEmpty) ? typeDef.name : null;
-    }(),
-    _ => null,
-  };
+  String? refImportFile(List<TypeDef> typeDefs, List<TableSchema> tables) {
+    final ref = nestedRef;
+    if (ref == null) return null;
+    return resolveRefTypeName(ref.index, typeDefs, tables)?.fileName;
+  }
 
   /// Detect the canonical structural Option sum: `[some(T), none]` in that
   /// order, variant names lowercase, with `none` carrying a unit payload
@@ -375,14 +396,11 @@ sealed class AlgebraicType {
     int index,
     TypeSpace? typeSpace,
     List<TypeDef>? typeDefs,
+    List<TableSchema>? tables,
   ) {
-    if (typeSpace != null && typeDefs != null) {
-      final typeDef = typeDefs.where((td) => td.typeRef == index).firstOrNull;
-      if (typeDef != null && typeDef.name.isNotEmpty) {
-        return toTypeClassName(typeDef.name);
-      }
-    }
-    return 'dynamic';
+    if (typeSpace == null || typeDefs == null) return 'dynamic';
+    return resolveRefTypeName(index, typeDefs, tables ?? const [])?.className ??
+        'dynamic';
   }
 }
 

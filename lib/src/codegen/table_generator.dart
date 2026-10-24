@@ -20,19 +20,18 @@ class TableGenerator {
 
     imports.add(Directive.import('package:spacetimedb_sdk/codegen.dart'));
 
-    for (final element in productType.elements) {
-      if (element.type.isRef) {
-        final refTypeName = element.type.refTypeName(schema.types);
-        if (refTypeName != null) {
-          final fileName = toSnakeCase(refTypeName);
-          imports.add(Directive.import('$fileName.dart'));
-        }
-      }
-    }
+    final refFiles =
+        productType.elements
+            .map((e) => e.type.refImportFile(schema.types, schema.tables))
+            .whereType<String>()
+            .toSet()
+          ..remove('${table.name}.dart');
+    imports.addAll(refFiles.map(Directive.import));
 
     final dataClass = ProductClassBuilder(
       typeSpace: schema.typeSpace,
       typeDefs: schema.types,
+      tables: schema.tables,
     ).buildDataClass(className, productType);
 
     final lib = Library(
@@ -80,6 +79,7 @@ class TableGenerator {
           final pkDartType = pkElement.type.toDartTypeName(
             typeSpace: schema.typeSpace,
             typeDefs: schema.types,
+            tables: schema.tables,
           );
           b.methods.add(
             Method(

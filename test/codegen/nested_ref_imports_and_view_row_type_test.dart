@@ -104,7 +104,199 @@ DatabaseSchema _sharedStructViewSchema(List<String> tableOrder) {
   });
 }
 
+Map<String, dynamic> _option(Map<String, dynamic> inner) => {
+  'Sum': {
+    'variants': [
+      {
+        'name': {'some': 'some'},
+        'algebraic_type': inner,
+      },
+      {
+        'name': {'some': 'none'},
+        'algebraic_type': _product([]),
+      },
+    ],
+  },
+};
+
+DatabaseSchema _mismatchedStructSchema(String structName) {
+  return DatabaseSchema.fromJson('persondb', {
+    'typespace': {
+      'types': [
+        _product([
+          _field('id', {'U32': []}),
+        ]),
+        _product([
+          _field('id', {'U32': []}),
+          _field('owner', {'Ref': 0}),
+          _field('owners', {
+            'Array': {'Ref': 0},
+          }),
+          _field('maybe', _option({'Ref': 0})),
+        ]),
+        _product([
+          _field('row', {'Ref': 0}),
+          _field('rows', {
+            'Array': {'Ref': 0},
+          }),
+        ]),
+      ],
+    },
+    'tables': [_table('person', 0), _table('holder', 1)],
+    'reducers': [
+      {
+        'name': 'add',
+        'params': {
+          'elements': [
+            _field('row', {'Ref': 0}),
+            _field('rows', {
+              'Array': {'Ref': 0},
+            }),
+            _field('maybe', _option({'Ref': 0})),
+          ],
+        },
+      },
+    ],
+    'types': [
+      _typeDef(structName, 0),
+      _typeDef('Holder', 1),
+      _typeDef('Wrapper', 2),
+    ],
+    'views': [],
+  });
+}
+
+DatabaseSchema _nestedOnlySchema() {
+  return DatabaseSchema.fromJson('persondb', {
+    'typespace': {
+      'types': [
+        _product([
+          _field('id', {'U32': []}),
+        ]),
+        _product([
+          _field('id', {'U32': []}),
+          _field('owners', {
+            'Array': {'Ref': 0},
+          }),
+        ]),
+        _product([
+          _field('maybe', _option({'Ref': 0})),
+        ]),
+      ],
+    },
+    'tables': [_table('person', 0), _table('holder', 1)],
+    'reducers': [],
+    'types': [
+      _typeDef('Person', 0),
+      _typeDef('Holder', 1),
+      _typeDef('Wrapper', 2),
+    ],
+    'views': [],
+  });
+}
+
+DatabaseSchema _recursiveSchema() {
+  return DatabaseSchema.fromJson('treedb', {
+    'typespace': {
+      'types': [
+        _product([
+          _field('name', {'String': []}),
+          _field('children', {
+            'Array': {'Ref': 0},
+          }),
+        ]),
+        _product([
+          _field('id', {'U32': []}),
+          _field('kids', {
+            'Array': {'Ref': 1},
+          }),
+          _field('parent', _option({'Ref': 1})),
+        ]),
+      ],
+    },
+    'tables': [_table('node', 1)],
+    'reducers': [],
+    'types': [_typeDef('TreeNode', 0), _typeDef('NodeRow', 1)],
+    'views': [],
+  });
+}
+
 void main() {
+  group('ref to a table-backed struct named differently from its table', () {
+    for (final structName in ['PersonRow', 'Person']) {
+      test('struct $structName resolves to the person table class', () {
+        final files =
+            DartGenerator(_mismatchedStructSchema(structName)).generateAll();
+        final byName = {for (final f in files) f.filename: f.content};
+
+        for (final file in files) {
+          expect(
+            file.content,
+            isNot(contains('PersonRow')),
+            reason: file.filename,
+          );
+          expect(
+            file.content,
+            isNot(contains('person_row.dart')),
+            reason: file.filename,
+          );
+        }
+
+        for (final name in [
+          'reducers.dart',
+          'reducer_args.dart',
+          'holder.dart',
+          'wrapper.dart',
+        ]) {
+          final content = byName[name]!;
+          expect(
+            "import 'person.dart';".allMatches(content).length,
+            equals(1),
+            reason: name,
+          );
+          expect(content, contains('List<Person>'), reason: name);
+        }
+
+        for (final name in [
+          'reducer_args.dart',
+          'holder.dart',
+          'wrapper.dart',
+        ]) {
+          expect(byName[name], contains('Person.decodeBsatn'), reason: name);
+        }
+
+        for (final name in [
+          'reducers.dart',
+          'reducer_args.dart',
+          'holder.dart',
+        ]) {
+          expect(byName[name], contains('Person?'), reason: name);
+        }
+      });
+    }
+
+    test('Vec/Option-only refs in columns and struct fields are imported', () {
+      final files = DartGenerator(_nestedOnlySchema()).generateAll();
+      final byName = {for (final f in files) f.filename: f.content};
+
+      expect(byName['holder.dart'], contains('List<Person>'));
+      expect(byName['holder.dart'], contains("import 'person.dart';"));
+      expect(byName['wrapper.dart'], contains('Person?'));
+      expect(byName['wrapper.dart'], contains("import 'person.dart';"));
+    });
+
+    test('a recursive struct or table does not import its own file', () {
+      final files = DartGenerator(_recursiveSchema()).generateAll();
+      final byName = {for (final f in files) f.filename: f.content};
+
+      expect(byName['tree_node.dart'], contains('List<TreeNode>'));
+      expect(byName['tree_node.dart'], isNot(contains("'tree_node.dart'")));
+      expect(byName['node.dart'], contains('List<Node>'));
+      expect(byName['node.dart'], contains('Node?'));
+      expect(byName['node.dart'], isNot(contains("'node.dart'")));
+    });
+  });
+
   group('reducer params with a ref nested in Array/Option', () {
     final files = DartGenerator(_reducerSchema()).generateAll();
     final reducers =

@@ -44,6 +44,7 @@ class DartGenerator {
           productType: type.product!,
           typeSpace: schema.typeSpace,
           typeDefs: schema.types,
+          tables: schema.tables,
         );
 
         files.add(
@@ -70,6 +71,7 @@ class DartGenerator {
         schema.reducers,
         typeSpace: schema.typeSpace,
         typeDefs: schema.types,
+        tables: schema.tables,
       );
       files.add(
         GeneratedFile(filename: 'reducers.dart', content: generator.generate()),

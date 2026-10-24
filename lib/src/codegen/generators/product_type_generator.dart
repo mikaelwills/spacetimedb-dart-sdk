@@ -8,32 +8,33 @@ class ProductTypeGenerator {
   final ProductType productType;
   final TypeSpace typeSpace;
   final List<TypeDef> typeDefs;
+  final List<TableSchema> tables;
 
   ProductTypeGenerator({
     required this.typeName,
     required this.productType,
     required this.typeSpace,
     required this.typeDefs,
+    this.tables = const [],
   });
 
   String generate() {
     final className = toTypeClassName(typeName);
+    final refFiles =
+        productType.elements
+            .map((e) => e.type.refImportFile(typeDefs, tables))
+            .whereType<String>()
+            .toSet()
+          ..remove('${toSnakeCase(typeName)}.dart');
     final imports = <Directive>[
       Directive.import('package:spacetimedb_sdk/codegen.dart'),
+      ...refFiles.map(Directive.import),
     ];
-
-    for (final element in productType.elements) {
-      if (element.type.isRef) {
-        final refTypeName = element.type.refTypeName(typeDefs);
-        if (refTypeName != null) {
-          imports.add(Directive.import('${toSnakeCase(refTypeName)}.dart'));
-        }
-      }
-    }
 
     final dataClass = ProductClassBuilder(
       typeSpace: typeSpace,
       typeDefs: typeDefs,
+      tables: tables,
     ).buildDataClass(className, productType);
 
     final lib = Library(

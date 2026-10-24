@@ -5,8 +5,13 @@ import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
 class ProductClassBuilder {
   final TypeSpace typeSpace;
   final List<TypeDef> typeDefs;
+  final List<TableSchema> tables;
 
-  ProductClassBuilder({required this.typeSpace, required this.typeDefs});
+  ProductClassBuilder({
+    required this.typeSpace,
+    required this.typeDefs,
+    this.tables = const [],
+  });
 
   Class buildDataClass(String className, ProductType productType) {
     return Class((b) {
@@ -17,6 +22,7 @@ class ProductClassBuilder {
         final dartType = element.type.toDartTypeName(
           typeSpace: typeSpace,
           typeDefs: typeDefs,
+          tables: tables,
         );
         b.fields.add(
           Field(
@@ -131,6 +137,7 @@ class ProductClassBuilder {
       final dartType = element.type.toDartTypeName(
         typeSpace: typeSpace,
         typeDefs: typeDefs,
+        tables: tables,
       );
       final nullableType = dartType.endsWith('?') ? dartType : '$dartType?';
       params.add(
@@ -163,6 +170,7 @@ class ProductClassBuilder {
         fieldName,
         typeSpace: typeSpace,
         typeDefs: typeDefs,
+        tables: tables,
       );
       body.writeln('$expr;');
     }
@@ -191,6 +199,7 @@ class ProductClassBuilder {
       final expr = element.type.decodeExpression(
         typeSpace: typeSpace,
         typeDefs: typeDefs,
+        tables: tables,
       );
       args.writeln('$fieldName: $expr,');
     }
@@ -301,6 +310,7 @@ class ProductClassBuilder {
     final dartType = type.toDartTypeName(
       typeSpace: typeSpace,
       typeDefs: typeDefs,
+      tables: tables,
     );
 
     return switch (type) {
@@ -337,6 +347,7 @@ class ProductClassBuilder {
     final innerDartType = inner.toDartTypeName(
       typeSpace: typeSpace,
       typeDefs: typeDefs,
+      tables: tables,
     );
     return switch (inner) {
       IdentityType() =>
@@ -359,6 +370,7 @@ class ProductClassBuilder {
     final innerDartType = inner.toDartTypeName(
       typeSpace: typeSpace,
       typeDefs: typeDefs,
+      tables: tables,
     );
 
     return switch (inner) {
