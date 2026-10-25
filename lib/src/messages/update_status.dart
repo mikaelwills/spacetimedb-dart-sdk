@@ -17,7 +17,19 @@ class Failed extends UpdateStatus {
 
   Failed(this.errorBytes);
 
-  String get errorMessage => utf8.decode(errorBytes, allowMalformed: true);
+  String get errorMessage {
+    if (errorBytes.length >= 4) {
+      final length = ByteData.sublistView(
+        errorBytes,
+        0,
+        4,
+      ).getUint32(0, Endian.little);
+      if (length == errorBytes.length - 4) {
+        return utf8.decode(errorBytes.sublist(4), allowMalformed: true);
+      }
+    }
+    return utf8.decode(errorBytes, allowMalformed: true);
+  }
 
   @override
   String toString() => 'Failed(message: $errorMessage)';

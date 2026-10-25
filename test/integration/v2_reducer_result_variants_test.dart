@@ -53,7 +53,7 @@ void main() {
           reason: 'reducer body Err(...) maps to v2 Failed(Bytes) outcome',
         );
         final failed = e.result.status as Failed;
-        expect(failed.errorMessage, contains(errorMessage));
+        expect(failed.errorMessage, equals(errorMessage));
       }
     });
 

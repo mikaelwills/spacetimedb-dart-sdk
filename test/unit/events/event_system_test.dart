@@ -73,6 +73,17 @@ void main() {
       expect(status.toString(), equals('Failed(message: Database error)'));
     });
 
+    test('Failed decodes a BSATN string error payload without its prefix', () {
+      final encoder = BsatnEncoder()..writeString('Box has 11 notes');
+      final status = Failed(encoder.toBytes());
+      expect(status.errorMessage, equals('Box has 11 notes'));
+    });
+
+    test('Failed with an empty BSATN string decodes to empty', () {
+      final encoder = BsatnEncoder()..writeString('');
+      expect(Failed(encoder.toBytes()).errorMessage, isEmpty);
+    });
+
     test('InternalError toString', () {
       final status = InternalError('db panic');
       expect(status.toString(), equals('InternalError(message: db panic)'));
