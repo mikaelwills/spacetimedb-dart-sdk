@@ -209,6 +209,7 @@ void main() {
           // ignore: avoid_print
           print('');
 
+          await subManager.flushOfflineSnapshots();
           expect(storage.saveTableSnapshotCalls, greaterThan(0));
           expect(storage.setLastSyncTimeCalls, greaterThan(0));
         } finally {

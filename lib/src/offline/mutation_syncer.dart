@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:meta/meta.dart';
 
 import 'package:spacetimedb_sdk/src/cache/client_cache.dart';
+import 'package:spacetimedb_sdk/src/cache/table_cache.dart';
 import 'package:spacetimedb_sdk/src/connection/spacetimedb_connection.dart';
 import 'package:spacetimedb_sdk/src/connection/connection_state.dart';
 import 'package:spacetimedb_sdk/src/exceptions.dart';
@@ -51,6 +52,11 @@ class MutationSyncer implements MutationHandler {
   static const int _maxAbortRecheck = 3;
 
   final Map<String, Set<dynamic>> _awaitedOwnershipKeys = {};
+
+  static const Duration snapshotFlushWindow = Duration(seconds: 2);
+  final Set<String> _dirtySnapshotTables = {};
+  Timer? _snapshotFlushTimer;
+  Future<void> _snapshotFlushes = Future<void>.value();
 
   final StreamController<SyncState> _syncStateController =
       StreamController<SyncState>.broadcast();
@@ -102,8 +108,7 @@ class MutationSyncer implements MutationHandler {
   @override
   void onOptimisticChanges(String requestId, List<OptimisticChange>? changes) {
     _optimisticState.applyOptimisticChanges(requestId, changes);
-    final touchedTables = changes?.map((c) => c.tableName).toSet();
-    persistTableSnapshots(onlyTables: touchedTables);
+    markSnapshotsDirty(changes?.map((c) => c.tableName).toSet() ?? const {});
   }
 
   @override
@@ -111,8 +116,7 @@ class MutationSyncer implements MutationHandler {
     SdkLogger.w(
       'Rolling back optimistic changes for request $requestId due to timeout/failure',
     );
-    final touchedTables = _optimisticState.rollbackOptimisticChanges(requestId);
-    persistTableSnapshots(onlyTables: touchedTables);
+    markSnapshotsDirty(_optimisticState.rollbackOptimisticChanges(requestId));
   }
 
   Future<void> updatePendingCount() async {
@@ -293,28 +297,78 @@ class MutationSyncer implements MutationHandler {
     }
   }
 
+  void markSnapshotsDirty(Set<String> tables) {
+    if (_disposed || tables.isEmpty) return;
+    for (final tableName in tables) {
+      if (_cache.isEventTable(tableName)) continue;
+      final table = _cache.getTableByName(tableName);
+      if (table == null || !table.decoder.supportsJsonSerialization) continue;
+      _releaseOwnedRetainedInserts(tableName, table);
+      _dirtySnapshotTables.add(tableName);
+    }
+    if (_dirtySnapshotTables.isEmpty || _snapshotFlushTimer != null) return;
+    _snapshotFlushTimer = Timer(snapshotFlushWindow, flushPendingSnapshots);
+  }
+
+  Future<void> flushPendingSnapshots() {
+    _snapshotFlushTimer?.cancel();
+    _snapshotFlushTimer = null;
+    if (_dirtySnapshotTables.isNotEmpty) {
+      final tables = Set<String>.of(_dirtySnapshotTables);
+      _dirtySnapshotTables.clear();
+      _snapshotFlushes = _snapshotFlushes.then(
+        (_) => _writeTableSnapshots(tables),
+      );
+    }
+    return _snapshotFlushes;
+  }
+
   Future<void> persistTableSnapshots({Set<String>? onlyTables}) async {
     if (_disposed) return;
+    _clearDirtySnapshots(onlyTables);
+    await _writeTableSnapshots(onlyTables ?? _cache.activatedTableNames);
+  }
+
+  void _clearDirtySnapshots(Set<String>? tables) {
+    if (tables == null) {
+      _dirtySnapshotTables.clear();
+    } else {
+      _dirtySnapshotTables.removeAll(tables);
+    }
+    if (_dirtySnapshotTables.isNotEmpty) return;
+    _snapshotFlushTimer?.cancel();
+    _snapshotFlushTimer = null;
+  }
+
+  List<Map<String, dynamic>> _releaseOwnedRetainedInserts(
+    String tableName,
+    TableCache table,
+  ) {
+    final retained = <Map<String, dynamic>>[];
+    for (final row in _optimisticState.retainedUnownedInsertRowsForTable(
+      tableName,
+    )) {
+      final decoded = table.decoder.fromJson(row);
+      if (decoded == null) continue;
+      final pk = table.decoder.getPrimaryKey(decoded);
+      if (pk == null) continue;
+      if (table.ownedKeys(pk).isNotEmpty) {
+        _optimisticState.releaseRetainedUnownedInsert(tableName, pk);
+        continue;
+      }
+      retained.add(row);
+    }
+    return retained;
+  }
+
+  Future<void> _writeTableSnapshots(Iterable<String> tableNames) async {
+    if (_disposed) return;
     try {
-      final tableNames = onlyTables ?? _cache.activatedTableNames;
       for (final tableName in tableNames) {
         if (_cache.isEventTable(tableName)) continue;
         final table = _cache.getTableByName(tableName);
         if (table != null && table.decoder.supportsJsonSerialization) {
-          final retained = <Map<String, dynamic>>[];
-          for (final row in _optimisticState.retainedUnownedInsertRowsForTable(
-            tableName,
-          )) {
-            final decoded = table.decoder.fromJson(row);
-            if (decoded == null) continue;
-            final pk = table.decoder.getPrimaryKey(decoded);
-            if (pk == null) continue;
-            if (table.ownedKeys(pk).isNotEmpty) {
-              _optimisticState.releaseRetainedUnownedInsert(tableName, pk);
-              continue;
-            }
-            retained.add(row);
-          }
+          final retained = _releaseOwnedRetainedInserts(tableName, table);
           final rows = table.toSerializable(
             excludeRows: [
               ..._optimisticState.optimisticPkInsertRowsForTable(tableName),
@@ -343,7 +397,10 @@ class MutationSyncer implements MutationHandler {
   static String tagSnapshotName(String tableName) => '__tags__$tableName';
 
   Future<void> dispose() async {
+    if (!_disposed) await flushPendingSnapshots();
     _disposed = true;
+    _snapshotFlushTimer?.cancel();
+    _snapshotFlushTimer = null;
     cancelRetry();
     _syncStateController.close();
     _mutationSyncResultController.close();

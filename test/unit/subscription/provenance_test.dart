@@ -2611,6 +2611,7 @@ void main() {
       await pumpEventQueue();
       await pumpEventQueue();
 
+      await subscriptionManager.flushOfflineSnapshots();
       final snapshot = await storage.loadTableSnapshot('folder') ?? [];
       expect(snapshot.map((r) => r['path']), contains('/a/other'));
       expect(snapshot.map((r) => r['path']), isNot(contains('/a/guess')));
@@ -2648,6 +2649,7 @@ void main() {
 
       expect(table.ownedKeys('/a/msg'), isNotEmpty);
 
+      await subscriptionManager.flushOfflineSnapshots();
       final snapshot = await storage.loadTableSnapshot('folder') ?? [];
       expect(snapshot.map((r) => r['path']), contains('/a/msg'));
     });

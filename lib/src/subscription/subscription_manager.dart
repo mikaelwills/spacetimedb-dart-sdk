@@ -171,6 +171,10 @@ class SubscriptionManager {
   Set<dynamic> optimisticKeysFor(String tableName) =>
       _optimisticState.optimisticPrimaryKeysForTable(tableName);
 
+  @visibleForTesting
+  int retainedUnownedInsertCountFor(String tableName) =>
+      _optimisticState.retainedUnownedInsertRowsForTable(tableName).length;
+
   /// How many reconnects in a row abandoned their ownership generation without
   /// finalizing. Anything above zero means rows are being carried forward
   /// unreconciled; a climbing value means the cache is not converging.
@@ -348,6 +352,10 @@ class SubscriptionManager {
     _mutationSyncer?.clearSyncErrors();
   }
 
+  Future<void> flushOfflineSnapshots() async {
+    await _mutationSyncer?.flushPendingSnapshots();
+  }
+
   // --- Lifecycle ---
 
   Future<void> dispose() async {
@@ -420,6 +428,7 @@ class SubscriptionManager {
         _subscriptionsReady.value = false;
         _mutationSyncer?.cancelRetry();
         reducers.failAllPendingRequests(state.displayName);
+        _mutationSyncer?.flushPendingSnapshots();
         _completeAllSubscribeWaiters();
       }
     });
@@ -944,7 +953,7 @@ class SubscriptionManager {
       }
     }
 
-    _mutationSyncer?.persistTableSnapshots(onlyTables: touchedTables);
+    _mutationSyncer?.markSnapshotsDirty(touchedTables);
     for (final (tableName, pk) in ownershipGains) {
       _mutationSyncer?.notifyOwnershipGained(tableName, pk);
     }
@@ -1166,9 +1175,12 @@ class SubscriptionManager {
       }
     }
 
-    _mutationSyncer?.persistTableSnapshots(
-      onlyTables: {...touchedKeysByTable.keys, ...confirmedTables},
-    );
+    final tables = {...touchedKeysByTable.keys, ...confirmedTables};
+    if (_optimisticState.isRequestDurablyQueued(effectiveRequestId)) {
+      _mutationSyncer?.markSnapshotsDirty(tables);
+      return;
+    }
+    _mutationSyncer?.persistTableSnapshots(onlyTables: tables);
   }
 
   void _applyForeignOrRollback(
@@ -1192,9 +1204,7 @@ class SubscriptionManager {
       _optimisticState.rollbackOptimisticChanges(effectiveRequestId);
     }
 
-    _mutationSyncer?.persistTableSnapshots(
-      onlyTables: touchedKeysByTable.keys.toSet(),
-    );
+    _mutationSyncer?.markSnapshotsDirty(touchedKeysByTable.keys.toSet());
   }
 
   Future<void> _sendSubscribeAndWait(
