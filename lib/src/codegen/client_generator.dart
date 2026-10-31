@@ -261,6 +261,18 @@ return cache.iter().first;
     return Constructor(
       (c) => c
         ..name = '_'
+        ..requiredParameters.addAll([
+          Parameter(
+            (p) => p
+              ..name = '_authStorage'
+              ..toThis = true,
+          ),
+          Parameter(
+            (p) => p
+              ..name = '_ssl'
+              ..toThis = true,
+          ),
+        ])
         ..optionalParameters.addAll([
           Parameter(
             (p) => p
@@ -276,24 +288,6 @@ return cache.iter().first;
               ..required = true
               ..toThis = true,
           ),
-          Parameter(
-            (p) => p
-              ..name = 'authStorage'
-              ..named = true
-              ..required = true
-              ..type = refer('AuthTokenStore'),
-          ),
-          Parameter(
-            (p) => p
-              ..name = 'ssl'
-              ..named = true
-              ..required = true
-              ..type = refer('bool'),
-          ),
-        ])
-        ..initializers.addAll([
-          const Code('_authStorage = authStorage'),
-          const Code('_ssl = ssl'),
         ])
         ..body = const Code(
           'reducers = Reducers(subscriptions.reducers, subscriptions.reducerEmitter);',
@@ -348,10 +342,10 @@ $registerTables
 $registerViews
 $registerReducers
 final client = $clientName._(
+  storage,
+  ssl,
   connection: connection,
   subscriptions: subscriptionManager,
-  authStorage: storage,
-  ssl: ssl,
 );
 
 subscriptionManager.onInitialConnection.listen((msg) async {

@@ -18,13 +18,12 @@ import 'single_field.dart';
 import 'tagged_item.dart';
 
 class SpacetimeDbClient {
-  SpacetimeDbClient._({
+  SpacetimeDbClient._(
+    this._authStorage,
+    this._ssl, {
     required this.connection,
     required this.subscriptions,
-    required AuthTokenStore authStorage,
-    required bool ssl,
-  }) : _authStorage = authStorage,
-       _ssl = ssl {
+  }) {
     reducers = Reducers(subscriptions.reducers, subscriptions.reducerEmitter);
   }
 
@@ -227,10 +226,10 @@ class SpacetimeDbClient {
     subscriptionManager.reducerRegistry.register(updateNoteGuardedDef);
 
     final client = SpacetimeDbClient._(
+      storage,
+      ssl,
       connection: connection,
       subscriptions: subscriptionManager,
-      authStorage: storage,
-      ssl: ssl,
     );
 
     subscriptionManager.onInitialConnection.listen((msg) async {
