@@ -85,127 +85,115 @@ void main() {
     await _settle();
   }
 
-  test(
-    'a row moving between two WHERE queries of one query set stays cached, both directions',
-    () async {
-      const x = 'rowmove-x';
-      const y = 'rowmove-y';
-      await reader.subManager.subscribe([
-        "SELECT * FROM note WHERE title = '$x'",
-        "SELECT * FROM note WHERE title = '$y'",
-      ]);
-      observer = _Observer(reader);
-      final id = await createNote(x, 'body');
-      expect(reader.noteTable.getRow(id)?.title, x);
+  test('a row moving between two WHERE queries of one query set stays cached, both directions', () async {
+    const x = 'rowmove-x';
+    const y = 'rowmove-y';
+    await reader.subManager.subscribe([
+      "SELECT * FROM note WHERE title = '$x'",
+      "SELECT * FROM note WHERE title = '$y'",
+    ]);
+    observer = _Observer(reader);
+    final id = await createNote(x, 'body');
+    expect(reader.noteTable.getRow(id)?.title, x);
 
-      await updateNote(id, y, 'body');
-      final forwardWire = [...observer.wire];
-      final forwardEvents = [...observer.events];
-      final forwardRow = reader.noteTable.getRow(id)?.title;
+    await updateNote(id, y, 'body');
+    final forwardWire = [...observer.wire];
+    final forwardEvents = [...observer.events];
+    final forwardRow = reader.noteTable.getRow(id)?.title;
 
-      await updateNote(id, x, 'body');
-      final backWire = [...observer.wire];
-      final backEvents = [...observer.events];
-      final backRow = reader.noteTable.getRow(id)?.title;
+    await updateNote(id, x, 'body');
+    final backWire = [...observer.wire];
+    final backEvents = [...observer.events];
+    final backRow = reader.noteTable.getRow(id)?.title;
 
-      printOnFailure('forward wire=$forwardWire events=$forwardEvents');
-      printOnFailure('back wire=$backWire events=$backEvents');
-      expect(
-        forwardRow,
-        y,
-        reason: 'x -> y: wire=$forwardWire events=$forwardEvents',
-      );
-      expect(backRow, x, reason: 'y -> x: wire=$backWire events=$backEvents');
-      expect(forwardEvents, ['update']);
-      expect(backEvents, ['update']);
-    },
-    timeout: const Timeout(Duration(seconds: 60)),
-  );
+    printOnFailure('forward wire=$forwardWire events=$forwardEvents');
+    printOnFailure('back wire=$backWire events=$backEvents');
+    expect(
+      forwardRow,
+      y,
+      reason: 'x -> y: wire=$forwardWire events=$forwardEvents',
+    );
+    expect(backRow, x, reason: 'y -> x: wire=$backWire events=$backEvents');
+    expect(forwardEvents, ['update']);
+    expect(backEvents, ['update']);
+  }, timeout: const Timeout(Duration(seconds: 60)));
 
-  test(
-    'a row leaving one of two overlapping WHERE queries of one set stays cached, both directions',
-    () async {
-      const x = 'overlap-x';
-      const z = 'overlap-z';
-      const c = 'overlap-c';
-      await reader.subManager.subscribe([
-        "SELECT * FROM note WHERE title = '$x'",
-        "SELECT * FROM note WHERE content = '$c'",
-      ]);
-      observer = _Observer(reader);
-      final leaveTitle = await createNote(x, c);
-      final leaveContent = await createNote(x, c);
-      expect(reader.noteTable.getRow(leaveTitle), isNotNull);
-      expect(reader.noteTable.getRow(leaveContent), isNotNull);
+  test('a row leaving one of two overlapping WHERE queries of one set stays cached, both directions', () async {
+    const x = 'overlap-x';
+    const z = 'overlap-z';
+    const c = 'overlap-c';
+    await reader.subManager.subscribe([
+      "SELECT * FROM note WHERE title = '$x'",
+      "SELECT * FROM note WHERE content = '$c'",
+    ]);
+    observer = _Observer(reader);
+    final leaveTitle = await createNote(x, c);
+    final leaveContent = await createNote(x, c);
+    expect(reader.noteTable.getRow(leaveTitle), isNotNull);
+    expect(reader.noteTable.getRow(leaveContent), isNotNull);
 
-      await updateNote(leaveTitle, z, c);
-      final titleWire = [...observer.wire];
-      final titleEvents = [...observer.events];
-      final titleRow = reader.noteTable.getRow(leaveTitle)?.title;
+    await updateNote(leaveTitle, z, c);
+    final titleWire = [...observer.wire];
+    final titleEvents = [...observer.events];
+    final titleRow = reader.noteTable.getRow(leaveTitle)?.title;
 
-      await updateNote(leaveContent, x, 'other');
-      final contentWire = [...observer.wire];
-      final contentEvents = [...observer.events];
-      final contentRow = reader.noteTable.getRow(leaveContent)?.content;
+    await updateNote(leaveContent, x, 'other');
+    final contentWire = [...observer.wire];
+    final contentEvents = [...observer.events];
+    final contentRow = reader.noteTable.getRow(leaveContent)?.content;
 
-      printOnFailure('leave title wire=$titleWire events=$titleEvents');
-      printOnFailure('leave content wire=$contentWire events=$contentEvents');
-      expect(
-        titleRow,
-        z,
-        reason: 'leave title: wire=$titleWire events=$titleEvents',
-      );
-      expect(
-        contentRow,
-        'other',
-        reason: 'leave content: wire=$contentWire events=$contentEvents',
-      );
-      expect(titleEvents, ['update']);
-      expect(contentEvents, ['update']);
-    },
-    timeout: const Timeout(Duration(seconds: 60)),
-  );
+    printOnFailure('leave title wire=$titleWire events=$titleEvents');
+    printOnFailure('leave content wire=$contentWire events=$contentEvents');
+    expect(
+      titleRow,
+      z,
+      reason: 'leave title: wire=$titleWire events=$titleEvents',
+    );
+    expect(
+      contentRow,
+      'other',
+      reason: 'leave content: wire=$contentWire events=$contentEvents',
+    );
+    expect(titleEvents, ['update']);
+    expect(contentEvents, ['update']);
+  }, timeout: const Timeout(Duration(seconds: 60)));
 
-  test(
-    'the caller keeps a row its own reducer moves between two WHERE queries of one set, both directions',
-    () async {
-      const x = 'callermove-x';
-      const y = 'callermove-y';
-      await writer.subManager.subscribe([
-        "SELECT * FROM note WHERE title = '$x'",
-        "SELECT * FROM note WHERE title = '$y'",
-      ]);
-      final caller = await _connected();
-      addTearDown(() async {
-        caller.subManager.dispose();
-        await caller.disconnect();
-      });
-      await caller.subManager.subscribe([
-        "SELECT * FROM note WHERE title = '$x'",
-        "SELECT * FROM note WHERE title = '$y'",
-      ]);
-      observer = _Observer(caller);
-      final id = await createNote(x, 'body');
-      expect(caller.noteTable.getRow(id)?.title, x);
+  test('the caller keeps a row its own reducer moves between two WHERE queries of one set, both directions', () async {
+    const x = 'callermove-x';
+    const y = 'callermove-y';
+    await writer.subManager.subscribe([
+      "SELECT * FROM note WHERE title = '$x'",
+      "SELECT * FROM note WHERE title = '$y'",
+    ]);
+    final caller = await _connected();
+    addTearDown(() async {
+      caller.subManager.dispose();
+      await caller.disconnect();
+    });
+    await caller.subManager.subscribe([
+      "SELECT * FROM note WHERE title = '$x'",
+      "SELECT * FROM note WHERE title = '$y'",
+    ]);
+    observer = _Observer(caller);
+    final id = await createNote(x, 'body');
+    expect(caller.noteTable.getRow(id)?.title, x);
 
-      Future<(String?, List<String>)> move(String title) async {
-        observer.clear();
-        await caller.reducers
-            .updateNote(noteId: id, title: title, content: 'body')
-            .timeout(const Duration(seconds: 5));
-        await _settle();
-        return (caller.noteTable.getRow(id)?.title, [...observer.events]);
-      }
+    Future<(String?, List<String>)> move(String title) async {
+      observer.clear();
+      await caller.reducers
+          .updateNote(noteId: id, title: title, content: 'body')
+          .timeout(const Duration(seconds: 5));
+      await _settle();
+      return (caller.noteTable.getRow(id)?.title, [...observer.events]);
+    }
 
-      final (forwardRow, forwardEvents) = await move(y);
-      final (backRow, backEvents) = await move(x);
-      expect(forwardRow, y, reason: 'x -> y events=$forwardEvents');
-      expect(backRow, x, reason: 'y -> x events=$backEvents');
-      expect(forwardEvents, ['update']);
-      expect(backEvents, ['update']);
-    },
-    timeout: const Timeout(Duration(seconds: 60)),
-  );
+    final (forwardRow, forwardEvents) = await move(y);
+    final (backRow, backEvents) = await move(x);
+    expect(forwardRow, y, reason: 'x -> y events=$forwardEvents');
+    expect(backRow, x, reason: 'y -> x events=$backEvents');
+    expect(forwardEvents, ['update']);
+    expect(backEvents, ['update']);
+  }, timeout: const Timeout(Duration(seconds: 60)));
 
   test('a row leaving every WHERE query of one set is evicted once', () async {
     const x = 'leaveall-x';

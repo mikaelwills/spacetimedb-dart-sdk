@@ -24,31 +24,27 @@ void main() {
       final cases = <SpacetimeDbException, String>{
         SpacetimeDbAuthException('401'): 'auth',
         SpacetimeDbConnectionException(
-              'lost',
-              lastKnownState: const Disconnected(),
-            ):
-            'connection',
+          'lost',
+          lastKnownState: const Disconnected(),
+        ): 'connection',
         SpacetimeDbReducerException(
-              reducerName: 'create_note',
-              message: 'validation',
-              result: TransactionResult(
-                status: Failed(Uint8List.fromList('validation'.codeUnits)),
-                timestamp: DateTime.now(),
-              ),
-            ):
-            'reducer',
+          reducerName: 'create_note',
+          message: 'validation',
+          result: TransactionResult(
+            status: Failed(Uint8List.fromList('validation'.codeUnits)),
+            timestamp: DateTime.now(),
+          ),
+        ): 'reducer',
         SpacetimeDbTimeoutException(
-              'timed out',
-              elapsed: const Duration(seconds: 1),
-            ):
-            'timeout',
+          'timed out',
+          elapsed: const Duration(seconds: 1),
+        ): 'timeout',
         SpacetimeDbSchemaException('unknown shape'): 'schema',
         SpacetimeDbProtocolException('underflow'): 'protocol',
         SpacetimeDbSubscriptionException(
-              '`note` is not a valid table',
-              tableName: 'note',
-            ):
-            'subscription',
+          '`note` is not a valid table',
+          tableName: 'note',
+        ): 'subscription',
         SpacetimeDbStorageException('disk full'): 'storage',
       };
 

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
+
 import '../generated/note.dart';
 import '../generated/reducer_args.dart';
 import '../helpers/integration_test_helper.dart';
@@ -58,165 +59,54 @@ void main() {
     }
 
     group('Priority 1: Essential Tests', () {
-      test(
-        'Full Offline Round-Trip: queue mutation offline → reconnect → server confirms → cache confirms',
-        () async {
-          await setupWithStorage();
+      test('Full Offline Round-Trip: queue mutation offline → reconnect → server confirms → cache confirms', () async {
+        await setupWithStorage();
 
-          try {
-            final uniqueTitle =
-                'Offline-${DateTime.now().millisecondsSinceEpoch}';
-
-            final disconnectFuture = connection.onStateChanged
-                .firstWhere((s) => s is! Connected)
-                .timeout(_timeout);
-            await connection.disconnect();
-            await disconnectFuture;
-
-            final syncResultFuture = subManager.onMutationSyncResult.first;
-
-            final enc1 = BsatnEncoder();
-            enc1.writeString(uniqueTitle);
-            enc1.writeString('Created while offline');
-            final result = await subManager.reducers
-                .call(
-                  'create_note',
-                  enc1.toBytes(),
-                  optimisticChanges: [
-                    OptimisticChange.insert('note', {
-                      'id': 999999,
-                      'title': uniqueTitle,
-                      'content': 'Created while offline',
-                      'timestamp': DateTime.now().microsecondsSinceEpoch,
-                      'status': {'type': 'draft'},
-                    }),
-                  ],
-                )
-                .timeout(_timeout);
-
-            expect(
-              result.isPending,
-              isTrue,
-              reason: 'Should return pending result when offline',
-            );
-            expect(result.pendingRequestId, isNotNull);
-
-            final pending = await storage.getPendingMutations().timeout(
-              _timeout,
-            );
-            expect(
-              pending.length,
-              equals(1),
-              reason: 'Should have 1 pending mutation',
-            );
-            expect(pending.first.reducerName, equals('create_note'));
-
-            await connection.connect();
-            await subManager.onInitialConnection.first.timeout(_timeout);
-            subManager.subscribe(['SELECT * FROM note']);
-            await subManager.onSubscribeApplied.first.timeout(_timeout);
-
-            final syncResult = await syncResultFuture.timeout(_timeout);
-
-            expect(syncResult.success, isTrue, reason: 'Sync should succeed');
-            expect(syncResult.reducerName, equals('create_note'));
-
-            final pendingAfterSync = await storage
-                .getPendingMutations()
-                .timeout(_timeout);
-            expect(
-              pendingAfterSync,
-              isEmpty,
-              reason: 'Pending queue should be empty after sync',
-            );
-
-            expect(subManager.syncState.pendingCount, equals(0));
-          } finally {
-            await cleanup();
-          }
-        },
-        timeout: const Timeout(Duration(seconds: 30)),
-      );
-
-      test(
-        'Crash Recovery: persist pending mutations → restart → load cache → sync succeeds',
-        () async {
-          tempDir = await Directory.systemTemp.createTemp(
-            'crash_recovery_test_',
-          );
-          storage = JsonFileStorage(basePath: tempDir.path);
-          await storage.initialize();
-
+        try {
           final uniqueTitle =
-              'CrashRecovery-${DateTime.now().millisecondsSinceEpoch}';
+              'Offline-${DateTime.now().millisecondsSinceEpoch}';
 
-          await storage
-              .enqueueMutation(
-                PendingMutation(
-                  requestId: 'crash-test-req-1',
-                  reducerName: 'create_note',
-                  encodedArgs: _encodeCreateNoteArgs(
-                    uniqueTitle,
-                    'Survived crash',
-                  ),
-                  createdAt: DateTime.now(),
-                  optimisticChanges: [
-                    OptimisticChange.insert('note', {
-                      'id': 888888,
-                      'title': uniqueTitle,
-                      'content': 'Survived crash',
-                      'timestamp': DateTime.now().microsecondsSinceEpoch,
-                      'status': {'type': 'draft'},
-                    }),
-                  ],
-                ),
+          final disconnectFuture = connection.onStateChanged
+              .firstWhere((s) => s is! Connected)
+              .timeout(_timeout);
+          await connection.disconnect();
+          await disconnectFuture;
+
+          final syncResultFuture = subManager.onMutationSyncResult.first;
+
+          final enc1 = BsatnEncoder();
+          enc1.writeString(uniqueTitle);
+          enc1.writeString('Created while offline');
+          final result = await subManager.reducers
+              .call(
+                'create_note',
+                enc1.toBytes(),
+                optimisticChanges: [
+                  OptimisticChange.insert('note', {
+                    'id': 999999,
+                    'title': uniqueTitle,
+                    'content': 'Created while offline',
+                    'timestamp': DateTime.now().microsecondsSinceEpoch,
+                    'status': {'type': 'draft'},
+                  }),
+                ],
               )
               .timeout(_timeout);
 
-          await storage
-              .saveTableSnapshot('note', [
-                {
-                  'id': 1,
-                  'title': 'Cached Note',
-                  'content': 'From before crash',
-                  'timestamp': DateTime.now().microsecondsSinceEpoch,
-                  'status': {'type': 'draft'},
-                },
-              ])
-              .timeout(_timeout);
-
-          await storage.dispose();
-
-          final newStorage = JsonFileStorage(basePath: tempDir.path);
-
-          connection = SpacetimeDbConnection(
-            host: 'localhost:3000',
-            database: 'notesdb',
-          );
-          subManager = SubscriptionManager(
-            connection,
-            offlineStorage: newStorage,
-          );
-
-          subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-          subManager.reducerRegistry.register(createNoteDef);
-
-          await subManager.loadFromOfflineCache();
-
-          noteTable = subManager.cache.getTableByTypedName<Note>('note');
           expect(
-            noteTable.count(),
-            greaterThanOrEqualTo(1),
-            reason: 'Should have loaded cached data',
+            result.isPending,
+            isTrue,
+            reason: 'Should return pending result when offline',
           );
+          expect(result.pendingRequestId, isNotNull);
 
+          final pending = await storage.getPendingMutations().timeout(_timeout);
           expect(
-            subManager.syncState.pendingCount,
+            pending.length,
             equals(1),
-            reason: 'Should have 1 pending mutation from crash',
+            reason: 'Should have 1 pending mutation',
           );
-
-          final syncResultFuture = subManager.onMutationSyncResult.first;
+          expect(pending.first.reducerName, equals('create_note'));
 
           await connection.connect();
           await subManager.onInitialConnection.first.timeout(_timeout);
@@ -225,28 +115,127 @@ void main() {
 
           final syncResult = await syncResultFuture.timeout(_timeout);
 
-          expect(
-            syncResult.success,
-            isTrue,
-            reason: 'Pending mutation should sync successfully',
-          );
+          expect(syncResult.success, isTrue, reason: 'Sync should succeed');
+          expect(syncResult.reducerName, equals('create_note'));
 
-          final pendingAfter = await newStorage.getPendingMutations().timeout(
+          final pendingAfterSync = await storage.getPendingMutations().timeout(
             _timeout,
           );
-          expect(pendingAfter, isEmpty);
+          expect(
+            pendingAfterSync,
+            isEmpty,
+            reason: 'Pending queue should be empty after sync',
+          );
 
-          await subManager.dispose();
-          await connection.disconnect();
-          await newStorage.dispose();
-          try {
-            if (await tempDir.exists()) {
-              await tempDir.delete(recursive: true);
-            }
-          } catch (_) {}
-        },
-        timeout: const Timeout(Duration(seconds: 30)),
-      );
+          expect(subManager.syncState.pendingCount, equals(0));
+        } finally {
+          await cleanup();
+        }
+      }, timeout: const Timeout(Duration(seconds: 30)));
+
+      test('Crash Recovery: persist pending mutations → restart → load cache → sync succeeds', () async {
+        tempDir = await Directory.systemTemp.createTemp('crash_recovery_test_');
+        storage = JsonFileStorage(basePath: tempDir.path);
+        await storage.initialize();
+
+        final uniqueTitle =
+            'CrashRecovery-${DateTime.now().millisecondsSinceEpoch}';
+
+        await storage
+            .enqueueMutation(
+              PendingMutation(
+                requestId: 'crash-test-req-1',
+                reducerName: 'create_note',
+                encodedArgs: _encodeCreateNoteArgs(
+                  uniqueTitle,
+                  'Survived crash',
+                ),
+                createdAt: DateTime.now(),
+                optimisticChanges: [
+                  OptimisticChange.insert('note', {
+                    'id': 888888,
+                    'title': uniqueTitle,
+                    'content': 'Survived crash',
+                    'timestamp': DateTime.now().microsecondsSinceEpoch,
+                    'status': {'type': 'draft'},
+                  }),
+                ],
+              ),
+            )
+            .timeout(_timeout);
+
+        await storage
+            .saveTableSnapshot('note', [
+              {
+                'id': 1,
+                'title': 'Cached Note',
+                'content': 'From before crash',
+                'timestamp': DateTime.now().microsecondsSinceEpoch,
+                'status': {'type': 'draft'},
+              },
+            ])
+            .timeout(_timeout);
+
+        await storage.dispose();
+
+        final newStorage = JsonFileStorage(basePath: tempDir.path);
+
+        connection = SpacetimeDbConnection(
+          host: 'localhost:3000',
+          database: 'notesdb',
+        );
+        subManager = SubscriptionManager(
+          connection,
+          offlineStorage: newStorage,
+        );
+
+        subManager.cache.registerDecoder<Note>('note', NoteDecoder());
+        subManager.reducerRegistry.register(createNoteDef);
+
+        await subManager.loadFromOfflineCache();
+
+        noteTable = subManager.cache.getTableByTypedName<Note>('note');
+        expect(
+          noteTable.count(),
+          greaterThanOrEqualTo(1),
+          reason: 'Should have loaded cached data',
+        );
+
+        expect(
+          subManager.syncState.pendingCount,
+          equals(1),
+          reason: 'Should have 1 pending mutation from crash',
+        );
+
+        final syncResultFuture = subManager.onMutationSyncResult.first;
+
+        await connection.connect();
+        await subManager.onInitialConnection.first.timeout(_timeout);
+        subManager.subscribe(['SELECT * FROM note']);
+        await subManager.onSubscribeApplied.first.timeout(_timeout);
+
+        final syncResult = await syncResultFuture.timeout(_timeout);
+
+        expect(
+          syncResult.success,
+          isTrue,
+          reason: 'Pending mutation should sync successfully',
+        );
+
+        final pendingAfter = await newStorage.getPendingMutations().timeout(
+          _timeout,
+        );
+        expect(pendingAfter, isEmpty);
+
+        await subManager.dispose();
+        await connection.disconnect();
+        await newStorage.dispose();
+        try {
+          if (await tempDir.exists()) {
+            await tempDir.delete(recursive: true);
+          }
+        } catch (_) {}
+      }, timeout: const Timeout(Duration(seconds: 30)));
     });
 
     group('Priority 2: Important Tests', () {
@@ -396,120 +385,112 @@ void main() {
     });
 
     group('Priority 3: Edge Cases', () {
-      test(
-        'Table snapshot is saved on InitialSubscription',
-        () async {
-          await setupWithStorage();
+      test('Table snapshot is saved on InitialSubscription', () async {
+        await setupWithStorage();
 
-          try {
-            final snapshot = await storage
-                .loadTableSnapshot('note')
-                .timeout(_timeout);
-            expect(
-              snapshot,
-              isNotNull,
-              reason: 'Snapshot should be saved after InitialSubscription',
-            );
-            expect(
-              snapshot!.isNotEmpty,
-              isTrue,
-              reason: 'Snapshot should have data from server',
-            );
+        try {
+          final snapshot = await storage
+              .loadTableSnapshot('note')
+              .timeout(_timeout);
+          expect(
+            snapshot,
+            isNotNull,
+            reason: 'Snapshot should be saved after InitialSubscription',
+          );
+          expect(
+            snapshot!.isNotEmpty,
+            isTrue,
+            reason: 'Snapshot should have data from server',
+          );
 
-            final syncTime = await storage
-                .getLastSyncTime('note')
-                .timeout(_timeout);
-            expect(syncTime, isNotNull, reason: 'Sync time should be recorded');
-          } finally {
-            await cleanup();
-          }
-        },
-        timeout: const Timeout(Duration(seconds: 30)),
-      );
+          final syncTime = await storage
+              .getLastSyncTime('note')
+              .timeout(_timeout);
+          expect(syncTime, isNotNull, reason: 'Sync time should be recorded');
+        } finally {
+          await cleanup();
+        }
+      }, timeout: const Timeout(Duration(seconds: 30)));
 
-      test(
-        'FIFO Ordering: mutations are synced and reported in strict submission order',
-        () async {
-          await setupWithStorage();
+      test('FIFO Ordering: mutations are synced and reported in strict submission order', () async {
+        await setupWithStorage();
 
-          try {
-            final disconnectFuture = connection.onStateChanged
-                .firstWhere((s) => s is! Connected)
-                .timeout(_timeout);
-            await connection.disconnect();
-            await disconnectFuture;
+        try {
+          final disconnectFuture = connection.onStateChanged
+              .firstWhere((s) => s is! Connected)
+              .timeout(_timeout);
+          await connection.disconnect();
+          await disconnectFuture;
 
-            final uniqueId = DateTime.now().millisecondsSinceEpoch % 0xFFFFFFFF;
-            final mutations = <String>[
-              'create_note',
-              'update_note',
-              'delete_note',
-            ];
-            final requestIds = <String>[];
+          final uniqueId = DateTime.now().millisecondsSinceEpoch % 0xFFFFFFFF;
+          final mutations = <String>[
+            'create_note',
+            'update_note',
+            'delete_note',
+          ];
+          final requestIds = <String>[];
 
-            final enc1 = BsatnEncoder();
-            enc1.writeString('OrderTest-$uniqueId');
-            enc1.writeString('Initial Content');
-            final res1 = await subManager.reducers
-                .call('create_note', enc1.toBytes())
-                .timeout(_timeout);
-            requestIds.add(res1.pendingRequestId!);
+          final enc1 = BsatnEncoder();
+          enc1.writeString('OrderTest-$uniqueId');
+          enc1.writeString('Initial Content');
+          final res1 = await subManager.reducers
+              .call('create_note', enc1.toBytes())
+              .timeout(_timeout);
+          requestIds.add(res1.pendingRequestId!);
 
-            final enc2 = BsatnEncoder();
-            enc2.writeU32(uniqueId);
-            enc2.writeString('OrderTest-$uniqueId');
-            enc2.writeString('Updated Content');
-            final res2 = await subManager.reducers
-                .call('update_note', enc2.toBytes())
-                .timeout(_timeout);
-            requestIds.add(res2.pendingRequestId!);
+          final enc2 = BsatnEncoder();
+          enc2.writeU32(uniqueId);
+          enc2.writeString('OrderTest-$uniqueId');
+          enc2.writeString('Updated Content');
+          final res2 = await subManager.reducers
+              .call('update_note', enc2.toBytes())
+              .timeout(_timeout);
+          requestIds.add(res2.pendingRequestId!);
 
-            final enc3 = BsatnEncoder();
-            enc3.writeU32(uniqueId);
-            final res3 = await subManager.reducers
-                .call('delete_note', enc3.toBytes())
-                .timeout(_timeout);
-            requestIds.add(res3.pendingRequestId!);
+          final enc3 = BsatnEncoder();
+          enc3.writeU32(uniqueId);
+          final res3 = await subManager.reducers
+              .call('delete_note', enc3.toBytes())
+              .timeout(_timeout);
+          requestIds.add(res3.pendingRequestId!);
 
-            expect(subManager.syncState.pendingCount, equals(3));
+          expect(subManager.syncState.pendingCount, equals(3));
 
-            final completedSyncs = <MutationSyncResult>[];
-            final allDone = Completer<void>();
+          final completedSyncs = <MutationSyncResult>[];
+          final allDone = Completer<void>();
 
-            final sub = subManager.onMutationSyncResult.listen((result) {
-              completedSyncs.add(result);
-              if (completedSyncs.length == 3) {
-                allDone.complete();
-              }
-            });
-
-            await connection.connect();
-            await subManager.onInitialConnection.first.timeout(_timeout);
-            subManager.subscribe(['SELECT * FROM note']);
-            await subManager.onSubscribeApplied.first.timeout(_timeout);
-
-            await allDone.future.timeout(_timeout);
-            await sub.cancel();
-
-            expect(completedSyncs.length, equals(3));
-
-            for (var i = 0; i < 3; i++) {
-              expect(
-                completedSyncs[i].requestId,
-                equals(requestIds[i]),
-                reason: 'Mutation at index $i should match request at index $i',
-              );
-              expect(completedSyncs[i].success, isTrue);
-              expect(completedSyncs[i].reducerName, equals(mutations[i]));
+          final sub = subManager.onMutationSyncResult.listen((result) {
+            completedSyncs.add(result);
+            if (completedSyncs.length == 3) {
+              allDone.complete();
             }
+          });
 
-            expect(subManager.syncState.pendingCount, equals(0));
-          } finally {
-            await cleanup();
+          await connection.connect();
+          await subManager.onInitialConnection.first.timeout(_timeout);
+          subManager.subscribe(['SELECT * FROM note']);
+          await subManager.onSubscribeApplied.first.timeout(_timeout);
+
+          await allDone.future.timeout(_timeout);
+          await sub.cancel();
+
+          expect(completedSyncs.length, equals(3));
+
+          for (var i = 0; i < 3; i++) {
+            expect(
+              completedSyncs[i].requestId,
+              equals(requestIds[i]),
+              reason: 'Mutation at index $i should match request at index $i',
+            );
+            expect(completedSyncs[i].success, isTrue);
+            expect(completedSyncs[i].reducerName, equals(mutations[i]));
           }
-        },
-        timeout: const Timeout(Duration(seconds: 30)),
-      );
+
+          expect(subManager.syncState.pendingCount, equals(0));
+        } finally {
+          await cleanup();
+        }
+      }, timeout: const Timeout(Duration(seconds: 30)));
     });
   });
 }

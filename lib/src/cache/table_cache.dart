@@ -919,10 +919,9 @@ class TableCache<T> {
   }
 
   void _refreshRowsNotifier() {
-    rows.value =
-        hasPrimaryKey
-            ? List<T>.of(_rowsByPrimaryKey.values)
-            : _rows.map((e) => e.row).toList();
+    rows.value = hasPrimaryKey
+        ? List<T>.of(_rowsByPrimaryKey.values)
+        : _rows.map((e) => e.row).toList();
   }
 
   void _removeRowNotifier(dynamic primaryKey) {

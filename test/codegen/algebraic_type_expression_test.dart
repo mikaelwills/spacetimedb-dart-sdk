@@ -111,25 +111,31 @@ void main() {
       );
     });
 
-    test('Option<string> emits writeOption with inner writeString callback', () {
-      const t = OptionType(PrimitiveType(PrimitiveKind.string));
-      expect(
-        t.encodeExpression('nickname'),
-        equals(
-          'encoder.writeOption<String>(nickname, (value) => encoder.writeString(value))',
-        ),
-      );
-    });
+    test(
+      'Option<string> emits writeOption with inner writeString callback',
+      () {
+        const t = OptionType(PrimitiveType(PrimitiveKind.string));
+        expect(
+          t.encodeExpression('nickname'),
+          equals(
+            'encoder.writeOption<String>(nickname, (value) => encoder.writeString(value))',
+          ),
+        );
+      },
+    );
 
-    test('Option<Timestamp> emits writeOption with inner writeI64 callback', () {
-      const t = OptionType(TimestampType());
-      expect(
-        t.encodeExpression('resolvedAt'),
-        equals(
-          'encoder.writeOption<Int64>(resolvedAt, (value) => encoder.writeI64(value))',
-        ),
-      );
-    });
+    test(
+      'Option<Timestamp> emits writeOption with inner writeI64 callback',
+      () {
+        const t = OptionType(TimestampType());
+        expect(
+          t.encodeExpression('resolvedAt'),
+          equals(
+            'encoder.writeOption<Int64>(resolvedAt, (value) => encoder.writeI64(value))',
+          ),
+        );
+      },
+    );
 
     test('Option<Array<u64>> emits nested writeOption + writeArray', () {
       const t = OptionType(ArrayType(PrimitiveType(PrimitiveKind.u64)));

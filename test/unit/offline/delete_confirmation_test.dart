@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
 import 'package:spacetimedb_sdk/protocol.dart';
@@ -19,12 +20,11 @@ BsatnRowList createRowList(List<Note> notes) {
     return BsatnRowList.empty();
   }
 
-  final encodedRows =
-      notes.map((note) {
-        final encoder = BsatnEncoder();
-        note.encodeBsatn(encoder);
-        return encoder.toBytes();
-      }).toList();
+  final encodedRows = notes.map((note) {
+    final encoder = BsatnEncoder();
+    note.encodeBsatn(encoder);
+    return encoder.toBytes();
+  }).toList();
 
   final offsets = <int>[];
   var currentOffset = 0;
@@ -97,8 +97,7 @@ void main() {
           expect(
             touchedKeys.contains(100),
             isTrue,
-            reason:
-                'CRITICAL: Delete PK must be in touchedKeys even though row was already gone from cache',
+            reason: 'CRITICAL: Delete PK must be in touchedKeys even though row was already gone from cache',
           );
 
           optimistic.confirmOrRollbackWithTouchedKeys('req-delete-100', {
@@ -130,8 +129,7 @@ void main() {
         expect(
           cache.find(101)?.id,
           equals(101),
-          reason:
-              'With empty touchedKeys (simulating the bug), the delete gets rolled back',
+          reason: 'With empty touchedKeys (simulating the bug), the delete gets rolled back',
         );
       });
     });
@@ -266,8 +264,7 @@ void main() {
         expect(
           touchedKeys.contains(400),
           isTrue,
-          reason:
-              'Even when row was not in cache, the PK from server message should be collected',
+          reason: 'Even when row was not in cache, the PK from server message should be collected',
         );
       });
 

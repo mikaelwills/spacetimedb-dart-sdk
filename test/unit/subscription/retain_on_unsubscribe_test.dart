@@ -33,8 +33,9 @@ Uint8List _createSubscribeApplied({
       rowsEncoder.writeString(row);
     }
     final rowsData = rowsEncoder.toBytes();
-    final rowSize =
-        entry.value.isEmpty ? 0 : rowsData.length ~/ entry.value.length;
+    final rowSize = entry.value.isEmpty
+        ? 0
+        : rowsData.length ~/ entry.value.length;
     encoder.writeU16(rowSize);
     encoder.writeU32(rowsData.length);
     encoder.writeBytes(rowsData);

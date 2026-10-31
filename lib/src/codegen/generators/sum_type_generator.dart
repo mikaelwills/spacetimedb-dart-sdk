@@ -1,4 +1,5 @@
 import 'package:code_builder/code_builder.dart' hide TypeDef;
+
 import '../../codegen/codegen_emitter.dart';
 import '../models/type_models.dart';
 
@@ -24,12 +25,11 @@ class SumTypeGenerator {
     }
 
     final lib = Library(
-      (b) =>
-          b
-            ..directives.add(
-              Directive.import('package:spacetimedb_sdk/codegen.dart'),
-            )
-            ..body.addAll([_buildSealedClass(), ...variantClasses]),
+      (b) => b
+        ..directives.add(
+          Directive.import('package:spacetimedb_sdk/codegen.dart'),
+        )
+        ..body.addAll([_buildSealedClass(), ...variantClasses]),
     );
 
     return emitLibrary(lib, header: kGeneratedHeader);
@@ -92,12 +92,7 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
         tag,
         variantName,
       ),
-      .struct => _buildStructVariant(
-        className,
-        variant,
-        tag,
-        variantName,
-      ),
+      .struct => _buildStructVariant(className, variant, tag, variantName),
     };
   }
 
@@ -109,64 +104,57 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
         ..constructors.add(Constructor((c) => c..constant = true))
         ..constructors.add(
           Constructor(
-            (c) =>
-                c
-                  ..factory = true
-                  ..name = 'decodeBsatn'
-                  ..requiredParameters.add(
-                    Parameter(
-                      (p) =>
-                          p
-                            ..name = 'decoder'
-                            ..type = refer('BsatnDecoder'),
-                    ),
-                  )
-                  ..body = Code('return const $className();'),
+            (c) => c
+              ..factory = true
+              ..name = 'decodeBsatn'
+              ..requiredParameters.add(
+                Parameter(
+                  (p) => p
+                    ..name = 'decoder'
+                    ..type = refer('BsatnDecoder'),
+                ),
+              )
+              ..body = Code('return const $className();'),
           ),
         )
         ..constructors.add(
           Constructor(
-            (c) =>
-                c
-                  ..factory = true
-                  ..name = 'fromJson'
-                  ..requiredParameters.add(
-                    Parameter(
-                      (p) =>
-                          p
-                            ..name = 'json'
-                            ..type = refer('Map<String, dynamic>'),
-                    ),
-                  )
-                  ..body = Code('return const $className();'),
+            (c) => c
+              ..factory = true
+              ..name = 'fromJson'
+              ..requiredParameters.add(
+                Parameter(
+                  (p) => p
+                    ..name = 'json'
+                    ..type = refer('Map<String, dynamic>'),
+                ),
+              )
+              ..body = Code('return const $className();'),
           ),
         )
         ..methods.add(
           Method(
-            (m) =>
-                m
-                  ..name = 'encodeBsatn'
-                  ..annotations.add(refer('override'))
-                  ..returns = refer('void')
-                  ..requiredParameters.add(
-                    Parameter(
-                      (p) =>
-                          p
-                            ..name = 'encoder'
-                            ..type = refer('BsatnEncoder'),
-                    ),
-                  )
-                  ..body = Code('encoder.writeU8($tag);'),
+            (m) => m
+              ..name = 'encodeBsatn'
+              ..annotations.add(refer('override'))
+              ..returns = refer('void')
+              ..requiredParameters.add(
+                Parameter(
+                  (p) => p
+                    ..name = 'encoder'
+                    ..type = refer('BsatnEncoder'),
+                ),
+              )
+              ..body = Code('encoder.writeU8($tag);'),
           ),
         )
         ..methods.add(
           Method(
-            (m) =>
-                m
-                  ..name = 'toJson'
-                  ..annotations.add(refer('override'))
-                  ..returns = refer('Map<String, dynamic>')
-                  ..body = Code("return {'type': '$variantName'};"),
+            (m) => m
+              ..name = 'toJson'
+              ..annotations.add(refer('override'))
+              ..returns = refer('Map<String, dynamic>')
+              ..body = Code("return {'type': '$variantName'};"),
           ),
         );
       _addEqualityMethods(b, className, []);
@@ -200,90 +188,80 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
         ..extend = refer(enumName)
         ..fields.add(
           Field(
-            (f) =>
-                f
-                  ..name = 'value'
-                  ..type = refer(dartType)
-                  ..modifier = FieldModifier.final$,
+            (f) => f
+              ..name = 'value'
+              ..type = refer(dartType)
+              ..modifier = FieldModifier.final$,
           ),
         )
         ..constructors.add(
           Constructor(
-            (c) =>
-                c
-                  ..constant = true
-                  ..requiredParameters.add(
-                    Parameter(
-                      (p) =>
-                          p
-                            ..name = 'value'
-                            ..toThis = true,
-                    ),
-                  ),
+            (c) => c
+              ..constant = true
+              ..requiredParameters.add(
+                Parameter(
+                  (p) => p
+                    ..name = 'value'
+                    ..toThis = true,
+                ),
+              ),
           ),
         )
         ..constructors.add(
           Constructor(
-            (c) =>
-                c
-                  ..factory = true
-                  ..name = 'decodeBsatn'
-                  ..requiredParameters.add(
-                    Parameter(
-                      (p) =>
-                          p
-                            ..name = 'decoder'
-                            ..type = refer('BsatnDecoder'),
-                    ),
-                  )
-                  ..body = Code('return $className($decodeExpr);'),
+            (c) => c
+              ..factory = true
+              ..name = 'decodeBsatn'
+              ..requiredParameters.add(
+                Parameter(
+                  (p) => p
+                    ..name = 'decoder'
+                    ..type = refer('BsatnDecoder'),
+                ),
+              )
+              ..body = Code('return $className($decodeExpr);'),
           ),
         )
         ..constructors.add(
           Constructor(
-            (c) =>
-                c
-                  ..factory = true
-                  ..name = 'fromJson'
-                  ..requiredParameters.add(
-                    Parameter(
-                      (p) =>
-                          p
-                            ..name = 'json'
-                            ..type = refer('Map<String, dynamic>'),
-                    ),
-                  )
-                  ..body = Code('return $className($fromJsonValue);'),
+            (c) => c
+              ..factory = true
+              ..name = 'fromJson'
+              ..requiredParameters.add(
+                Parameter(
+                  (p) => p
+                    ..name = 'json'
+                    ..type = refer('Map<String, dynamic>'),
+                ),
+              )
+              ..body = Code('return $className($fromJsonValue);'),
           ),
         )
         ..methods.add(
           Method(
-            (m) =>
-                m
-                  ..name = 'encodeBsatn'
-                  ..annotations.add(refer('override'))
-                  ..returns = refer('void')
-                  ..requiredParameters.add(
-                    Parameter(
-                      (p) =>
-                          p
-                            ..name = 'encoder'
-                            ..type = refer('BsatnEncoder'),
-                    ),
-                  )
-                  ..body = Code('encoder.writeU8($tag); $encodeExpr;'),
+            (m) => m
+              ..name = 'encodeBsatn'
+              ..annotations.add(refer('override'))
+              ..returns = refer('void')
+              ..requiredParameters.add(
+                Parameter(
+                  (p) => p
+                    ..name = 'encoder'
+                    ..type = refer('BsatnEncoder'),
+                ),
+              )
+              ..body = Code('encoder.writeU8($tag); $encodeExpr;'),
           ),
         )
         ..methods.add(
           Method(
-            (m) =>
-                m
-                  ..name = 'toJson'
-                  ..annotations.add(refer('override'))
-                  ..returns = refer('Map<String, dynamic>')
-                  ..body = Code(
-                    "return {'type': '$variantName', 'value': $toJsonValue};",
-                  ),
+            (m) => m
+              ..name = 'toJson'
+              ..annotations.add(refer('override'))
+              ..returns = refer('Map<String, dynamic>')
+              ..body = Code(
+                "return {'type': '$variantName', 'value': $toJsonValue};",
+              ),
           ),
         );
       _addEqualityMethods(b, className, ['value']);
@@ -322,20 +300,18 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
 
         b.fields.add(
           Field(
-            (f) =>
-                f
-                  ..name = fieldName
-                  ..type = refer(dartType)
-                  ..modifier = FieldModifier.final$,
+            (f) => f
+              ..name = fieldName
+              ..type = refer(dartType)
+              ..modifier = FieldModifier.final$,
           ),
         );
 
         constructorParams.add(
           Parameter(
-            (p) =>
-                p
-                  ..name = fieldName
-                  ..toThis = true,
+            (p) => p
+              ..name = fieldName
+              ..toThis = true,
           ),
         );
         decodeArgs.writeln('${element.type.decodeExpression()},');
@@ -346,76 +322,68 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
 
       b.constructors.add(
         Constructor(
-          (c) =>
-              c
-                ..constant = true
-                ..requiredParameters.addAll(constructorParams),
+          (c) => c
+            ..constant = true
+            ..requiredParameters.addAll(constructorParams),
         ),
       );
 
       b.constructors.add(
         Constructor(
-          (c) =>
-              c
-                ..factory = true
-                ..name = 'decodeBsatn'
-                ..requiredParameters.add(
-                  Parameter(
-                    (p) =>
-                        p
-                          ..name = 'decoder'
-                          ..type = refer('BsatnDecoder'),
-                  ),
-                )
-                ..body = Code('return $className($decodeArgs);'),
+          (c) => c
+            ..factory = true
+            ..name = 'decodeBsatn'
+            ..requiredParameters.add(
+              Parameter(
+                (p) => p
+                  ..name = 'decoder'
+                  ..type = refer('BsatnDecoder'),
+              ),
+            )
+            ..body = Code('return $className($decodeArgs);'),
         ),
       );
 
       b.constructors.add(
         Constructor(
-          (c) =>
-              c
-                ..factory = true
-                ..name = 'fromJson'
-                ..requiredParameters.add(
-                  Parameter(
-                    (p) =>
-                        p
-                          ..name = 'json'
-                          ..type = refer('Map<String, dynamic>'),
-                  ),
-                )
-                ..body = Code('return $className($fromJsonArgs);'),
+          (c) => c
+            ..factory = true
+            ..name = 'fromJson'
+            ..requiredParameters.add(
+              Parameter(
+                (p) => p
+                  ..name = 'json'
+                  ..type = refer('Map<String, dynamic>'),
+              ),
+            )
+            ..body = Code('return $className($fromJsonArgs);'),
         ),
       );
 
       b.methods.add(
         Method(
-          (m) =>
-              m
-                ..name = 'encodeBsatn'
-                ..annotations.add(refer('override'))
-                ..returns = refer('void')
-                ..requiredParameters.add(
-                  Parameter(
-                    (p) =>
-                        p
-                          ..name = 'encoder'
-                          ..type = refer('BsatnEncoder'),
-                  ),
-                )
-                ..body = Code(encodeBody.toString()),
+          (m) => m
+            ..name = 'encodeBsatn'
+            ..annotations.add(refer('override'))
+            ..returns = refer('void')
+            ..requiredParameters.add(
+              Parameter(
+                (p) => p
+                  ..name = 'encoder'
+                  ..type = refer('BsatnEncoder'),
+              ),
+            )
+            ..body = Code(encodeBody.toString()),
         ),
       );
 
       b.methods.add(
         Method(
-          (m) =>
-              m
-                ..name = 'toJson'
-                ..annotations.add(refer('override'))
-                ..returns = refer('Map<String, dynamic>')
-                ..body = Code('return {$toJsonEntries};'),
+          (m) => m
+            ..name = 'toJson'
+            ..annotations.add(refer('override'))
+            ..returns = refer('Map<String, dynamic>')
+            ..body = Code('return {$toJsonEntries};'),
         ),
       );
 
@@ -455,22 +423,20 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
 
         b.fields.add(
           Field(
-            (f) =>
-                f
-                  ..name = fieldName
-                  ..type = refer(dartType)
-                  ..modifier = FieldModifier.final$,
+            (f) => f
+              ..name = fieldName
+              ..type = refer(dartType)
+              ..modifier = FieldModifier.final$,
           ),
         );
 
         constructorParams.add(
           Parameter(
-            (p) =>
-                p
-                  ..name = fieldName
-                  ..named = true
-                  ..required = true
-                  ..toThis = true,
+            (p) => p
+              ..name = fieldName
+              ..named = true
+              ..required = true
+              ..toThis = true,
           ),
         );
         decodeArgs.writeln('$fieldName: ${element.type.decodeExpression()},');
@@ -481,76 +447,68 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
 
       b.constructors.add(
         Constructor(
-          (c) =>
-              c
-                ..constant = true
-                ..optionalParameters.addAll(constructorParams),
+          (c) => c
+            ..constant = true
+            ..optionalParameters.addAll(constructorParams),
         ),
       );
 
       b.constructors.add(
         Constructor(
-          (c) =>
-              c
-                ..factory = true
-                ..name = 'decodeBsatn'
-                ..requiredParameters.add(
-                  Parameter(
-                    (p) =>
-                        p
-                          ..name = 'decoder'
-                          ..type = refer('BsatnDecoder'),
-                  ),
-                )
-                ..body = Code('return $className($decodeArgs);'),
+          (c) => c
+            ..factory = true
+            ..name = 'decodeBsatn'
+            ..requiredParameters.add(
+              Parameter(
+                (p) => p
+                  ..name = 'decoder'
+                  ..type = refer('BsatnDecoder'),
+              ),
+            )
+            ..body = Code('return $className($decodeArgs);'),
         ),
       );
 
       b.constructors.add(
         Constructor(
-          (c) =>
-              c
-                ..factory = true
-                ..name = 'fromJson'
-                ..requiredParameters.add(
-                  Parameter(
-                    (p) =>
-                        p
-                          ..name = 'json'
-                          ..type = refer('Map<String, dynamic>'),
-                  ),
-                )
-                ..body = Code('return $className($fromJsonArgs);'),
+          (c) => c
+            ..factory = true
+            ..name = 'fromJson'
+            ..requiredParameters.add(
+              Parameter(
+                (p) => p
+                  ..name = 'json'
+                  ..type = refer('Map<String, dynamic>'),
+              ),
+            )
+            ..body = Code('return $className($fromJsonArgs);'),
         ),
       );
 
       b.methods.add(
         Method(
-          (m) =>
-              m
-                ..name = 'encodeBsatn'
-                ..annotations.add(refer('override'))
-                ..returns = refer('void')
-                ..requiredParameters.add(
-                  Parameter(
-                    (p) =>
-                        p
-                          ..name = 'encoder'
-                          ..type = refer('BsatnEncoder'),
-                  ),
-                )
-                ..body = Code(encodeBody.toString()),
+          (m) => m
+            ..name = 'encodeBsatn'
+            ..annotations.add(refer('override'))
+            ..returns = refer('void')
+            ..requiredParameters.add(
+              Parameter(
+                (p) => p
+                  ..name = 'encoder'
+                  ..type = refer('BsatnEncoder'),
+              ),
+            )
+            ..body = Code(encodeBody.toString()),
         ),
       );
 
       b.methods.add(
         Method(
-          (m) =>
-              m
-                ..name = 'toJson'
-                ..annotations.add(refer('override'))
-                ..returns = refer('Map<String, dynamic>')
-                ..body = Code('return {$toJsonEntries};'),
+          (m) => m
+            ..name = 'toJson'
+            ..annotations.add(refer('override'))
+            ..returns = refer('Map<String, dynamic>')
+            ..body = Code('return {$toJsonEntries};'),
         ),
       );
 
@@ -567,43 +525,39 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
     if (fieldNames.isEmpty) {
       b.methods.add(
         Method(
-          (m) =>
-              m
-                ..name = 'operator =='
-                ..annotations.add(refer('override'))
-                ..returns = refer('bool')
-                ..requiredParameters.add(
-                  Parameter(
-                    (p) =>
-                        p
-                          ..name = 'other'
-                          ..type = refer('Object'),
-                  ),
-                )
-                ..body = Code(
-                  'return identical(this, other) || other is $className;',
-                ),
+          (m) => m
+            ..name = 'operator =='
+            ..annotations.add(refer('override'))
+            ..returns = refer('bool')
+            ..requiredParameters.add(
+              Parameter(
+                (p) => p
+                  ..name = 'other'
+                  ..type = refer('Object'),
+              ),
+            )
+            ..body = Code(
+              'return identical(this, other) || other is $className;',
+            ),
         ),
       );
       b.methods.add(
         Method(
-          (m) =>
-              m
-                ..name = 'hashCode'
-                ..annotations.add(refer('override'))
-                ..type = MethodType.getter
-                ..returns = refer('int')
-                ..body = const Code('return runtimeType.hashCode;'),
+          (m) => m
+            ..name = 'hashCode'
+            ..annotations.add(refer('override'))
+            ..type = MethodType.getter
+            ..returns = refer('int')
+            ..body = const Code('return runtimeType.hashCode;'),
         ),
       );
       b.methods.add(
         Method(
-          (m) =>
-              m
-                ..name = 'toString'
-                ..annotations.add(refer('override'))
-                ..returns = refer('String')
-                ..body = Code("return '$className()';"),
+          (m) => m
+            ..name = 'toString'
+            ..annotations.add(refer('override'))
+            ..returns = refer('String')
+            ..body = Code("return '$className()';"),
         ),
       );
     } else {
@@ -613,47 +567,43 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
 
       b.methods.add(
         Method(
-          (m) =>
-              m
-                ..name = 'operator =='
-                ..annotations.add(refer('override'))
-                ..returns = refer('bool')
-                ..requiredParameters.add(
-                  Parameter(
-                    (p) =>
-                        p
-                          ..name = 'other'
-                          ..type = refer('Object'),
-                  ),
-                )
-                ..body = Code(
-                  'return identical(this, other) || other is $className && $comparisons;',
-                ),
+          (m) => m
+            ..name = 'operator =='
+            ..annotations.add(refer('override'))
+            ..returns = refer('bool')
+            ..requiredParameters.add(
+              Parameter(
+                (p) => p
+                  ..name = 'other'
+                  ..type = refer('Object'),
+              ),
+            )
+            ..body = Code(
+              'return identical(this, other) || other is $className && $comparisons;',
+            ),
         ),
       );
       b.methods.add(
         Method(
-          (m) =>
-              m
-                ..name = 'hashCode'
-                ..annotations.add(refer('override'))
-                ..type = MethodType.getter
-                ..returns = refer('int')
-                ..body = Code(
-                  fieldNames.length == 1
-                      ? 'return $hashArgs.hashCode;'
-                      : 'return Object.hash($hashArgs);',
-                ),
+          (m) => m
+            ..name = 'hashCode'
+            ..annotations.add(refer('override'))
+            ..type = MethodType.getter
+            ..returns = refer('int')
+            ..body = Code(
+              fieldNames.length == 1
+                  ? 'return $hashArgs.hashCode;'
+                  : 'return Object.hash($hashArgs);',
+            ),
         ),
       );
       b.methods.add(
         Method(
-          (m) =>
-              m
-                ..name = 'toString'
-                ..annotations.add(refer('override'))
-                ..returns = refer('String')
-                ..body = Code("return '$className($strParts)';"),
+          (m) => m
+            ..name = 'toString'
+            ..annotations.add(refer('override'))
+            ..returns = refer('String')
+            ..body = Code("return '$className($strParts)';"),
         ),
       );
     }

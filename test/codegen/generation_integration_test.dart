@@ -1,7 +1,9 @@
 import 'dart:io';
+
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/src/codegen/schema_extractor.dart';
 import 'package:spacetimedb_sdk/src/codegen/dart_generator.dart';
+
 import 'test_helpers.dart';
 
 void main() {
@@ -215,7 +217,8 @@ void main() {
         final sdkPath = findSdkRoot();
 
         // Create pubspec.yaml with SDK dependency
-        final pubspecContent = '''
+        final pubspecContent =
+            '''
 name: codegen_analyze_test
 description: Temporary package for testing generated code
 version: 1.0.0
@@ -228,9 +231,8 @@ dependencies:
   spacetimedb_sdk:
     path: $sdkPath
 ''';
-        await File(
-          '${testPkgDir.path}/pubspec.yaml',
-        ).writeAsString(pubspecContent);
+        await File('${testPkgDir.path}/pubspec.yaml')
+            .writeAsString(pubspecContent);
 
         // Run dart pub get
         final pubGetResult = await Process.run('dart', [
@@ -277,24 +279,21 @@ dependencies:
       final files = generator.generateAll();
 
       // Count sum types (enums) in the schema
-      final sumTypeCount =
-          schema.types
-              .where(
-                (typeDef) =>
-                    schema.typeSpace.types[typeDef.typeRef].sum != null,
-              )
-              .length;
+      final sumTypeCount = schema.types
+          .where(
+            (typeDef) => schema.typeSpace.types[typeDef.typeRef].sum != null,
+          )
+          .length;
 
       // Count standalone product types (SpacetimeType structs that are not tables)
       final tableTypeRefs = schema.tables.map((t) => t.productTypeRef).toSet();
-      final productTypeCount =
-          schema.types
-              .where(
-                (typeDef) =>
-                    schema.typeSpace.types[typeDef.typeRef].product != null &&
-                    !tableTypeRefs.contains(typeDef.typeRef),
-              )
-              .length;
+      final productTypeCount = schema.types
+          .where(
+            (typeDef) =>
+                schema.typeSpace.types[typeDef.typeRef].product != null &&
+                !tableTypeRefs.contains(typeDef.typeRef),
+          )
+          .length;
 
       // Should have: tables + sum_types + product_types + reducers +
       // reducer_args + client

@@ -1,6 +1,8 @@
 import 'dart:async';
+
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/protocol.dart';
+
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';
 
@@ -34,94 +36,87 @@ void main() {
         .firstWhere((state) => state is T)
         .timeout(
           timeout,
-          onTimeout:
-              () =>
-                  throw TimeoutException(
-                    'Timed out waiting for state $T. Current: ${connection.state}',
-                  ),
+          onTimeout: () => throw TimeoutException(
+            'Timed out waiting for state $T. Current: ${connection.state}',
+          ),
         );
   }
 
-  test(
-    'reconnect rehydrates rows written during the disconnect window',
-    () async {
-      final envA = await createTestEnv();
-      final envB = await createTestEnv();
+  test('reconnect rehydrates rows written during the disconnect window', () async {
+    final envA = await createTestEnv();
+    final envB = await createTestEnv();
 
-      await envA.connection.connect();
-      await envA.subManager.onInitialConnection.first.timeout(
-        const Duration(seconds: 5),
-      );
-      await envB.connection.connect();
-      await envB.subManager.onInitialConnection.first.timeout(
-        const Duration(seconds: 5),
-      );
+    await envA.connection.connect();
+    await envA.subManager.onInitialConnection.first.timeout(
+      const Duration(seconds: 5),
+    );
+    await envB.connection.connect();
+    await envB.subManager.onInitialConnection.first.timeout(
+      const Duration(seconds: 5),
+    );
 
-      await envA.subManager.subscribe(['SELECT * FROM note']);
-      final tableA = envA.noteTable;
-      final countBefore = tableA.count();
+    await envA.subManager.subscribe(['SELECT * FROM note']);
+    final tableA = envA.noteTable;
+    final countBefore = tableA.count();
 
-      const marker = 'Written while A was disconnected';
+    const marker = 'Written while A was disconnected';
 
-      await envA.connection.disconnect();
-      await waitForState<Disconnected>(envA.connection);
+    await envA.connection.disconnect();
+    await waitForState<Disconnected>(envA.connection);
 
-      await envB.reducers
-          .createNote(title: marker, content: 'reply-while-asleep')
-          .timeout(const Duration(seconds: 5));
+    await envB.reducers
+        .createNote(title: marker, content: 'reply-while-asleep')
+        .timeout(const Duration(seconds: 5));
 
-      await envA.connection.reconnect();
-      await waitForState<Connected>(envA.connection);
+    await envA.connection.reconnect();
+    await waitForState<Connected>(envA.connection);
 
-      await Future.delayed(const Duration(seconds: 2));
+    await Future.delayed(const Duration(seconds: 2));
 
-      expect(
-        tableA.count(),
-        equals(countBefore + 1),
-        reason:
-            'After reconnect, A\'s cache must include the row written while it '
-            'was disconnected — same as a cold connect would deliver',
-      );
-      expect(
-        tableA.iter().any((n) => n.title == marker),
-        isTrue,
-        reason:
-            'the specific row written during the disconnect must be present',
-      );
+    expect(
+      tableA.count(),
+      equals(countBefore + 1),
+      reason:
+          'After reconnect, A\'s cache must include the row written while it '
+          'was disconnected — same as a cold connect would deliver',
+    );
+    expect(
+      tableA.iter().any((n) => n.title == marker),
+      isTrue,
+      reason: 'the specific row written during the disconnect must be present',
+    );
 
-      // Phase 2 — the real-world failure: after A reconnected, does its
-      // re-subscribed query set still receive LIVE broadcasts? At runtime the
-      // snapshot hydrated on reconnect but subsequent TransactionUpdates for
-      // the re-subscribed set never arrived (agent replies sent after the
-      // reconnect never showed). Write a fresh row from B and assert A sees it
-      // live, with no further reconnect.
-      const liveMarker = 'Broadcast AFTER A reconnected';
-      final countAfterReconnect = tableA.count();
+    // Phase 2 — the real-world failure: after A reconnected, does its
+    // re-subscribed query set still receive LIVE broadcasts? At runtime the
+    // snapshot hydrated on reconnect but subsequent TransactionUpdates for
+    // the re-subscribed set never arrived (agent replies sent after the
+    // reconnect never showed). Write a fresh row from B and assert A sees it
+    // live, with no further reconnect.
+    const liveMarker = 'Broadcast AFTER A reconnected';
+    final countAfterReconnect = tableA.count();
 
-      await envB.reducers
-          .createNote(title: liveMarker, content: 'live-post-reconnect')
-          .timeout(const Duration(seconds: 5));
+    await envB.reducers
+        .createNote(title: liveMarker, content: 'live-post-reconnect')
+        .timeout(const Duration(seconds: 5));
 
-      await Future.delayed(const Duration(seconds: 2));
+    await Future.delayed(const Duration(seconds: 2));
 
-      expect(
-        tableA.count(),
-        equals(countAfterReconnect + 1),
-        reason:
-            'After reconnect, A\'s re-subscribed query set must still receive '
-            'live TransactionUpdate broadcasts — not just the reconnect snapshot',
-      );
-      expect(
-        tableA.iter().any((n) => n.title == liveMarker),
-        isTrue,
-        reason: 'the row broadcast after reconnect must reach A live',
-      );
+    expect(
+      tableA.count(),
+      equals(countAfterReconnect + 1),
+      reason:
+          'After reconnect, A\'s re-subscribed query set must still receive '
+          'live TransactionUpdate broadcasts — not just the reconnect snapshot',
+    );
+    expect(
+      tableA.iter().any((n) => n.title == liveMarker),
+      isTrue,
+      reason: 'the row broadcast after reconnect must reach A live',
+    );
 
-      envA.subManager.dispose();
-      envB.subManager.dispose();
-      await envA.disconnect();
-      await envB.disconnect();
-    },
-    timeout: const Timeout(Duration(seconds: 30)),
-  );
+    envA.subManager.dispose();
+    envB.subManager.dispose();
+    await envA.disconnect();
+    await envB.disconnect();
+  }, timeout: const Timeout(Duration(seconds: 30)));
 }

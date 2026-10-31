@@ -3,15 +3,14 @@ import 'package:spacetimedb_sdk/src/codegen/table_generator.dart';
 import 'package:test/test.dart';
 
 DatabaseSchema _schemaWithTable(String tableName, List<String> fieldNames) {
-  final elements =
-      fieldNames
-          .map(
-            (name) => ProductElement(
-              name: name,
-              type: const PrimitiveType(PrimitiveKind.u32),
-            ),
-          )
-          .toList();
+  final elements = fieldNames
+      .map(
+        (name) => ProductElement(
+          name: name,
+          type: const PrimitiveType(PrimitiveKind.u32),
+        ),
+      )
+      .toList();
 
   return DatabaseSchema(
     databaseName: 'test',

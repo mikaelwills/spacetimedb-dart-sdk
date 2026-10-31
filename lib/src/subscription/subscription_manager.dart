@@ -87,9 +87,8 @@ class SubscriptionManager {
         storage: offlineStorage,
         optimisticState: _optimisticState,
         cache: cache,
-        send:
-            (name, args, {requestId}) =>
-                caller.callWithBytes(name, args, requestId: requestId),
+        send: (name, args, {requestId}) =>
+            caller.callWithBytes(name, args, requestId: requestId),
         policy: queuePolicy,
       );
       caller = ReducerCaller(
@@ -279,10 +278,9 @@ class SubscriptionManager {
     final message = UnsubscribeMessage(
       querySetId: querySetId,
       requestId: requestId,
-      flags:
-          sendDroppedRows
-              ? UnsubscribeFlags.sendDroppedRows
-              : UnsubscribeFlags.defaultFlag,
+      flags: sendDroppedRows
+          ? UnsubscribeFlags.sendDroppedRows
+          : UnsubscribeFlags.defaultFlag,
     );
     _connection.send(message.encode());
     final queries =
@@ -591,10 +589,9 @@ class SubscriptionManager {
       case InitialConnectionMessage():
         _identity = Identity(message.identity);
         _connectionId = message.connectionId;
-        _address =
-            message.connectionId
-                .map((b) => b.toRadixString(16).padLeft(2, '0'))
-                .join();
+        _address = message.connectionId
+            .map((b) => b.toRadixString(16).padLeft(2, '0'))
+            .join();
         _initialConnectionController.add(message);
       case SubscribeApplied():
         _handleSubscribeApplied(message)
@@ -638,9 +635,8 @@ class SubscriptionManager {
   }
 
   void _handleSubscriptionError(SubscriptionErrorMessage message) {
-    final tableNameMatch = RegExp(
-      r'`(\w+)` is not a valid table',
-    ).firstMatch(message.error);
+    final tableNameMatch = RegExp(r'`(\w+)` is not a valid table')
+        .firstMatch(message.error);
     if (tableNameMatch == null) {
       SdkLogger.e('Subscription error: ${message.error}');
       _completeSubscribeWaiter(message.querySetId);
@@ -717,10 +713,9 @@ class SubscriptionManager {
     final serverRowsByTable = <String, BsatnRowList>{};
     for (final tableRows in rows.tables) {
       final existing = serverRowsByTable[tableRows.tableName];
-      serverRowsByTable[tableRows.tableName] =
-          existing == null
-              ? tableRows.rows
-              : _mergeRowLists(existing, tableRows.rows);
+      serverRowsByTable[tableRows.tableName] = existing == null
+          ? tableRows.rows
+          : _mergeRowLists(existing, tableRows.rows);
     }
     return serverRowsByTable;
   }
@@ -825,10 +820,9 @@ class SubscriptionManager {
         protectedKeys: _optimisticState.optimisticPrimaryKeysForTable(
           table.tableName,
         ),
-        retainTags:
-            retainQueries == null
-                ? null
-                : _tagsForQueriesOnTable(retainQueries, table.tableName),
+        retainTags: retainQueries == null
+            ? null
+            : _tagsForQueriesOnTable(retainQueries, table.tableName),
       );
     }
   }
@@ -948,13 +942,14 @@ class SubscriptionManager {
             ),
             reconcile: true,
             onProtectedKeyCommitted: onProtectedKeyCommitted,
-            onOwnershipGained:
-                (pk) => ownershipGains.add((tableUpdate.tableName, pk)),
+            onOwnershipGained: (pk) =>
+                ownershipGains.add((tableUpdate.tableName, pk)),
           );
         }
 
-        final merged =
-            table.hasPrimaryKey ? _mergePersistentGroups(tableUpdate) : null;
+        final merged = table.hasPrimaryKey
+            ? _mergePersistentGroups(tableUpdate)
+            : null;
         if (merged != null) applyDelta(merged.deletes, merged.inserts);
 
         for (final rowGroup in tableUpdate.rows) {
@@ -1090,16 +1085,18 @@ class SubscriptionManager {
               querySetId: querySet.querySetId,
               protectedKeys: protectedKeys,
               reconcile: reconcile,
-              onProtectedKeyCommitted:
-                  reconcile ? onProtectedKeyCommitted : null,
-              onOwnershipGained:
-                  (pk) => ownershipGains.add((tableUpdate.tableName, pk)),
+              onProtectedKeyCommitted: reconcile
+                  ? onProtectedKeyCommitted
+                  : null,
+              onOwnershipGained: (pk) =>
+                  ownershipGains.add((tableUpdate.tableName, pk)),
             ),
           );
         }
 
-        final merged =
-            table.hasPrimaryKey ? _mergePersistentGroups(tableUpdate) : null;
+        final merged = table.hasPrimaryKey
+            ? _mergePersistentGroups(tableUpdate)
+            : null;
         if (merged != null) applyDelta(merged.deletes, merged.inserts);
 
         for (final rowGroup in tableUpdate.rows) {
@@ -1113,8 +1110,9 @@ class SubscriptionManager {
                 context,
                 protectedKeys: reconcile ? protectedKeys : null,
                 reconcile: reconcile,
-                onProtectedKeyCommitted:
-                    reconcile ? onProtectedKeyCommitted : null,
+                onProtectedKeyCommitted: reconcile
+                    ? onProtectedKeyCommitted
+                    : null,
               ),
             );
           }

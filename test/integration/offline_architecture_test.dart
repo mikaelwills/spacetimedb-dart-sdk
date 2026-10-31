@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
+
 import '../generated/note.dart';
 import '../generated/folder.dart';
 import '../generated/reducer_args.dart';
@@ -51,160 +52,148 @@ void main() {
       } catch (_) {}
     }
 
-    test(
-      'Stale Data Purge: cached data not on server is removed on InitialSubscription',
-      () async {
-        final staleNoteId = DateTime.now().microsecondsSinceEpoch;
-        await createStorageWithCachedNote(staleNoteId, 'Stale Note A');
+    test('Stale Data Purge: cached data not on server is removed on InitialSubscription', () async {
+      final staleNoteId = DateTime.now().microsecondsSinceEpoch;
+      await createStorageWithCachedNote(staleNoteId, 'Stale Note A');
 
-        addTearDown(cleanup);
+      addTearDown(cleanup);
 
-        connection = SpacetimeDbConnection(
-          host: 'localhost:3000',
-          database: 'notesdb',
-        );
-        subManager = SubscriptionManager(connection, offlineStorage: storage);
-        subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-        subManager.reducerRegistry.register(createNoteDef);
+      connection = SpacetimeDbConnection(
+        host: 'localhost:3000',
+        database: 'notesdb',
+      );
+      subManager = SubscriptionManager(connection, offlineStorage: storage);
+      subManager.cache.registerDecoder<Note>('note', NoteDecoder());
+      subManager.reducerRegistry.register(createNoteDef);
 
-        await subManager.loadFromOfflineCache();
-        noteTable = subManager.cache.getTableByTypedName<Note>('note');
-        final noteTableBefore = noteTable;
+      await subManager.loadFromOfflineCache();
+      noteTable = subManager.cache.getTableByTypedName<Note>('note');
+      final noteTableBefore = noteTable;
 
-        expect(
-          noteTable.getRow(staleNoteId),
-          isNotNull,
-          reason: 'Stale note should be loaded from cache before connect',
-        );
+      expect(
+        noteTable.getRow(staleNoteId),
+        isNotNull,
+        reason: 'Stale note should be loaded from cache before connect',
+      );
 
-        await connection.connect();
-        await subManager.onInitialConnection.first.timeout(_timeout);
-        subManager.subscribe(['SELECT * FROM note']);
-        await subManager.onSubscribeApplied.first.timeout(_timeout);
+      await connection.connect();
+      await subManager.onInitialConnection.first.timeout(_timeout);
+      subManager.subscribe(['SELECT * FROM note']);
+      await subManager.onSubscribeApplied.first.timeout(_timeout);
 
-        final noteTableAfter = subManager.cache.getTableByTypedName<Note>(
-          'note',
-        );
-        expect(
-          identical(noteTableBefore, noteTableAfter),
-          isTrue,
-          reason:
-              'TableCache instance must remain the same so UI listeners are not detached',
-        );
+      final noteTableAfter = subManager.cache.getTableByTypedName<Note>('note');
+      expect(
+        identical(noteTableBefore, noteTableAfter),
+        isTrue,
+        reason: 'TableCache instance must remain the same so UI listeners are not detached',
+      );
 
-        expect(
-          noteTable.getRow(staleNoteId),
-          isNull,
-          reason:
-              'Stale note should be purged after InitialSubscription (server is authoritative)',
-        );
-      },
-      timeout: const Timeout(Duration(seconds: 30)),
-    );
+      expect(
+        noteTable.getRow(staleNoteId),
+        isNull,
+        reason: 'Stale note should be purged after InitialSubscription (server is authoritative)',
+      );
+    }, timeout: const Timeout(Duration(seconds: 30)));
 
-    test(
-      'Protected Pending Work: optimistic rows survive InitialSubscription purge until synced',
-      () async {
-        final staleNoteId = DateTime.now().microsecondsSinceEpoch;
-        final optimisticNoteId = staleNoteId + 1;
-        await createStorageWithCachedNote(staleNoteId, 'Stale Note');
+    test('Protected Pending Work: optimistic rows survive InitialSubscription purge until synced', () async {
+      final staleNoteId = DateTime.now().microsecondsSinceEpoch;
+      final optimisticNoteId = staleNoteId + 1;
+      await createStorageWithCachedNote(staleNoteId, 'Stale Note');
 
-        final optimisticTitle =
-            'Optimistic-${DateTime.now().microsecondsSinceEpoch}';
-        await storage.enqueueMutation(
-          PendingMutation(
-            requestId: 'pending-req-1',
-            reducerName: 'create_note',
-            encodedArgs: _encodeCreateNoteArgs(
-              optimisticTitle,
-              'Pending content',
-            ),
-            createdAt: DateTime.now(),
-            optimisticChanges: [
-              OptimisticChange.insert('note', {
-                'id': optimisticNoteId,
-                'title': optimisticTitle,
-                'content': 'Pending content',
-                'timestamp': DateTime.now().microsecondsSinceEpoch,
-                'status': {'type': 'draft'},
-              }),
-            ],
+      final optimisticTitle =
+          'Optimistic-${DateTime.now().microsecondsSinceEpoch}';
+      await storage.enqueueMutation(
+        PendingMutation(
+          requestId: 'pending-req-1',
+          reducerName: 'create_note',
+          encodedArgs: _encodeCreateNoteArgs(
+            optimisticTitle,
+            'Pending content',
           ),
-        );
+          createdAt: DateTime.now(),
+          optimisticChanges: [
+            OptimisticChange.insert('note', {
+              'id': optimisticNoteId,
+              'title': optimisticTitle,
+              'content': 'Pending content',
+              'timestamp': DateTime.now().microsecondsSinceEpoch,
+              'status': {'type': 'draft'},
+            }),
+          ],
+        ),
+      );
 
-        addTearDown(cleanup);
+      addTearDown(cleanup);
 
-        connection = SpacetimeDbConnection(
-          host: 'localhost:3000',
-          database: 'notesdb',
-        );
-        subManager = SubscriptionManager(connection, offlineStorage: storage);
-        subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-        subManager.reducerRegistry.register(createNoteDef);
+      connection = SpacetimeDbConnection(
+        host: 'localhost:3000',
+        database: 'notesdb',
+      );
+      subManager = SubscriptionManager(connection, offlineStorage: storage);
+      subManager.cache.registerDecoder<Note>('note', NoteDecoder());
+      subManager.reducerRegistry.register(createNoteDef);
 
-        await subManager.loadFromOfflineCache();
-        noteTable = subManager.cache.getTableByTypedName<Note>('note');
+      await subManager.loadFromOfflineCache();
+      noteTable = subManager.cache.getTableByTypedName<Note>('note');
 
-        expect(
-          noteTable.getRow(staleNoteId),
-          isNotNull,
-          reason: 'Stale note should be loaded',
-        );
-        expect(
-          noteTable.getRow(optimisticNoteId),
-          isNotNull,
-          reason: 'Optimistic note should be loaded from pending mutation',
-        );
+      expect(
+        noteTable.getRow(staleNoteId),
+        isNotNull,
+        reason: 'Stale note should be loaded',
+      );
+      expect(
+        noteTable.getRow(optimisticNoteId),
+        isNotNull,
+        reason: 'Optimistic note should be loaded from pending mutation',
+      );
 
-        final syncCompleter = Completer<void>();
-        final syncSub = subManager.onMutationSyncResult.listen((result) {
-          if (!syncCompleter.isCompleted) {
-            syncCompleter.complete();
-          }
-        });
+      final syncCompleter = Completer<void>();
+      final syncSub = subManager.onMutationSyncResult.listen((result) {
+        if (!syncCompleter.isCompleted) {
+          syncCompleter.complete();
+        }
+      });
 
-        await connection.connect();
-        await subManager.onInitialConnection.first.timeout(_timeout);
-        subManager.subscribe(['SELECT * FROM note']);
-        await subManager.onSubscribeApplied.first.timeout(_timeout);
+      await connection.connect();
+      await subManager.onInitialConnection.first.timeout(_timeout);
+      subManager.subscribe(['SELECT * FROM note']);
+      await subManager.onSubscribeApplied.first.timeout(_timeout);
 
-        expect(
-          noteTable.getRow(staleNoteId),
-          isNull,
-          reason: 'Stale note should be purged',
-        );
+      expect(
+        noteTable.getRow(staleNoteId),
+        isNull,
+        reason: 'Stale note should be purged',
+      );
 
-        expect(
-          noteTable.getRow(optimisticNoteId),
-          isNotNull,
-          reason:
-              'CRITICAL: Optimistic row must NOT be purged by InitialSubscription. '
-              'If this fails, the UI will blink/flash empty before sync completes.',
-        );
+      expect(
+        noteTable.getRow(optimisticNoteId),
+        isNotNull,
+        reason:
+            'CRITICAL: Optimistic row must NOT be purged by InitialSubscription. '
+            'If this fails, the UI will blink/flash empty before sync completes.',
+      );
 
-        await syncCompleter.future.timeout(_timeout);
-        await syncSub.cancel();
-        await Future.delayed(const Duration(milliseconds: 100));
+      await syncCompleter.future.timeout(_timeout);
+      await syncSub.cancel();
+      await Future.delayed(const Duration(milliseconds: 100));
 
-        expect(
-          noteTable.getRow(optimisticNoteId),
-          isNull,
-          reason:
-              'Phantom optimistic id must be replaced by the server-assigned '
-              'id once the create confirms',
-        );
+      expect(
+        noteTable.getRow(optimisticNoteId),
+        isNull,
+        reason:
+            'Phantom optimistic id must be replaced by the server-assigned '
+            'id once the create confirms',
+      );
 
-        final note = noteTable.iter().firstWhere(
-          (n) => n.title == optimisticTitle,
-        );
-        expect(
-          note.content,
-          equals('Pending content'),
-          reason: 'Server row carries the created content after sync',
-        );
-      },
-      timeout: const Timeout(Duration(seconds: 30)),
-    );
+      final note = noteTable.iter().firstWhere(
+        (n) => n.title == optimisticTitle,
+      );
+      expect(
+        note.content,
+        equals('Pending content'),
+        reason: 'Server row carries the created content after sync',
+      );
+    }, timeout: const Timeout(Duration(seconds: 30)));
 
     test(
       'Delete Persistence: deleted rows stay deleted after app restart',
@@ -393,8 +382,7 @@ void main() {
         expect(
           collector.events,
           isNotEmpty,
-          reason:
-              'Listener on pre-connect instance should still receive events after first server snapshot',
+          reason: 'Listener on pre-connect instance should still receive events after first server snapshot',
         );
       },
       timeout: const Timeout(Duration(seconds: 30)),
@@ -501,50 +489,46 @@ void main() {
       } catch (_) {}
     }
 
-    test(
-      'Immediate Online Feedback: optimistic row appears instantly, pendingCount stays 0',
-      () async {
-        await setup();
-        addTearDown(cleanup);
+    test('Immediate Online Feedback: optimistic row appears instantly, pendingCount stays 0', () async {
+      await setup();
+      addTearDown(cleanup);
 
-        final initialCount = noteTable.count();
-        final optimisticId = DateTime.now().microsecondsSinceEpoch;
+      final initialCount = noteTable.count();
+      final optimisticId = DateTime.now().microsecondsSinceEpoch;
 
-        final encOnl = BsatnEncoder();
-        encOnl.writeString('Online-Optimistic-Test');
-        encOnl.writeString('Instant feedback');
-        subManager.reducers.call(
-          'create_note',
-          encOnl.toBytes(),
-          optimisticChanges: [
-            OptimisticChange.insert('note', {
-              'id': optimisticId,
-              'title': 'Online-Optimistic-Test',
-              'content': 'Instant feedback',
-              'timestamp': DateTime.now().microsecondsSinceEpoch,
-              'status': {'type': 'draft'},
-            }),
-          ],
-        );
+      final encOnl = BsatnEncoder();
+      encOnl.writeString('Online-Optimistic-Test');
+      encOnl.writeString('Instant feedback');
+      subManager.reducers.call(
+        'create_note',
+        encOnl.toBytes(),
+        optimisticChanges: [
+          OptimisticChange.insert('note', {
+            'id': optimisticId,
+            'title': 'Online-Optimistic-Test',
+            'content': 'Instant feedback',
+            'timestamp': DateTime.now().microsecondsSinceEpoch,
+            'status': {'type': 'draft'},
+          }),
+        ],
+      );
 
-        expect(
-          noteTable.count(),
-          equals(initialCount + 1),
-          reason: 'Row should appear immediately (synchronously)',
-        );
-        expect(
-          noteTable.getRow(optimisticId),
-          isNotNull,
-          reason: 'Optimistic row should be findable',
-        );
-        expect(
-          subManager.syncState.pendingCount,
-          equals(0),
-          reason: 'Online mutations should NOT increment pendingCount',
-        );
-      },
-      timeout: const Timeout(Duration(seconds: 30)),
-    );
+      expect(
+        noteTable.count(),
+        equals(initialCount + 1),
+        reason: 'Row should appear immediately (synchronously)',
+      );
+      expect(
+        noteTable.getRow(optimisticId),
+        isNotNull,
+        reason: 'Optimistic row should be findable',
+      );
+      expect(
+        subManager.syncState.pendingCount,
+        equals(0),
+        reason: 'Online mutations should NOT increment pendingCount',
+      );
+    }, timeout: const Timeout(Duration(seconds: 30)));
 
     test(
       'Online Confirm: successful transaction removes optimistic placeholder',
@@ -624,91 +608,78 @@ void main() {
       timeout: const Timeout(Duration(seconds: 30)),
     );
 
-    test(
-      'Online Delete Integrity: Real server confirmation keeps row deleted (Zombie Killer)',
-      () async {
-        await setup();
-        addTearDown(cleanup);
+    test('Online Delete Integrity: Real server confirmation keeps row deleted (Zombie Killer)', () async {
+      await setup();
+      addTearDown(cleanup);
 
-        final createSyncCompleter = Completer<void>();
-        final createSub = subManager.onMutationSyncResult.listen((result) {
-          if (result.reducerName == 'create_note' &&
-              !createSyncCompleter.isCompleted) {
-            createSyncCompleter.complete();
-          }
-        });
+      final createSyncCompleter = Completer<void>();
+      final createSub = subManager.onMutationSyncResult.listen((result) {
+        if (result.reducerName == 'create_note' &&
+            !createSyncCompleter.isCompleted) {
+          createSyncCompleter.complete();
+        }
+      });
 
-        final testTitle =
-            'ZombieKiller-${DateTime.now().microsecondsSinceEpoch}';
-        final encZombie = BsatnEncoder();
-        encZombie.writeString(testTitle);
-        encZombie.writeString('Will be deleted');
-        await subManager.reducers.call('create_note', encZombie.toBytes());
+      final testTitle = 'ZombieKiller-${DateTime.now().microsecondsSinceEpoch}';
+      final encZombie = BsatnEncoder();
+      encZombie.writeString(testTitle);
+      encZombie.writeString('Will be deleted');
+      await subManager.reducers.call('create_note', encZombie.toBytes());
 
-        await createSyncCompleter.future.timeout(_timeout);
-        await createSub.cancel();
+      await createSyncCompleter.future.timeout(_timeout);
+      await createSub.cancel();
 
-        await Future.delayed(const Duration(milliseconds: 100));
+      await Future.delayed(const Duration(milliseconds: 100));
 
-        final noteToDelete = noteTable.iter().firstWhere(
-          (n) => n.title == testTitle,
-        );
-        final noteId = noteToDelete.id;
-        expect(
-          noteTable.getRow(noteId),
-          isNotNull,
-          reason: 'Setup: note exists',
-        );
+      final noteToDelete = noteTable.iter().firstWhere(
+        (n) => n.title == testTitle,
+      );
+      final noteId = noteToDelete.id;
+      expect(noteTable.getRow(noteId), isNotNull, reason: 'Setup: note exists');
 
-        final deleteSyncCompleter = Completer<MutationSyncResult>();
-        final deleteSub = subManager.onMutationSyncResult.listen((result) {
-          if (result.reducerName == 'delete_note' &&
-              !deleteSyncCompleter.isCompleted) {
-            deleteSyncCompleter.complete(result);
-          }
-        });
+      final deleteSyncCompleter = Completer<MutationSyncResult>();
+      final deleteSub = subManager.onMutationSyncResult.listen((result) {
+        if (result.reducerName == 'delete_note' &&
+            !deleteSyncCompleter.isCompleted) {
+          deleteSyncCompleter.complete(result);
+        }
+      });
 
-        final encDelOpt = BsatnEncoder();
-        encDelOpt.writeU32(noteId);
-        final result = await subManager.reducers.call(
-          'delete_note',
-          encDelOpt.toBytes(),
-          optimisticChanges: [
-            OptimisticChange.delete('note', noteToDelete.toJson()),
-          ],
-        );
+      final encDelOpt = BsatnEncoder();
+      encDelOpt.writeU32(noteId);
+      final result = await subManager.reducers.call(
+        'delete_note',
+        encDelOpt.toBytes(),
+        optimisticChanges: [
+          OptimisticChange.delete('note', noteToDelete.toJson()),
+        ],
+      );
 
-        expect(
-          result.isPending,
-          isTrue,
-          reason: 'Offline-first returns pending immediately',
-        );
-        expect(
-          noteTable.getRow(noteId),
-          isNull,
-          reason: 'Row should be removed immediately by optimistic delete',
-        );
+      expect(
+        result.isPending,
+        isTrue,
+        reason: 'Offline-first returns pending immediately',
+      );
+      expect(
+        noteTable.getRow(noteId),
+        isNull,
+        reason: 'Row should be removed immediately by optimistic delete',
+      );
 
-        final syncResult = await deleteSyncCompleter.future.timeout(_timeout);
-        await deleteSub.cancel();
-        expect(
-          syncResult.success,
-          isTrue,
-          reason: 'Server must confirm delete',
-        );
+      final syncResult = await deleteSyncCompleter.future.timeout(_timeout);
+      await deleteSub.cancel();
+      expect(syncResult.success, isTrue, reason: 'Server must confirm delete');
 
-        await Future.delayed(const Duration(milliseconds: 50));
+      await Future.delayed(const Duration(milliseconds: 50));
 
-        expect(
-          noteTable.getRow(noteId),
-          isNull,
-          reason:
-              'CRITICAL: Row must NOT reappear after server confirmation. '
-              'If this fails, the touched-keys wiring in SubscriptionManager is broken.',
-        );
-      },
-      timeout: const Timeout(Duration(seconds: 30)),
-    );
+      expect(
+        noteTable.getRow(noteId),
+        isNull,
+        reason:
+            'CRITICAL: Row must NOT reappear after server confirmation. '
+            'If this fails, the touched-keys wiring in SubscriptionManager is broken.',
+      );
+    }, timeout: const Timeout(Duration(seconds: 30)));
   });
 
   group('Phase 4: Offline Queue Management', () {
@@ -727,189 +698,181 @@ void main() {
       } catch (_) {}
     }
 
-    test(
-      'Queue Count Accuracy: pendingCount tracks mutations correctly',
-      () async {
-        tempDir = await Directory.systemTemp.createTemp('queue_count_test_');
-        storage = JsonFileStorage(basePath: tempDir.path);
+    test('Queue Count Accuracy: pendingCount tracks mutations correctly', () async {
+      tempDir = await Directory.systemTemp.createTemp('queue_count_test_');
+      storage = JsonFileStorage(basePath: tempDir.path);
 
-        addTearDown(cleanup);
+      addTearDown(cleanup);
 
-        connection = SpacetimeDbConnection(
-          host: 'localhost:3000',
-          database: 'notesdb',
-        );
-        subManager = SubscriptionManager(connection, offlineStorage: storage);
-        subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-        subManager.reducerRegistry.register(createNoteDef);
+      connection = SpacetimeDbConnection(
+        host: 'localhost:3000',
+        database: 'notesdb',
+      );
+      subManager = SubscriptionManager(connection, offlineStorage: storage);
+      subManager.cache.registerDecoder<Note>('note', NoteDecoder());
+      subManager.reducerRegistry.register(createNoteDef);
 
-        await connection.connect();
-        await subManager.onInitialConnection.first.timeout(_timeout);
-        subManager.subscribe(['SELECT * FROM note']);
-        await subManager.onSubscribeApplied.first.timeout(_timeout);
+      await connection.connect();
+      await subManager.onInitialConnection.first.timeout(_timeout);
+      subManager.subscribe(['SELECT * FROM note']);
+      await subManager.onSubscribeApplied.first.timeout(_timeout);
 
-        expect(
-          subManager.syncState.pendingCount,
-          equals(0),
-          reason: 'Should start with 0 pending',
-        );
+      expect(
+        subManager.syncState.pendingCount,
+        equals(0),
+        reason: 'Should start with 0 pending',
+      );
 
-        final disconnectFuture = connection.onStateChanged
-            .firstWhere((s) => s is! Connected)
-            .timeout(_timeout);
-        await connection.disconnect();
-        await disconnectFuture;
+      final disconnectFuture = connection.onStateChanged
+          .firstWhere((s) => s is! Connected)
+          .timeout(_timeout);
+      await connection.disconnect();
+      await disconnectFuture;
 
-        for (var i = 0; i < 3; i++) {
-          final enc = BsatnEncoder();
-          enc.writeString('Queue-Test-$i');
-          enc.writeString('Content $i');
-          await subManager.reducers.call('create_note', enc.toBytes());
+      for (var i = 0; i < 3; i++) {
+        final enc = BsatnEncoder();
+        enc.writeString('Queue-Test-$i');
+        enc.writeString('Content $i');
+        await subManager.reducers.call('create_note', enc.toBytes());
+      }
+
+      expect(
+        subManager.syncState.pendingCount,
+        equals(3),
+        reason: 'Should have 3 pending mutations after offline calls',
+      );
+
+      final syncCompleter = Completer<void>();
+      final syncResults = <MutationSyncResult>[];
+      final syncSub = subManager.onMutationSyncResult.listen((result) {
+        syncResults.add(result);
+        if (syncResults.length == 3 && !syncCompleter.isCompleted) {
+          syncCompleter.complete();
         }
+      });
 
+      await connection.connect();
+      await subManager.onInitialConnection.first.timeout(_timeout);
+      subManager.subscribe(['SELECT * FROM note']);
+      await subManager.onSubscribeApplied.first.timeout(_timeout);
+
+      await syncCompleter.future.timeout(_timeout);
+      await syncSub.cancel();
+
+      expect(
+        subManager.syncState.pendingCount,
+        equals(0),
+        reason: 'Should have 0 pending after sync completes',
+      );
+
+      for (final result in syncResults) {
         expect(
-          subManager.syncState.pendingCount,
-          equals(3),
-          reason: 'Should have 3 pending mutations after offline calls',
+          result.success,
+          isTrue,
+          reason:
+              'All mutations must succeed - ${result.reducerName} failed: ${result.error}',
         );
+      }
+    }, timeout: const Timeout(Duration(seconds: 30)));
 
-        final syncCompleter = Completer<void>();
-        final syncResults = <MutationSyncResult>[];
-        final syncSub = subManager.onMutationSyncResult.listen((result) {
-          syncResults.add(result);
-          if (syncResults.length == 3 && !syncCompleter.isCompleted) {
-            syncCompleter.complete();
-          }
-        });
+    test('FIFO Ordering: Create → Update → Delete executes in order', () async {
+      tempDir = await Directory.systemTemp.createTemp('fifo_test_');
+      storage = JsonFileStorage(basePath: tempDir.path);
 
-        await connection.connect();
-        await subManager.onInitialConnection.first.timeout(_timeout);
-        subManager.subscribe(['SELECT * FROM note']);
-        await subManager.onSubscribeApplied.first.timeout(_timeout);
+      addTearDown(cleanup);
 
-        await syncCompleter.future.timeout(_timeout);
-        await syncSub.cancel();
+      connection = SpacetimeDbConnection(
+        host: 'localhost:3000',
+        database: 'notesdb',
+      );
+      subManager = SubscriptionManager(connection, offlineStorage: storage);
+      subManager.cache.registerDecoder<Note>('note', NoteDecoder());
+      subManager.reducerRegistry.register(createNoteDef);
+      subManager.reducerRegistry.register(updateNoteDef);
+      subManager.reducerRegistry.register(deleteNoteDef);
 
+      await connection.connect();
+      await subManager.onInitialConnection.first.timeout(_timeout);
+      subManager.subscribe(['SELECT * FROM note']);
+      await subManager.onSubscribeApplied.first.timeout(_timeout);
+
+      final disconnectFuture = connection.onStateChanged
+          .firstWhere((s) => s is! Connected)
+          .timeout(_timeout);
+      await connection.disconnect();
+      await disconnectFuture;
+
+      final uniqueId = DateTime.now().millisecondsSinceEpoch % 0xFFFFFFFF;
+      final expectedOrder = <String>[
+        'create_note',
+        'update_note',
+        'delete_note',
+      ];
+      final requestIds = <String>[];
+
+      final fifoEnc1 = BsatnEncoder();
+      fifoEnc1.writeString('FIFO-Test-$uniqueId');
+      fifoEnc1.writeString('Initial');
+      final res1 = await subManager.reducers.call(
+        'create_note',
+        fifoEnc1.toBytes(),
+      );
+      requestIds.add(res1.pendingRequestId!);
+
+      final fifoEnc2 = BsatnEncoder();
+      fifoEnc2.writeU32(uniqueId);
+      fifoEnc2.writeString('FIFO-Test-$uniqueId');
+      fifoEnc2.writeString('Updated');
+      final res2 = await subManager.reducers.call(
+        'update_note',
+        fifoEnc2.toBytes(),
+      );
+      requestIds.add(res2.pendingRequestId!);
+
+      final fifoEnc3 = BsatnEncoder();
+      fifoEnc3.writeU32(uniqueId);
+      final res3 = await subManager.reducers.call(
+        'delete_note',
+        fifoEnc3.toBytes(),
+      );
+      requestIds.add(res3.pendingRequestId!);
+
+      final syncResults = <MutationSyncResult>[];
+      final syncCompleter = Completer<void>();
+      final syncSub = subManager.onMutationSyncResult.listen((result) {
+        syncResults.add(result);
+        if (syncResults.length == 3 && !syncCompleter.isCompleted) {
+          syncCompleter.complete();
+        }
+      });
+
+      await connection.connect();
+      await subManager.onInitialConnection.first.timeout(_timeout);
+      subManager.subscribe(['SELECT * FROM note']);
+      await subManager.onSubscribeApplied.first.timeout(_timeout);
+
+      await syncCompleter.future.timeout(_timeout);
+      await syncSub.cancel();
+
+      expect(syncResults.length, equals(3));
+      for (var i = 0; i < 3; i++) {
         expect(
-          subManager.syncState.pendingCount,
-          equals(0),
-          reason: 'Should have 0 pending after sync completes',
+          syncResults[i].requestId,
+          equals(requestIds[i]),
+          reason: 'Result $i should match request $i',
         );
-
-        for (final result in syncResults) {
-          expect(
-            result.success,
-            isTrue,
-            reason:
-                'All mutations must succeed - ${result.reducerName} failed: ${result.error}',
-          );
-        }
-      },
-      timeout: const Timeout(Duration(seconds: 30)),
-    );
-
-    test(
-      'FIFO Ordering: Create → Update → Delete executes in order',
-      () async {
-        tempDir = await Directory.systemTemp.createTemp('fifo_test_');
-        storage = JsonFileStorage(basePath: tempDir.path);
-
-        addTearDown(cleanup);
-
-        connection = SpacetimeDbConnection(
-          host: 'localhost:3000',
-          database: 'notesdb',
+        expect(
+          syncResults[i].reducerName,
+          equals(expectedOrder[i]),
+          reason: 'Reducer $i should be ${expectedOrder[i]}',
         );
-        subManager = SubscriptionManager(connection, offlineStorage: storage);
-        subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-        subManager.reducerRegistry.register(createNoteDef);
-        subManager.reducerRegistry.register(updateNoteDef);
-        subManager.reducerRegistry.register(deleteNoteDef);
-
-        await connection.connect();
-        await subManager.onInitialConnection.first.timeout(_timeout);
-        subManager.subscribe(['SELECT * FROM note']);
-        await subManager.onSubscribeApplied.first.timeout(_timeout);
-
-        final disconnectFuture = connection.onStateChanged
-            .firstWhere((s) => s is! Connected)
-            .timeout(_timeout);
-        await connection.disconnect();
-        await disconnectFuture;
-
-        final uniqueId = DateTime.now().millisecondsSinceEpoch % 0xFFFFFFFF;
-        final expectedOrder = <String>[
-          'create_note',
-          'update_note',
-          'delete_note',
-        ];
-        final requestIds = <String>[];
-
-        final fifoEnc1 = BsatnEncoder();
-        fifoEnc1.writeString('FIFO-Test-$uniqueId');
-        fifoEnc1.writeString('Initial');
-        final res1 = await subManager.reducers.call(
-          'create_note',
-          fifoEnc1.toBytes(),
+        expect(
+          syncResults[i].success,
+          isTrue,
+          reason: 'All mutations should succeed',
         );
-        requestIds.add(res1.pendingRequestId!);
-
-        final fifoEnc2 = BsatnEncoder();
-        fifoEnc2.writeU32(uniqueId);
-        fifoEnc2.writeString('FIFO-Test-$uniqueId');
-        fifoEnc2.writeString('Updated');
-        final res2 = await subManager.reducers.call(
-          'update_note',
-          fifoEnc2.toBytes(),
-        );
-        requestIds.add(res2.pendingRequestId!);
-
-        final fifoEnc3 = BsatnEncoder();
-        fifoEnc3.writeU32(uniqueId);
-        final res3 = await subManager.reducers.call(
-          'delete_note',
-          fifoEnc3.toBytes(),
-        );
-        requestIds.add(res3.pendingRequestId!);
-
-        final syncResults = <MutationSyncResult>[];
-        final syncCompleter = Completer<void>();
-        final syncSub = subManager.onMutationSyncResult.listen((result) {
-          syncResults.add(result);
-          if (syncResults.length == 3 && !syncCompleter.isCompleted) {
-            syncCompleter.complete();
-          }
-        });
-
-        await connection.connect();
-        await subManager.onInitialConnection.first.timeout(_timeout);
-        subManager.subscribe(['SELECT * FROM note']);
-        await subManager.onSubscribeApplied.first.timeout(_timeout);
-
-        await syncCompleter.future.timeout(_timeout);
-        await syncSub.cancel();
-
-        expect(syncResults.length, equals(3));
-        for (var i = 0; i < 3; i++) {
-          expect(
-            syncResults[i].requestId,
-            equals(requestIds[i]),
-            reason: 'Result $i should match request $i',
-          );
-          expect(
-            syncResults[i].reducerName,
-            equals(expectedOrder[i]),
-            reason: 'Reducer $i should be ${expectedOrder[i]}',
-          );
-          expect(
-            syncResults[i].success,
-            isTrue,
-            reason: 'All mutations should succeed',
-          );
-        }
-      },
-      timeout: const Timeout(Duration(seconds: 30)),
-    );
+      }
+    }, timeout: const Timeout(Duration(seconds: 30)));
   });
 
   group('Phase 5: Offline Create → Online Delete Swap Bug', () {
@@ -929,253 +892,244 @@ void main() {
       } catch (_) {}
     }
 
-    test(
-      'Sequential deletes after offline creates: deleted rows must stay deleted',
-      () async {
-        tempDir = await Directory.systemTemp.createTemp('swap_bug_test_');
-        storage = JsonFileStorage(basePath: tempDir.path);
+    test('Sequential deletes after offline creates: deleted rows must stay deleted', () async {
+      tempDir = await Directory.systemTemp.createTemp('swap_bug_test_');
+      storage = JsonFileStorage(basePath: tempDir.path);
 
-        addTearDown(cleanup);
+      addTearDown(cleanup);
 
-        connection = SpacetimeDbConnection(
-          host: 'localhost:3000',
-          database: 'notesdb',
-        );
-        subManager = SubscriptionManager(connection, offlineStorage: storage);
-        subManager.cache.registerDecoder<Note>('note', NoteDecoder());
-        subManager.reducerRegistry.register(createNoteDef);
-        subManager.reducerRegistry.register(deleteNoteDef);
+      connection = SpacetimeDbConnection(
+        host: 'localhost:3000',
+        database: 'notesdb',
+      );
+      subManager = SubscriptionManager(connection, offlineStorage: storage);
+      subManager.cache.registerDecoder<Note>('note', NoteDecoder());
+      subManager.reducerRegistry.register(createNoteDef);
+      subManager.reducerRegistry.register(deleteNoteDef);
 
-        await connection.connect();
-        await subManager.onInitialConnection.first.timeout(_timeout);
-        subManager.subscribe(['SELECT * FROM note']);
-        await subManager.onSubscribeApplied.first.timeout(_timeout);
+      await connection.connect();
+      await subManager.onInitialConnection.first.timeout(_timeout);
+      subManager.subscribe(['SELECT * FROM note']);
+      await subManager.onSubscribeApplied.first.timeout(_timeout);
 
-        noteTable = subManager.cache.getTableByTypedName<Note>('note');
+      noteTable = subManager.cache.getTableByTypedName<Note>('note');
 
-        print('\n=== Step 1: Go offline ===');
-        final disconnectFuture = connection.onStateChanged
-            .firstWhere((s) => s is! Connected)
-            .timeout(_timeout);
-        await connection.disconnect();
-        await disconnectFuture;
+      print('\n=== Step 1: Go offline ===');
+      final disconnectFuture = connection.onStateChanged
+          .firstWhere((s) => s is! Connected)
+          .timeout(_timeout);
+      await connection.disconnect();
+      await disconnectFuture;
 
-        print('\n=== Step 2: Create 2 notes while offline ===');
-        final testPrefix = 'SwapBug-${DateTime.now().millisecondsSinceEpoch}';
-        final optimisticId3 =
-            DateTime.now().millisecondsSinceEpoch % 1000000000 + 900000;
-        final optimisticId4 = optimisticId3 + 1;
+      print('\n=== Step 2: Create 2 notes while offline ===');
+      final testPrefix = 'SwapBug-${DateTime.now().millisecondsSinceEpoch}';
+      final optimisticId3 =
+          DateTime.now().millisecondsSinceEpoch % 1000000000 + 900000;
+      final optimisticId4 = optimisticId3 + 1;
 
-        final encN3 = BsatnEncoder();
-        encN3.writeString('$testPrefix-Note3');
-        encN3.writeString('Content 3');
-        await subManager.reducers.call(
-          'create_note',
-          encN3.toBytes(),
-          optimisticChanges: [
-            OptimisticChange.insert('note', {
-              'id': optimisticId3,
-              'title': '$testPrefix-Note3',
-              'content': 'Content 3',
-              'timestamp': DateTime.now().microsecondsSinceEpoch,
-              'status': {'type': 'draft'},
-            }),
-          ],
-        );
+      final encN3 = BsatnEncoder();
+      encN3.writeString('$testPrefix-Note3');
+      encN3.writeString('Content 3');
+      await subManager.reducers.call(
+        'create_note',
+        encN3.toBytes(),
+        optimisticChanges: [
+          OptimisticChange.insert('note', {
+            'id': optimisticId3,
+            'title': '$testPrefix-Note3',
+            'content': 'Content 3',
+            'timestamp': DateTime.now().microsecondsSinceEpoch,
+            'status': {'type': 'draft'},
+          }),
+        ],
+      );
 
-        final encN4 = BsatnEncoder();
-        encN4.writeString('$testPrefix-Note4');
-        encN4.writeString('Content 4');
-        await subManager.reducers.call(
-          'create_note',
-          encN4.toBytes(),
-          optimisticChanges: [
-            OptimisticChange.insert('note', {
-              'id': optimisticId4,
-              'title': '$testPrefix-Note4',
-              'content': 'Content 4',
-              'timestamp': DateTime.now().microsecondsSinceEpoch,
-              'status': {'type': 'draft'},
-            }),
-          ],
-        );
+      final encN4 = BsatnEncoder();
+      encN4.writeString('$testPrefix-Note4');
+      encN4.writeString('Content 4');
+      await subManager.reducers.call(
+        'create_note',
+        encN4.toBytes(),
+        optimisticChanges: [
+          OptimisticChange.insert('note', {
+            'id': optimisticId4,
+            'title': '$testPrefix-Note4',
+            'content': 'Content 4',
+            'timestamp': DateTime.now().microsecondsSinceEpoch,
+            'status': {'type': 'draft'},
+          }),
+        ],
+      );
 
-        expect(
-          subManager.syncState.pendingCount,
-          equals(2),
-          reason: 'Should have 2 pending mutations',
-        );
+      expect(
+        subManager.syncState.pendingCount,
+        equals(2),
+        reason: 'Should have 2 pending mutations',
+      );
 
-        print('\n=== Step 3: Go online and sync ===');
-        final syncCompleter = Completer<void>();
-        final syncResults = <MutationSyncResult>[];
-        final syncSub = subManager.onMutationSyncResult.listen((result) {
-          syncResults.add(result);
-          if (syncResults.length == 2 && !syncCompleter.isCompleted) {
-            syncCompleter.complete();
-          }
-        });
-
-        await connection.connect();
-        await subManager.onInitialConnection.first.timeout(_timeout);
-        subManager.subscribe(['SELECT * FROM note']);
-        await subManager.onSubscribeApplied.first.timeout(_timeout);
-
-        await syncCompleter.future.timeout(_timeout);
-        await syncSub.cancel();
-
-        expect(
-          syncResults.length,
-          equals(2),
-          reason: 'Both creates should sync',
-        );
-        for (final result in syncResults) {
-          expect(result.success, isTrue, reason: 'Create should succeed');
+      print('\n=== Step 3: Go online and sync ===');
+      final syncCompleter = Completer<void>();
+      final syncResults = <MutationSyncResult>[];
+      final syncSub = subManager.onMutationSyncResult.listen((result) {
+        syncResults.add(result);
+        if (syncResults.length == 2 && !syncCompleter.isCompleted) {
+          syncCompleter.complete();
         }
+      });
 
-        final note3 = noteTable.iter().firstWhere(
-          (n) => n.title == '$testPrefix-Note3',
-        );
-        final note4 = noteTable.iter().firstWhere(
-          (n) => n.title == '$testPrefix-Note4',
-        );
-        final realId3 = note3.id;
-        final realId4 = note4.id;
+      await connection.connect();
+      await subManager.onInitialConnection.first.timeout(_timeout);
+      subManager.subscribe(['SELECT * FROM note']);
+      await subManager.onSubscribeApplied.first.timeout(_timeout);
 
-        print('  Note 3: optimisticId=$optimisticId3, realId=$realId3');
-        print('  Note 4: optimisticId=$optimisticId4, realId=$realId4');
+      await syncCompleter.future.timeout(_timeout);
+      await syncSub.cancel();
 
-        print('\n=== Step 4: Delete note 3 online ===');
-        final delete3Completer = Completer<MutationSyncResult>();
-        final delete3Sub = subManager.onMutationSyncResult.listen((result) {
-          if (result.reducerName == 'delete_note' &&
-              !delete3Completer.isCompleted) {
-            delete3Completer.complete(result);
-          }
-        });
+      expect(syncResults.length, equals(2), reason: 'Both creates should sync');
+      for (final result in syncResults) {
+        expect(result.success, isTrue, reason: 'Create should succeed');
+      }
 
-        final encDel3 = BsatnEncoder();
-        encDel3.writeU32(realId3);
-        final result3 = await subManager.reducers.call(
-          'delete_note',
-          encDel3.toBytes(),
-          optimisticChanges: [OptimisticChange.delete('note', note3.toJson())],
-        );
+      final note3 = noteTable.iter().firstWhere(
+        (n) => n.title == '$testPrefix-Note3',
+      );
+      final note4 = noteTable.iter().firstWhere(
+        (n) => n.title == '$testPrefix-Note4',
+      );
+      final realId3 = note3.id;
+      final realId4 = note4.id;
 
-        expect(
-          result3.isPending,
-          isTrue,
-          reason: 'Offline-first returns pending immediately',
-        );
-        expect(
-          noteTable.getRow(realId3),
-          isNull,
-          reason: 'Note 3 should be optimistically deleted',
-        );
-        expect(
-          noteTable.getRow(realId4),
-          isNotNull,
-          reason: 'Note 4 should still exist',
-        );
+      print('  Note 3: optimisticId=$optimisticId3, realId=$realId3');
+      print('  Note 4: optimisticId=$optimisticId4, realId=$realId4');
 
-        final syncResult3 = await delete3Completer.future.timeout(_timeout);
-        await delete3Sub.cancel();
-        expect(syncResult3.success, isTrue, reason: 'Delete 3 should succeed');
+      print('\n=== Step 4: Delete note 3 online ===');
+      final delete3Completer = Completer<MutationSyncResult>();
+      final delete3Sub = subManager.onMutationSyncResult.listen((result) {
+        if (result.reducerName == 'delete_note' &&
+            !delete3Completer.isCompleted) {
+          delete3Completer.complete(result);
+        }
+      });
 
-        await Future.delayed(const Duration(milliseconds: 50));
+      final encDel3 = BsatnEncoder();
+      encDel3.writeU32(realId3);
+      final result3 = await subManager.reducers.call(
+        'delete_note',
+        encDel3.toBytes(),
+        optimisticChanges: [OptimisticChange.delete('note', note3.toJson())],
+      );
 
-        print('  After delete 3 confirmed:');
-        print(
-          '    Note 3 (id=$realId3) exists: ${noteTable.getRow(realId3) != null}',
-        );
-        print(
-          '    Note 4 (id=$realId4) exists: ${noteTable.getRow(realId4) != null}',
-        );
+      expect(
+        result3.isPending,
+        isTrue,
+        reason: 'Offline-first returns pending immediately',
+      );
+      expect(
+        noteTable.getRow(realId3),
+        isNull,
+        reason: 'Note 3 should be optimistically deleted',
+      );
+      expect(
+        noteTable.getRow(realId4),
+        isNotNull,
+        reason: 'Note 4 should still exist',
+      );
 
-        expect(
-          noteTable.getRow(realId3),
-          isNull,
-          reason: 'Note 3 should stay deleted after confirmation',
-        );
-        expect(
-          noteTable.getRow(realId4),
-          isNotNull,
-          reason: 'Note 4 should still exist after delete 3',
-        );
+      final syncResult3 = await delete3Completer.future.timeout(_timeout);
+      await delete3Sub.cancel();
+      expect(syncResult3.success, isTrue, reason: 'Delete 3 should succeed');
 
-        print(
-          '\n=== Step 5: Delete note 4 online (BUG CHECK: note 3 should NOT come back) ===',
-        );
-        final freshNote4 = noteTable.getRow(realId4)!;
+      await Future.delayed(const Duration(milliseconds: 50));
 
-        final delete4Completer = Completer<MutationSyncResult>();
-        final delete4Sub = subManager.onMutationSyncResult.listen((result) {
-          if (result.reducerName == 'delete_note' &&
-              !delete4Completer.isCompleted) {
-            delete4Completer.complete(result);
-          }
-        });
+      print('  After delete 3 confirmed:');
+      print(
+        '    Note 3 (id=$realId3) exists: ${noteTable.getRow(realId3) != null}',
+      );
+      print(
+        '    Note 4 (id=$realId4) exists: ${noteTable.getRow(realId4) != null}',
+      );
 
-        final encDel4 = BsatnEncoder();
-        encDel4.writeU32(realId4);
-        final result4 = await subManager.reducers.call(
-          'delete_note',
-          encDel4.toBytes(),
-          optimisticChanges: [
-            OptimisticChange.delete('note', freshNote4.toJson()),
-          ],
-        );
+      expect(
+        noteTable.getRow(realId3),
+        isNull,
+        reason: 'Note 3 should stay deleted after confirmation',
+      );
+      expect(
+        noteTable.getRow(realId4),
+        isNotNull,
+        reason: 'Note 4 should still exist after delete 3',
+      );
 
-        expect(
-          result4.isPending,
-          isTrue,
-          reason: 'Offline-first returns pending immediately',
-        );
-        expect(
-          noteTable.getRow(realId4),
-          isNull,
-          reason: 'Note 4 should be optimistically deleted',
-        );
+      print(
+        '\n=== Step 5: Delete note 4 online (BUG CHECK: note 3 should NOT come back) ===',
+      );
+      final freshNote4 = noteTable.getRow(realId4)!;
 
-        final syncResult4 = await delete4Completer.future.timeout(_timeout);
-        await delete4Sub.cancel();
-        expect(syncResult4.success, isTrue, reason: 'Delete 4 should succeed');
+      final delete4Completer = Completer<MutationSyncResult>();
+      final delete4Sub = subManager.onMutationSyncResult.listen((result) {
+        if (result.reducerName == 'delete_note' &&
+            !delete4Completer.isCompleted) {
+          delete4Completer.complete(result);
+        }
+      });
 
-        await Future.delayed(const Duration(milliseconds: 50));
+      final encDel4 = BsatnEncoder();
+      encDel4.writeU32(realId4);
+      final result4 = await subManager.reducers.call(
+        'delete_note',
+        encDel4.toBytes(),
+        optimisticChanges: [
+          OptimisticChange.delete('note', freshNote4.toJson()),
+        ],
+      );
 
-        print('  After delete 4 confirmed:');
-        print(
-          '    Note 3 (id=$realId3) exists: ${noteTable.getRow(realId3) != null}',
-        );
-        print(
-          '    Note 4 (id=$realId4) exists: ${noteTable.getRow(realId4) != null}',
-        );
+      expect(
+        result4.isPending,
+        isTrue,
+        reason: 'Offline-first returns pending immediately',
+      );
+      expect(
+        noteTable.getRow(realId4),
+        isNull,
+        reason: 'Note 4 should be optimistically deleted',
+      );
 
-        expect(
-          noteTable.getRow(realId3),
-          isNull,
-          reason:
-              'CRITICAL BUG: Note 3 must NOT come back when note 4 is deleted!',
-        );
-        expect(
-          noteTable.getRow(realId4),
-          isNull,
-          reason: 'Note 4 should stay deleted',
-        );
+      final syncResult4 = await delete4Completer.future.timeout(_timeout);
+      await delete4Sub.cancel();
+      expect(syncResult4.success, isTrue, reason: 'Delete 4 should succeed');
 
-        final remainingWithPrefix =
-            noteTable
-                .iter()
-                .where((n) => n.title.startsWith(testPrefix))
-                .toList();
-        expect(
-          remainingWithPrefix,
-          isEmpty,
-          reason: 'No notes with test prefix should remain',
-        );
-      },
-      timeout: const Timeout(Duration(seconds: 60)),
-    );
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      print('  After delete 4 confirmed:');
+      print(
+        '    Note 3 (id=$realId3) exists: ${noteTable.getRow(realId3) != null}',
+      );
+      print(
+        '    Note 4 (id=$realId4) exists: ${noteTable.getRow(realId4) != null}',
+      );
+
+      expect(
+        noteTable.getRow(realId3),
+        isNull,
+        reason:
+            'CRITICAL BUG: Note 3 must NOT come back when note 4 is deleted!',
+      );
+      expect(
+        noteTable.getRow(realId4),
+        isNull,
+        reason: 'Note 4 should stay deleted',
+      );
+
+      final remainingWithPrefix = noteTable
+          .iter()
+          .where((n) => n.title.startsWith(testPrefix))
+          .toList();
+      expect(
+        remainingWithPrefix,
+        isEmpty,
+        reason: 'No notes with test prefix should remain',
+      );
+    }, timeout: const Timeout(Duration(seconds: 60)));
   });
 
   group('Connection Lifecycle & State Recovery', () {
@@ -1208,80 +1162,72 @@ void main() {
       } catch (_) {}
     }
 
-    test(
-      'Offline creation works before first server connection',
-      () async {
-        await setup();
-        addTearDown(cleanup);
+    test('Offline creation works before first server connection', () async {
+      await setup();
+      addTearDown(cleanup);
 
-        final tableBeforeLoad = subManager.cache.getTableByName('note');
-        expect(
-          tableBeforeLoad,
-          isNotNull,
-          reason: 'Table should exist immediately after registerDecoder',
-        );
-        expect(
-          (tableBeforeLoad! as TableCache<Note>).count(),
-          equals(0),
-          reason: 'Table should start empty before any data arrives',
-        );
+      final tableBeforeLoad = subManager.cache.getTableByName('note');
+      expect(
+        tableBeforeLoad,
+        isNotNull,
+        reason: 'Table should exist immediately after registerDecoder',
+      );
+      expect(
+        (tableBeforeLoad! as TableCache<Note>).count(),
+        equals(0),
+        reason: 'Table should start empty before any data arrives',
+      );
 
-        await subManager.loadFromOfflineCache();
+      await subManager.loadFromOfflineCache();
 
-        final noteId = DateTime.now().microsecondsSinceEpoch;
-        final encNew = BsatnEncoder();
-        encNew.writeString('New User Note');
-        await subManager.reducers.call(
-          'create_note',
-          encNew.toBytes(),
-          optimisticChanges: [
-            OptimisticChange.insert('note', {
-              'id': noteId,
-              'title': 'New User Note',
-              'content': 'Content',
-              'timestamp': DateTime.now().microsecondsSinceEpoch,
-              'status': {'type': 'draft'},
-            }),
-          ],
-        );
+      final noteId = DateTime.now().microsecondsSinceEpoch;
+      final encNew = BsatnEncoder();
+      encNew.writeString('New User Note');
+      await subManager.reducers.call(
+        'create_note',
+        encNew.toBytes(),
+        optimisticChanges: [
+          OptimisticChange.insert('note', {
+            'id': noteId,
+            'title': 'New User Note',
+            'content': 'Content',
+            'timestamp': DateTime.now().microsecondsSinceEpoch,
+            'status': {'type': 'draft'},
+          }),
+        ],
+      );
 
-        final noteTable = subManager.cache.getTableByTypedName<Note>('note');
-        expect(
-          noteTable.getRow(noteId),
-          isNotNull,
-          reason: 'Optimistic row should be visible',
-        );
-      },
-      timeout: const Timeout(Duration(seconds: 30)),
-    );
+      final noteTable = subManager.cache.getTableByTypedName<Note>('note');
+      expect(
+        noteTable.getRow(noteId),
+        isNotNull,
+        reason: 'Optimistic row should be visible',
+      );
+    }, timeout: const Timeout(Duration(seconds: 30)));
 
-    test(
-      'Deduplication: Duplicate subscriptions are ignored',
-      () async {
-        await setup();
-        addTearDown(cleanup);
+    test('Deduplication: Duplicate subscriptions are ignored', () async {
+      await setup();
+      addTearDown(cleanup);
 
-        await connection.connect();
-        await subManager.onInitialConnection.first.timeout(_timeout);
+      await connection.connect();
+      await subManager.onInitialConnection.first.timeout(_timeout);
 
-        await subManager.subscribe([
-          'SELECT * FROM note',
-          'SELECT * FROM note',
-          'SELECT * FROM folder',
-        ]);
+      await subManager.subscribe([
+        'SELECT * FROM note',
+        'SELECT * FROM note',
+        'SELECT * FROM folder',
+      ]);
 
-        expect(
-          subManager.activeSubscriptionQueries.length,
-          equals(2),
-          reason: 'Duplicate queries should be deduplicated',
-        );
-        expect(
-          subManager.activeSubscriptionQueries,
-          containsAll(['SELECT * FROM note', 'SELECT * FROM folder']),
-        );
-      },
-      timeout: const Timeout(Duration(seconds: 30)),
-    );
+      expect(
+        subManager.activeSubscriptionQueries.length,
+        equals(2),
+        reason: 'Duplicate queries should be deduplicated',
+      );
+      expect(
+        subManager.activeSubscriptionQueries,
+        containsAll(['SELECT * FROM note', 'SELECT * FROM folder']),
+      );
+    }, timeout: const Timeout(Duration(seconds: 30)));
   });
 }
 

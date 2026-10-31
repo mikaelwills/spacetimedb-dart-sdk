@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+
 import 'package:spacetimedb_sdk/src/codec/bsatn_decoder.dart';
 import 'package:spacetimedb_sdk/src/reducers/reducer_arg_decoder.dart';
 import 'package:spacetimedb_sdk/src/reducers/reducer_def.dart';

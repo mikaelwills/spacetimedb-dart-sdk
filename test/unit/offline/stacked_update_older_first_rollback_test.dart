@@ -27,45 +27,42 @@ void main() {
 
     tearDown(() => table.dispose());
 
-    test(
-      'older-first rollback of two rejected stacked UPDATEs keeps the committed '
-      'row, not null',
-      () {
-        final committed = _note(1, 'C');
-        table.insertRow(committed);
+    test('older-first rollback of two rejected stacked UPDATEs keeps the committed '
+        'row, not null', () {
+      final committed = _note(1, 'C');
+      table.insertRow(committed);
 
-        final editA = _note(1, 'A');
-        optimistic.applyOptimisticChanges('reqA', [
-          OptimisticChange.update('note', committed.toJson(), editA.toJson()),
-        ]);
-        expect(table.find(1)?.content, 'A');
+      final editA = _note(1, 'A');
+      optimistic.applyOptimisticChanges('reqA', [
+        OptimisticChange.update('note', committed.toJson(), editA.toJson()),
+      ]);
+      expect(table.find(1)?.content, 'A');
 
-        final editB = _note(1, 'B');
-        optimistic.applyOptimisticChanges('reqB', [
-          OptimisticChange.update('note', editA.toJson(), editB.toJson()),
-        ]);
-        expect(table.find(1)?.content, 'B');
+      final editB = _note(1, 'B');
+      optimistic.applyOptimisticChanges('reqB', [
+        OptimisticChange.update('note', editA.toJson(), editB.toJson()),
+      ]);
+      expect(table.find(1)?.content, 'B');
 
-        optimistic.rollbackOptimisticChanges('reqA');
-        expect(
-          table.find(1)?.content,
-          'B',
-          reason:
-              'reqB still pending on pk 1; rolling back reqA must leave reqB\'s '
-              'overlay, not resurrect committed C',
-        );
+      optimistic.rollbackOptimisticChanges('reqA');
+      expect(
+        table.find(1)?.content,
+        'B',
+        reason:
+            'reqB still pending on pk 1; rolling back reqA must leave reqB\'s '
+            'overlay, not resurrect committed C',
+      );
 
-        optimistic.rollbackOptimisticChanges('reqB');
+      optimistic.rollbackOptimisticChanges('reqB');
 
-        expect(
-          table.find(1)?.content,
-          'C',
-          reason:
-              'both edits rejected; after both rollbacks the pk must show the '
-              'true committed base C, not vanish',
-        );
-      },
-    );
+      expect(
+        table.find(1)?.content,
+        'C',
+        reason:
+            'both edits rejected; after both rollbacks the pk must show the '
+            'true committed base C, not vanish',
+      );
+    });
 
     test('reverse-order control: newest-first rollback of the same stack also '
         'restores committed C', () {

@@ -30,12 +30,11 @@ class _CountingStorage extends InMemoryOfflineStorage {
 }
 
 void _writeFolderRowList(BsatnEncoder encoder, List<Folder> folders) {
-  final encodedRows =
-      folders.map((folder) {
-        final rowEncoder = BsatnEncoder();
-        folder.encodeBsatn(rowEncoder);
-        return rowEncoder.toBytes();
-      }).toList();
+  final encodedRows = folders.map((folder) {
+    final rowEncoder = BsatnEncoder();
+    folder.encodeBsatn(rowEncoder);
+    return rowEncoder.toBytes();
+  }).toList();
 
   final offsets = <int>[];
   var currentOffset = 0;

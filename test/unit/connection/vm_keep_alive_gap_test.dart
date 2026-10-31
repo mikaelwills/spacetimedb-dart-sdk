@@ -15,14 +15,13 @@ void main() {
         host: 'localhost:3000',
         database: 'notesdb',
         config: config,
-        socketFactory:
-            (
-              uri,
-              protocols,
-              headers, {
-              connectTimeout = const Duration(seconds: 10),
-              pingInterval,
-            }) => socket,
+        socketFactory: (
+          uri,
+          protocols,
+          headers, {
+          connectTimeout = const Duration(seconds: 10),
+          pingInterval,
+        }) => socket,
       );
     }
 

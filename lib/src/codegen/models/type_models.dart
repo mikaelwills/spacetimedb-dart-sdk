@@ -14,10 +14,9 @@ class TypeSpace {
     final typesJson = json['types'];
 
     return TypeSpace(
-      types:
-          typesJson is List
-              ? typesJson.map((t) => TypeSpaceEntry.fromJson(t)).toList()
-              : [],
+      types: typesJson is List
+          ? typesJson.map((t) => TypeSpaceEntry.fromJson(t)).toList()
+          : [],
     );
   }
 }
@@ -51,10 +50,9 @@ class ProductType {
     final elementsJson = json['elements'];
 
     return ProductType(
-      elements:
-          elementsJson is List
-              ? elementsJson.map((e) => ProductElement.fromJson(e)).toList()
-              : [],
+      elements: elementsJson is List
+          ? elementsJson.map((e) => ProductElement.fromJson(e)).toList()
+          : [],
     );
   }
 }
@@ -70,8 +68,9 @@ class ProductElement {
     final fieldName = nameObj['some'] ?? "";
 
     final rawType = json['algebraic_type'];
-    final typeJson =
-        rawType is Map<String, dynamic> ? rawType : <String, dynamic>{};
+    final typeJson = rawType is Map<String, dynamic>
+        ? rawType
+        : <String, dynamic>{};
 
     return ProductElement(
       name: fieldName,
@@ -97,10 +96,9 @@ class TypeDef {
     final nameJson = json['name'];
     final typeName = nameJson['name'] ?? "";
     final scopeJson = nameJson['scope'] ?? "";
-    final scopeList =
-        scopeJson is List
-            ? scopeJson.map((s) => s.toString()).toList()
-            : <String>[];
+    final scopeList = scopeJson is List
+        ? scopeJson.map((s) => s.toString()).toList()
+        : <String>[];
 
     return TypeDef(
       scope: scopeList,
@@ -120,10 +118,9 @@ class SumType {
     final variantsJson = json['variants'];
 
     return SumType(
-      variants:
-          variantsJson is List
-              ? variantsJson.map((v) => SumVariant.fromJson(v)).toList()
-              : [],
+      variants: variantsJson is List
+          ? variantsJson.map((v) => SumVariant.fromJson(v)).toList()
+          : [],
     );
   }
 }
@@ -143,10 +140,9 @@ class SumVariant {
     final nameObj = json['name'];
     final variantName = nameObj?['some'] ?? "";
     final rawAlgebraicType = json['algebraic_type'];
-    final algebraicTypeJson =
-        rawAlgebraicType is Map<String, dynamic>
-            ? rawAlgebraicType
-            : <String, dynamic>{};
+    final algebraicTypeJson = rawAlgebraicType is Map<String, dynamic>
+        ? rawAlgebraicType
+        : <String, dynamic>{};
 
     return SumVariant(
       name: variantName.isNotEmpty ? variantName : null,

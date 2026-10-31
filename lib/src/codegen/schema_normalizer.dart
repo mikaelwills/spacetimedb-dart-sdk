@@ -69,10 +69,9 @@ class SchemaNormalizer {
     if (payload is IrProductType) {
       entry = TypeSpaceEntry(
         product: ProductType(
-          elements:
-              payload.elements
-                  .map((e) => ProductElement(name: e.name, type: e.type))
-                  .toList(),
+          elements: payload.elements
+              .map((e) => ProductElement(name: e.name, type: e.type))
+              .toList(),
         ),
       );
     } else {
@@ -110,8 +109,9 @@ class SchemaNormalizer {
   };
 
   String _companionName(String? hint) {
-    final base =
-        (hint != null && hint.isNotEmpty) ? _pascal(hint) : 'InlineSum';
+    final base = (hint != null && hint.isNotEmpty)
+        ? _pascal(hint)
+        : 'InlineSum';
     var name = base;
     var suffix = 2;
     while (_usedNames.contains(name)) {

@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
+
 import '../generated/note.dart';
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';
@@ -135,168 +136,160 @@ void main() {
       timeout: const Timeout(Duration(seconds: 60)),
     );
 
-    test(
-      'offline edits: no intermediate or stale values exposed, full row converges',
-      () async {
-        final title = 'NoFlicker-${DateTime.now().microsecondsSinceEpoch}';
-        final note = await createAndSync(title, 'server v1');
+    test('offline edits: no intermediate or stale values exposed, full row converges', () async {
+      final title = 'NoFlicker-${DateTime.now().microsecondsSinceEpoch}';
+      final note = await createAndSync(title, 'server v1');
 
-        final disconnected = env.connection.onStateChanged
-            .firstWhere((s) => s is! Connected)
-            .timeout(_timeout);
-        await env.connection.disconnect();
-        await disconnected;
+      final disconnected = env.connection.onStateChanged
+          .firstWhere((s) => s is! Connected)
+          .timeout(_timeout);
+      await env.connection.disconnect();
+      await disconnected;
 
-        for (final content in ['v2', 'v3', 'v4 final']) {
-          await updateWithOptimistic(
-            env.noteTable.getRow(note.id)!,
-            content,
-            optimisticTimestamp: DateTime.now().microsecondsSinceEpoch,
-          );
+      for (final content in ['v2', 'v3', 'v4 final']) {
+        await updateWithOptimistic(
+          env.noteTable.getRow(note.id)!,
+          content,
+          optimisticTimestamp: DateTime.now().microsecondsSinceEpoch,
+        );
+      }
+      expect(env.subManager.syncState.pendingCount, equals(3));
+
+      final observedContents = <String>[];
+      final eventSub = env.noteTable.onUpdate.listen((event) {
+        if (event.newRow.id == note.id) {
+          observedContents.add(event.newRow.content);
         }
-        expect(env.subManager.syncState.pendingCount, equals(3));
+      });
 
-        final observedContents = <String>[];
-        final eventSub = env.noteTable.onUpdate.listen((event) {
-          if (event.newRow.id == note.id) {
-            observedContents.add(event.newRow.content);
-          }
-        });
-
-        final results = <MutationSyncResult>[];
-        final allSynced = Completer<void>();
-        final resultSub = env.subManager.onMutationSyncResult.listen((r) {
-          results.add(r);
-          if (results.length == 3 && !allSynced.isCompleted) {
-            allSynced.complete();
-          }
-        });
-
-        await env.connection.connect();
-        await env.subManager.onInitialConnection.first.timeout(_timeout);
-        await env.subManager.onSubscribeApplied.first.timeout(_timeout);
-        await allSynced.future.timeout(_timeout);
-        await resultSub.cancel();
-        await Future.delayed(const Duration(milliseconds: 200));
-        await eventSub.cancel();
-
-        for (final r in results) {
-          expect(r.success, isTrue);
+      final results = <MutationSyncResult>[];
+      final allSynced = Completer<void>();
+      final resultSub = env.subManager.onMutationSyncResult.listen((r) {
+        results.add(r);
+        if (results.length == 3 && !allSynced.isCompleted) {
+          allSynced.complete();
         }
-        expect(
-          observedContents,
-          isNot(contains('server v1')),
-          reason: 'stale snapshot value must never surface during reconnect',
-        );
-        expect(
-          observedContents,
-          isNot(contains('v2')),
-          reason: 'intermediate flush commits must not surface',
-        );
-        expect(
-          observedContents,
-          isNot(contains('v3')),
-          reason: 'intermediate flush commits must not surface',
-        );
+      });
 
-        final cachedRow = env.noteTable.getRow(note.id)!;
-        expect(cachedRow.content, equals('v4 final'));
-        expect(
-          cachedRow.timestamp.toInt(),
-          equals(0),
-          reason: 'released key must reconcile to server-computed fields',
-        );
+      await env.connection.connect();
+      await env.subManager.onInitialConnection.first.timeout(_timeout);
+      await env.subManager.onSubscribeApplied.first.timeout(_timeout);
+      await allSynced.future.timeout(_timeout);
+      await resultSub.cancel();
+      await Future.delayed(const Duration(milliseconds: 200));
+      await eventSub.cancel();
 
-        final observer = await createTestEnv();
-        addTearDown(() async {
-          await observer.subManager.dispose();
-          await observer.connection.disconnect();
-        });
-        await observer.connection.connect();
-        await observer.subManager.onInitialConnection.first.timeout(_timeout);
-        observer.subManager.subscribe(['SELECT * FROM note']);
-        await observer.subManager.onSubscribeApplied.first.timeout(_timeout);
+      for (final r in results) {
+        expect(r.success, isTrue);
+      }
+      expect(
+        observedContents,
+        isNot(contains('server v1')),
+        reason: 'stale snapshot value must never surface during reconnect',
+      );
+      expect(
+        observedContents,
+        isNot(contains('v2')),
+        reason: 'intermediate flush commits must not surface',
+      );
+      expect(
+        observedContents,
+        isNot(contains('v3')),
+        reason: 'intermediate flush commits must not surface',
+      );
 
-        final serverRow = observer.noteTable.getRow(note.id)!;
-        expect(
-          cachedRow,
-          equals(serverRow),
-          reason: 'cache must equal the server row field for field',
-        );
-      },
-      timeout: const Timeout(Duration(seconds: 90)),
-    );
+      final cachedRow = env.noteTable.getRow(note.id)!;
+      expect(cachedRow.content, equals('v4 final'));
+      expect(
+        cachedRow.timestamp.toInt(),
+        equals(0),
+        reason: 'released key must reconcile to server-computed fields',
+      );
 
-    test(
-      'interleaved keys release and reconcile independently',
-      () async {
-        final ts = DateTime.now().microsecondsSinceEpoch;
-        final noteA = await createAndSync('Interleave-A-$ts', 'a1');
-        final noteB = await createAndSync('Interleave-B-$ts', 'b1');
+      final observer = await createTestEnv();
+      addTearDown(() async {
+        await observer.subManager.dispose();
+        await observer.connection.disconnect();
+      });
+      await observer.connection.connect();
+      await observer.subManager.onInitialConnection.first.timeout(_timeout);
+      observer.subManager.subscribe(['SELECT * FROM note']);
+      await observer.subManager.onSubscribeApplied.first.timeout(_timeout);
 
-        final disconnected = env.connection.onStateChanged
-            .firstWhere((s) => s is! Connected)
-            .timeout(_timeout);
-        await env.connection.disconnect();
-        await disconnected;
+      final serverRow = observer.noteTable.getRow(note.id)!;
+      expect(
+        cachedRow,
+        equals(serverRow),
+        reason: 'cache must equal the server row field for field',
+      );
+    }, timeout: const Timeout(Duration(seconds: 90)));
 
-        final guess = DateTime.now().microsecondsSinceEpoch;
-        await updateWithOptimistic(
-          env.noteTable.getRow(noteA.id)!,
-          'a2',
-          optimisticTimestamp: guess,
-        );
-        await updateWithOptimistic(
-          env.noteTable.getRow(noteB.id)!,
-          'b2',
-          optimisticTimestamp: guess,
-        );
-        await updateWithOptimistic(
-          env.noteTable.getRow(noteA.id)!,
-          'a3',
-          optimisticTimestamp: guess,
-        );
-        expect(env.subManager.syncState.pendingCount, equals(3));
+    test('interleaved keys release and reconcile independently', () async {
+      final ts = DateTime.now().microsecondsSinceEpoch;
+      final noteA = await createAndSync('Interleave-A-$ts', 'a1');
+      final noteB = await createAndSync('Interleave-B-$ts', 'b1');
 
-        final bSynced = Completer<void>();
-        var seen = 0;
-        final allSynced = Completer<void>();
-        final sub = env.subManager.onMutationSyncResult.listen((r) {
-          expect(r.success, isTrue);
-          seen++;
-          if (seen == 2 && !bSynced.isCompleted) bSynced.complete();
-          if (seen == 3 && !allSynced.isCompleted) allSynced.complete();
-        });
+      final disconnected = env.connection.onStateChanged
+          .firstWhere((s) => s is! Connected)
+          .timeout(_timeout);
+      await env.connection.disconnect();
+      await disconnected;
 
-        await env.connection.connect();
-        await env.subManager.onInitialConnection.first.timeout(_timeout);
-        await env.subManager.onSubscribeApplied.first.timeout(_timeout);
+      final guess = DateTime.now().microsecondsSinceEpoch;
+      await updateWithOptimistic(
+        env.noteTable.getRow(noteA.id)!,
+        'a2',
+        optimisticTimestamp: guess,
+      );
+      await updateWithOptimistic(
+        env.noteTable.getRow(noteB.id)!,
+        'b2',
+        optimisticTimestamp: guess,
+      );
+      await updateWithOptimistic(
+        env.noteTable.getRow(noteA.id)!,
+        'a3',
+        optimisticTimestamp: guess,
+      );
+      expect(env.subManager.syncState.pendingCount, equals(3));
 
-        await bSynced.future.timeout(_timeout);
-        await Future.delayed(const Duration(milliseconds: 100));
+      final bSynced = Completer<void>();
+      var seen = 0;
+      final allSynced = Completer<void>();
+      final sub = env.subManager.onMutationSyncResult.listen((r) {
+        expect(r.success, isTrue);
+        seen++;
+        if (seen == 2 && !bSynced.isCompleted) bSynced.complete();
+        if (seen == 3 && !allSynced.isCompleted) allSynced.complete();
+      });
 
-        expect(
-          env.noteTable.getRow(noteB.id)!.timestamp.toInt(),
-          equals(0),
-          reason:
-              'B released after its only overlay confirmed, must be '
-              'server-reconciled even while A still has a pending overlay',
-        );
-        expect(
-          env.noteTable.getRow(noteA.id)!.content,
-          equals('a3'),
-          reason: 'A keeps optimistic content while its overlay is pending',
-        );
+      await env.connection.connect();
+      await env.subManager.onInitialConnection.first.timeout(_timeout);
+      await env.subManager.onSubscribeApplied.first.timeout(_timeout);
 
-        await allSynced.future.timeout(_timeout);
-        await sub.cancel();
-        await Future.delayed(const Duration(milliseconds: 200));
+      await bSynced.future.timeout(_timeout);
+      await Future.delayed(const Duration(milliseconds: 100));
 
-        final rowA = env.noteTable.getRow(noteA.id)!;
-        expect(rowA.content, equals('a3'));
-        expect(rowA.timestamp.toInt(), equals(0));
-      },
-      timeout: const Timeout(Duration(seconds: 90)),
-    );
+      expect(
+        env.noteTable.getRow(noteB.id)!.timestamp.toInt(),
+        equals(0),
+        reason:
+            'B released after its only overlay confirmed, must be '
+            'server-reconciled even while A still has a pending overlay',
+      );
+      expect(
+        env.noteTable.getRow(noteA.id)!.content,
+        equals('a3'),
+        reason: 'A keeps optimistic content while its overlay is pending',
+      );
+
+      await allSynced.future.timeout(_timeout);
+      await sub.cancel();
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      final rowA = env.noteTable.getRow(noteA.id)!;
+      expect(rowA.content, equals('a3'));
+      expect(rowA.timestamp.toInt(), equals(0));
+    }, timeout: const Timeout(Duration(seconds: 90)));
   });
 }

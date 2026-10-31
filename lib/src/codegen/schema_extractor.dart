@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+
 import 'package:path/path.dart' as path;
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
 import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
@@ -184,8 +185,10 @@ class SchemaExtractor {
     );
     final dir = Directory(targetPath);
     if (dir.existsSync()) {
-      final wasmFiles =
-          dir.listSync().where((f) => f.path.endsWith('.wasm')).toList();
+      final wasmFiles = dir
+          .listSync()
+          .where((f) => f.path.endsWith('.wasm'))
+          .toList();
       if (wasmFiles.isNotEmpty) {
         return wasmFiles.first.path;
       }
@@ -242,8 +245,9 @@ class SchemaExtractor {
     };
 
     for (final rawSection in sections) {
-      final section =
-          rawSection is Map ? Map<String, dynamic>.from(rawSection) : null;
+      final section = rawSection is Map
+          ? Map<String, dynamic>.from(rawSection)
+          : null;
       if (section == null || section.length != 1) continue;
 
       final sectionKey = section.keys.first;
@@ -251,20 +255,19 @@ class SchemaExtractor {
 
       switch (sectionKey) {
         case 'Typespace':
-          result['typespace'] =
-              sectionValue is Map
-                  ? Map<String, dynamic>.from(sectionValue)
-                  : sectionValue;
+          result['typespace'] = sectionValue is Map
+              ? Map<String, dynamic>.from(sectionValue)
+              : sectionValue;
         case 'Tables':
           result['tables'] = sectionValue is List ? sectionValue : [];
         case 'Reducers':
-          result['reducers'] =
-              sectionValue is List
-                  ? _filterClientCallableReducers(sectionValue)
-                  : [];
+          result['reducers'] = sectionValue is List
+              ? _filterClientCallableReducers(sectionValue)
+              : [];
         case 'Types':
-          result['types'] =
-              sectionValue is List ? _convertV10Types(sectionValue) : [];
+          result['types'] = sectionValue is List
+              ? _convertV10Types(sectionValue)
+              : [];
         case 'MiscExports':
           result['misc_exports'] = sectionValue is List ? sectionValue : [];
         case 'Views':

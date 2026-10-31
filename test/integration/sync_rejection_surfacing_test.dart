@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
+
 import '../generated/note.dart';
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';
@@ -82,81 +83,77 @@ void main() {
       );
     }
 
-    test(
-      'real server rejection is rolled back and surfaced',
-      () async {
-        final title = 'Locked-${DateTime.now().microsecondsSinceEpoch}';
-        final note = await createAndSync(title, 'LOCKED original');
+    test('real server rejection is rolled back and surfaced', () async {
+      final title = 'Locked-${DateTime.now().microsecondsSinceEpoch}';
+      final note = await createAndSync(title, 'LOCKED original');
 
-        final disconnected = env.connection.onStateChanged
-            .firstWhere((s) => s is! Connected)
-            .timeout(_timeout);
-        await env.connection.disconnect();
-        await disconnected;
+      final disconnected = env.connection.onStateChanged
+          .firstWhere((s) => s is! Connected)
+          .timeout(_timeout);
+      await env.connection.disconnect();
+      await disconnected;
 
-        final oldRow = env.noteTable.getRow(note.id)!;
-        await env.reducers.updateNoteGuarded(
-          noteId: note.id,
-          content: 'offline edit',
-          optimisticChanges: [
-            OptimisticChange.update(
-              'note',
-              oldRow.toJson(),
-              editedCopy(oldRow, 'offline edit').toJson(),
-            ),
-          ],
-        );
-        expect(env.noteTable.getRow(note.id)!.content, equals('offline edit'));
-        expect(env.subManager.syncState.pendingCount, equals(1));
+      final oldRow = env.noteTable.getRow(note.id)!;
+      await env.reducers.updateNoteGuarded(
+        noteId: note.id,
+        content: 'offline edit',
+        optimisticChanges: [
+          OptimisticChange.update(
+            'note',
+            oldRow.toJson(),
+            editedCopy(oldRow, 'offline edit').toJson(),
+          ),
+        ],
+      );
+      expect(env.noteTable.getRow(note.id)!.content, equals('offline edit'));
+      expect(env.subManager.syncState.pendingCount, equals(1));
 
-        final failed = Completer<MutationSyncResult>();
-        final sub = env.subManager.onMutationSyncResult.listen((r) {
-          if (r.reducerName == 'update_note_guarded' && !failed.isCompleted) {
-            failed.complete(r);
-          }
-        });
+      final failed = Completer<MutationSyncResult>();
+      final sub = env.subManager.onMutationSyncResult.listen((r) {
+        if (r.reducerName == 'update_note_guarded' && !failed.isCompleted) {
+          failed.complete(r);
+        }
+      });
 
-        await env.connection.connect();
-        await env.subManager.onInitialConnection.first.timeout(_timeout);
-        await env.subManager.onSubscribeApplied.first.timeout(_timeout);
+      await env.connection.connect();
+      await env.subManager.onInitialConnection.first.timeout(_timeout);
+      await env.subManager.onSubscribeApplied.first.timeout(_timeout);
 
-        final result = await failed.future.timeout(_timeout);
-        await sub.cancel();
+      final result = await failed.future.timeout(_timeout);
+      await sub.cancel();
 
-        expect(result.success, isFalse, reason: 'server must reject the edit');
-        await waitForSyncState((s) => s.isIdle && s.failedCount > 0);
+      expect(result.success, isFalse, reason: 'server must reject the edit');
+      await waitForSyncState((s) => s.isIdle && s.failedCount > 0);
 
-        final state = env.subManager.syncState;
-        expect(state.failedCount, equals(1));
-        expect(state.hasError, isTrue);
-        expect(
-          state.recentFailures.single.reducerName,
-          equals('update_note_guarded'),
-        );
-        expect(
-          state
-              .recentFailures
-              .single
-              .optimisticChanges!
-              .single
-              .newRowJson!['content'],
-          equals('offline edit'),
-          reason: 'failure record must carry the lost edit for recovery',
-        );
+      final state = env.subManager.syncState;
+      expect(state.failedCount, equals(1));
+      expect(state.hasError, isTrue);
+      expect(
+        state.recentFailures.single.reducerName,
+        equals('update_note_guarded'),
+      );
+      expect(
+        state
+            .recentFailures
+            .single
+            .optimisticChanges!
+            .single
+            .newRowJson!['content'],
+        equals('offline edit'),
+        reason: 'failure record must carry the lost edit for recovery',
+      );
 
-        expect(
-          env.noteTable.getRow(note.id)!.content,
-          equals('LOCKED original'),
-          reason: 'rejected edit must be rolled back in the cache',
-        );
-        expect(
-          await env.subManager.getPendingMutations(),
-          isEmpty,
-          reason: 'deterministic rejection must not retry forever',
-        );
-      },
-      timeout: const Timeout(Duration(seconds: 60)),
-    );
+      expect(
+        env.noteTable.getRow(note.id)!.content,
+        equals('LOCKED original'),
+        reason: 'rejected edit must be rolled back in the cache',
+      );
+      expect(
+        await env.subManager.getPendingMutations(),
+        isEmpty,
+        reason: 'deterministic rejection must not retry forever',
+      );
+    }, timeout: const Timeout(Duration(seconds: 60)));
 
     test(
       'mixed batch: rejection does not poison the queue and reports partially',

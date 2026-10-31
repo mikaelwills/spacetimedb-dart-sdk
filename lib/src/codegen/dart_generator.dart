@@ -7,6 +7,7 @@ import 'package:spacetimedb_sdk/src/codegen/generators/product_type_generator.da
 import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
 import 'package:spacetimedb_sdk/src/codegen/schema_normalizer.dart';
 import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
+
 import 'dart:io';
 
 class DartGenerator {

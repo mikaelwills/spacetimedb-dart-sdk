@@ -23,12 +23,11 @@ class _StringDecoder extends RowDecoder<String> {
 
 BsatnRowList _rowList(List<String> rows) {
   if (rows.isEmpty) return BsatnRowList.empty();
-  final encodedRows =
-      rows.map((row) {
-        final encoder = BsatnEncoder();
-        encoder.writeString(row);
-        return encoder.toBytes();
-      }).toList();
+  final encodedRows = rows.map((row) {
+    final encoder = BsatnEncoder();
+    encoder.writeString(row);
+    return encoder.toBytes();
+  }).toList();
 
   final offsets = <int>[];
   var currentOffset = 0;

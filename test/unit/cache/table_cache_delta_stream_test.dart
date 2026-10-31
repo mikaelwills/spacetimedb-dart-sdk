@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
 import 'package:spacetimedb_sdk/protocol.dart';
@@ -16,12 +17,11 @@ Note createNote(int id, String title, {String content = ''}) => Note(
 
 BsatnRowList _rowList(List<Note> notes) {
   if (notes.isEmpty) return BsatnRowList.empty();
-  final encoded =
-      notes.map((n) {
-        final e = BsatnEncoder();
-        n.encodeBsatn(e);
-        return e.toBytes();
-      }).toList();
+  final encoded = notes.map((n) {
+    final e = BsatnEncoder();
+    n.encodeBsatn(e);
+    return e.toBytes();
+  }).toList();
   final offsets = <int>[];
   var cursor = 0;
   for (final row in encoded) {
@@ -231,25 +231,22 @@ void main() {
       expect(events, isEmpty);
     });
 
-    test(
-      'ordering: inside onInsert listener, rows.value already reflects new state',
-      () {
-        List<Note>? rowsSeen;
-        final sub = cache.onInsert.listen((_) {
-          rowsSeen = cache.rows.value;
-        });
-        addTearDown(sub.cancel);
+    test('ordering: inside onInsert listener, rows.value already reflects new state', () {
+      List<Note>? rowsSeen;
+      final sub = cache.onInsert.listen((_) {
+        rowsSeen = cache.rows.value;
+      });
+      addTearDown(sub.cancel);
 
-        cache.applyTransactionUpdate(
-          BsatnRowList.empty(),
-          _rowList([createNote(1, 'new')]),
-          context,
-        );
+      cache.applyTransactionUpdate(
+        BsatnRowList.empty(),
+        _rowList([createNote(1, 'new')]),
+        context,
+      );
 
-        expect(rowsSeen, isNotNull);
-        expect(rowsSeen!.map((n) => n.id), contains(1));
-      },
-    );
+      expect(rowsSeen, isNotNull);
+      expect(rowsSeen!.map((n) => n.id), contains(1));
+    });
 
     test(
       'ordering: inside lastBatch listener, delta streams have already fired',

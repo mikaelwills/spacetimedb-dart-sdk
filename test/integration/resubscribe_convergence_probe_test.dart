@@ -1,6 +1,8 @@
 import 'dart:async';
+
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/protocol.dart';
+
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';
 
@@ -26,98 +28,92 @@ void main() {
         .firstWhere((state) => state is T)
         .timeout(
           timeout,
-          onTimeout:
-              () =>
-                  throw TimeoutException(
-                    'Timed out waiting for state $T. Current: ${connection.state}',
-                  ),
+          onTimeout: () => throw TimeoutException(
+            'Timed out waiting for state $T. Current: ${connection.state}',
+          ),
         );
   }
 
-  test(
-    'PROBE: map retains set after interrupted resubscribe; next reconnect converges',
-    () async {
-      final env = await createTestEnv();
-      await env.connection.connect();
-      await env.subManager.onInitialConnection.first.timeout(
-        const Duration(seconds: 5),
-      );
+  test('PROBE: map retains set after interrupted resubscribe; next reconnect converges', () async {
+    final env = await createTestEnv();
+    await env.connection.connect();
+    await env.subManager.onInitialConnection.first.timeout(
+      const Duration(seconds: 5),
+    );
 
-      // Establish an active subscription so _onReconnected has a set to replay.
-      await env.subManager.subscribe(['SELECT * FROM note']);
-      expect(
-        env.subManager.subscriptionsByQuerySetId,
-        isNotEmpty,
-        reason: 'baseline: one active query set',
-      );
-      expect(
-        env.subManager.subscriptionsReady.value,
-        isTrue,
-        reason: 'baseline: ready after initial SubscribeApplied',
-      );
+    // Establish an active subscription so _onReconnected has a set to replay.
+    await env.subManager.subscribe(['SELECT * FROM note']);
+    expect(
+      env.subManager.subscriptionsByQuerySetId,
+      isNotEmpty,
+      reason: 'baseline: one active query set',
+    );
+    expect(
+      env.subManager.subscriptionsReady.value,
+      isTrue,
+      reason: 'baseline: ready after initial SubscribeApplied',
+    );
 
-      // --- Interrupt a resubscribe mid-flight ---
-      // reconnect() -> disconnect(); connect(). The subsequent Connected fires
-      // _onReconnected which clears+replays the set. We slam a disconnect right
-      // after to try to catch the resubscribe before its SubscribeApplied lands.
-      // On a clean local server the apply is fast, so we may or may not win the
-      // race; either way we assert the load-bearing invariants below.
-      await env.connection.reconnect();
-      // Do NOT await Connected/apply — disconnect immediately.
-      await env.connection.disconnect();
-      await waitForState<Disconnected>(env.connection);
+    // --- Interrupt a resubscribe mid-flight ---
+    // reconnect() -> disconnect(); connect(). The subsequent Connected fires
+    // _onReconnected which clears+replays the set. We slam a disconnect right
+    // after to try to catch the resubscribe before its SubscribeApplied lands.
+    // On a clean local server the apply is fast, so we may or may not win the
+    // race; either way we assert the load-bearing invariants below.
+    await env.connection.reconnect();
+    // Do NOT await Connected/apply — disconnect immediately.
+    await env.connection.disconnect();
+    await waitForState<Disconnected>(env.connection);
 
-      // OBSERVATION A (C3 / claim 2a): record whether the set survives in the
-      // map across a disconnect-flushed resubscribe. Do NOT hard-fail — we want
-      // to observe convergence (C) regardless of this branch.
-      final mapEmptyAfterInterrupt =
-          env.subManager.subscriptionsByQuerySetId.isEmpty;
-      // ignore: avoid_print
-      print(
-        'PROBE OBSERVATION A: map empty after interrupt = '
-        '$mapEmptyAfterInterrupt',
-      );
+    // OBSERVATION A (C3 / claim 2a): record whether the set survives in the
+    // map across a disconnect-flushed resubscribe. Do NOT hard-fail — we want
+    // to observe convergence (C) regardless of this branch.
+    final mapEmptyAfterInterrupt =
+        env.subManager.subscriptionsByQuerySetId.isEmpty;
+    // ignore: avoid_print
+    print(
+      'PROBE OBSERVATION A: map empty after interrupt = '
+      '$mapEmptyAfterInterrupt',
+    );
 
-      // INVARIANT B: while disconnected, ready is false.
-      expect(
-        env.subManager.subscriptionsReady.value,
-        isFalse,
-        reason: 'ready latches false on Disconnected',
-      );
+    // INVARIANT B: while disconnected, ready is false.
+    expect(
+      env.subManager.subscriptionsReady.value,
+      isFalse,
+      reason: 'ready latches false on Disconnected',
+    );
 
-      // --- Now allow a clean reconnect and observe convergence (claim 2b) ---
-      await env.connection.connect();
-      await waitForState<Connected>(env.connection);
+    // --- Now allow a clean reconnect and observe convergence (claim 2b) ---
+    await env.connection.connect();
+    await waitForState<Connected>(env.connection);
 
-      // Give _onReconnected time to replay the retained set and apply.
-      final converged = await _waitReady(
-        env.subManager,
-        timeout: const Duration(seconds: 10),
-      );
+    // Give _onReconnected time to replay the retained set and apply.
+    final converged = await _waitReady(
+      env.subManager,
+      timeout: const Duration(seconds: 10),
+    );
 
-      // ignore: avoid_print
-      print(
-        'PROBE OBSERVATION C: converged after clean reconnect = $converged; '
-        'map now = ${env.subManager.subscriptionsByQuerySetId}',
-      );
+    // ignore: avoid_print
+    print(
+      'PROBE OBSERVATION C: converged after clean reconnect = $converged; '
+      'map now = ${env.subManager.subscriptionsByQuerySetId}',
+    );
 
-      // INVARIANT C (claim 2b): the set IS re-applied on the next Connected and
-      // subscriptionsReady returns to true. If this is FALSE, the
-      // "never converges / retry is lost" branch is REAL (the load-bearing bug).
-      expect(
-        converged,
-        isTrue,
-        reason:
-            'CLAIM 2b: after a clean reconnect following an interrupted one, '
-            'the set must be re-applied and ready must recover to true. '
-            'mapEmptyAfterInterrupt=$mapEmptyAfterInterrupt',
-      );
+    // INVARIANT C (claim 2b): the set IS re-applied on the next Connected and
+    // subscriptionsReady returns to true. If this is FALSE, the
+    // "never converges / retry is lost" branch is REAL (the load-bearing bug).
+    expect(
+      converged,
+      isTrue,
+      reason:
+          'CLAIM 2b: after a clean reconnect following an interrupted one, '
+          'the set must be re-applied and ready must recover to true. '
+          'mapEmptyAfterInterrupt=$mapEmptyAfterInterrupt',
+    );
 
-      env.subManager.dispose();
-      await env.disconnect();
-    },
-    timeout: const Timeout(Duration(seconds: 45)),
-  );
+    env.subManager.dispose();
+    await env.disconnect();
+  }, timeout: const Timeout(Duration(seconds: 45)));
 
   test(
     'PROBE branch-A: disconnect AFTER subscribe re-registers -> map non-empty',

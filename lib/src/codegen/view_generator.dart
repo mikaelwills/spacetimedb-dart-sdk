@@ -10,18 +10,18 @@ class ViewGenerator {
 
   ViewGenerator(this.schema);
 
-  ViewReturnType getViewReturnPattern(ViewSchema view) => switch (view
-      .returnType) {
-    ArrayType() => ViewReturnType.array,
-    OptionType() => ViewReturnType.option,
-    IrSumType(variants: final variants)
-        when variants.any((v) => v.name == 'none') =>
-      ViewReturnType.option,
-    IrProductType(elements: [ProductField(name: kQueryViewReturnTag)]) =>
-      ViewReturnType.query,
-    RefType() => ViewReturnType.single,
-    _ => ViewReturnType.unknown,
-  };
+  ViewReturnType getViewReturnPattern(ViewSchema view) =>
+      switch (view.returnType) {
+        ArrayType() => ViewReturnType.array,
+        OptionType() => ViewReturnType.option,
+        IrSumType(variants: final variants)
+            when variants.any((v) => v.name == 'none') =>
+          ViewReturnType.option,
+        IrProductType(elements: [ProductField(name: kQueryViewReturnTag)]) =>
+          ViewReturnType.query,
+        RefType() => ViewReturnType.single,
+        _ => ViewReturnType.unknown,
+      };
 
   String? getViewRowType(ViewSchema view) {
     final pattern = getViewReturnPattern(view);
@@ -29,9 +29,7 @@ class ViewGenerator {
     if (rt == null) return null;
 
     return switch (pattern) {
-      .array => _rowTypeFromAlgebraic(
-        rt is ArrayType ? rt.element : null,
-      ),
+      .array => _rowTypeFromAlgebraic(rt is ArrayType ? rt.element : null),
       .option => _rowTypeFromOption(rt),
       .query => _rowTypeFromQuery(rt),
       .single => _rowTypeFromAlgebraic(rt),

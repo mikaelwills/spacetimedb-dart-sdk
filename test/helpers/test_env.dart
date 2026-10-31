@@ -1,4 +1,5 @@
 import 'package:spacetimedb_sdk/codegen.dart';
+
 import '../generated/note.dart';
 import '../generated/folder.dart';
 import '../generated/entity.dart';

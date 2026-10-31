@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_print
 import 'dart:io';
+
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/src/codegen/schema_extractor.dart';
 import 'package:spacetimedb_sdk/src/codegen/dart_generator.dart';
@@ -141,9 +142,8 @@ void main() {
 }
 """;
 
-        await File(
-          path.join(tempDir.path, 'main.dart'),
-        ).writeAsString(userAppScript);
+        await File(path.join(tempDir.path, 'main.dart'))
+            .writeAsString(userAppScript);
 
         // 4. Create pubspec.yaml for the temp app (Flutter project since SDK depends on Flutter)
         await File(path.join(tempDir.path, 'pubspec.yaml')).writeAsString("""

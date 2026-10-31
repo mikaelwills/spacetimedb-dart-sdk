@@ -1,8 +1,10 @@
 // ignore_for_file: avoid_print
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/src/codegen/schema_extractor.dart';
+
 import 'test_helpers.dart';
 
 void main() {
@@ -231,66 +233,58 @@ WARNING: at start
   });
 
   group('SchemaExtractor - Integration Tests', () {
-    test(
-      'all three methods produce equivalent schemas',
-      () async {
-        final sdkRoot = findSdkRoot();
+    test('all three methods produce equivalent schemas', () async {
+      final sdkRoot = findSdkRoot();
 
-        // Use spacetime_test_module from the project root, or override with env var
-        final testProjectPath =
-            Platform.environment['SPACETIME_TEST_PROJECT'] ??
-            '$sdkRoot/spacetime_test_module';
+      // Use spacetime_test_module from the project root, or override with env var
+      final testProjectPath =
+          Platform.environment['SPACETIME_TEST_PROJECT'] ??
+          '$sdkRoot/spacetime_test_module';
 
-        // Extract from project (builds WASM)
-        final schemaFromProject = await SchemaExtractor.fromProject(
-          testProjectPath,
+      // Extract from project (builds WASM)
+      final schemaFromProject = await SchemaExtractor.fromProject(
+        testProjectPath,
+      );
+
+      // Find the built WASM
+      final wasmPath = '$testProjectPath/target/wasm32-unknown-unknown/release';
+      final wasmFiles = Directory(wasmPath)
+          .listSync()
+          .where((f) => f.path.endsWith('.wasm'))
+          .toList();
+
+      expect(
+        wasmFiles.isNotEmpty,
+        true,
+        reason: 'No WASM files found after build',
+      );
+
+      // Extract from WASM
+      final schemaFromWasm = await SchemaExtractor.fromWasm(
+        wasmFiles.first.path,
+      );
+
+      // Both should have same structure
+      expect(schemaFromProject.tables.length, schemaFromWasm.tables.length);
+      expect(schemaFromProject.reducers.length, schemaFromWasm.reducers.length);
+
+      // If module is deployed, compare with network too
+      final dbName = Platform.environment['SPACETIME_TEST_DATABASE'];
+      if (dbName != null) {
+        final schemaFromNetwork = await SchemaExtractor.fromNetwork(
+          database: dbName,
+          server: 'http://localhost:3000',
         );
-
-        // Find the built WASM
-        final wasmPath =
-            '$testProjectPath/target/wasm32-unknown-unknown/release';
-        final wasmFiles =
-            Directory(
-              wasmPath,
-            ).listSync().where((f) => f.path.endsWith('.wasm')).toList();
 
         expect(
-          wasmFiles.isNotEmpty,
-          true,
-          reason: 'No WASM files found after build',
+          schemaFromNetwork.tables.length,
+          schemaFromProject.tables.length,
         );
-
-        // Extract from WASM
-        final schemaFromWasm = await SchemaExtractor.fromWasm(
-          wasmFiles.first.path,
-        );
-
-        // Both should have same structure
-        expect(schemaFromProject.tables.length, schemaFromWasm.tables.length);
         expect(
+          schemaFromNetwork.reducers.length,
           schemaFromProject.reducers.length,
-          schemaFromWasm.reducers.length,
         );
-
-        // If module is deployed, compare with network too
-        final dbName = Platform.environment['SPACETIME_TEST_DATABASE'];
-        if (dbName != null) {
-          final schemaFromNetwork = await SchemaExtractor.fromNetwork(
-            database: dbName,
-            server: 'http://localhost:3000',
-          );
-
-          expect(
-            schemaFromNetwork.tables.length,
-            schemaFromProject.tables.length,
-          );
-          expect(
-            schemaFromNetwork.reducers.length,
-            schemaFromProject.reducers.length,
-          );
-        }
-      },
-      tags: ['integration', 'full-environment'],
-    );
+      }
+    }, tags: ['integration', 'full-environment']);
   });
 }

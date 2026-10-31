@@ -23,8 +23,8 @@ void main() {
         .firstWhere((state) => state is T)
         .timeout(
           timeout,
-          onTimeout:
-              () => throw TimeoutException('Timed out waiting for state $T'),
+          onTimeout: () =>
+              throw TimeoutException('Timed out waiting for state $T'),
         );
   }
 

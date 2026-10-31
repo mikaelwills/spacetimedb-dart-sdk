@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
 import 'package:spacetimedb_sdk/protocol.dart';
@@ -16,12 +17,11 @@ Note _note(int id, String title) => Note(
 
 BsatnRowList _rowList(List<Note> notes) {
   if (notes.isEmpty) return BsatnRowList.empty();
-  final encoded =
-      notes.map((n) {
-        final e = BsatnEncoder();
-        n.encodeBsatn(e);
-        return e.toBytes();
-      }).toList();
+  final encoded = notes.map((n) {
+    final e = BsatnEncoder();
+    n.encodeBsatn(e);
+    return e.toBytes();
+  }).toList();
   final offsets = <int>[];
   var cursor = 0;
   for (final row in encoded) {
@@ -53,12 +53,11 @@ class _StringNoPkDecoder extends RowDecoder<String> {
 
 BsatnRowList _stringRowList(List<String> values) {
   if (values.isEmpty) return BsatnRowList.empty();
-  final encoded =
-      values.map((value) {
-        final encoder = BsatnEncoder();
-        encoder.writeString(value);
-        return encoder.toBytes();
-      }).toList();
+  final encoded = values.map((value) {
+    final encoder = BsatnEncoder();
+    encoder.writeString(value);
+    return encoder.toBytes();
+  }).toList();
   final offsets = <int>[];
   var cursor = 0;
   for (final row in encoded) {

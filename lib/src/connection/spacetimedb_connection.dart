@@ -12,21 +12,22 @@ import 'package:spacetimedb_sdk/src/connection/keep_alive_monitor.dart';
 import 'package:spacetimedb_sdk/src/messages/client_messages.dart';
 import 'package:spacetimedb_sdk/src/messages/decompress.dart';
 import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
+
 import 'platform.dart' show kIsWeb;
+
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'websocket.dart' as ws;
 import 'websocket_protocols.dart';
 import 'websocket_v3_frames.dart';
 
-typedef WebSocketFactory =
-    WebSocketChannel Function(
-      Uri uri,
-      Iterable<String>? protocols,
-      Map<String, dynamic>? headers, {
-      Duration connectTimeout,
-      Duration? pingInterval,
-    });
+typedef WebSocketFactory = WebSocketChannel Function(
+  Uri uri,
+  Iterable<String>? protocols,
+  Map<String, dynamic>? headers, {
+  Duration connectTimeout,
+  Duration? pingInterval,
+});
 
 class SpacetimeDbConnection {
   final String host;
@@ -357,10 +358,9 @@ class SpacetimeDbConnection {
     final quality = ConnectionQuality(
       status: _state,
       reconnectAttempts: _reconnectAttempts,
-      timeSinceLastConnection:
-          _lastSuccessfulConnection != null
-              ? DateTime.now().difference(_lastSuccessfulConnection!)
-              : null,
+      timeSinceLastConnection: _lastSuccessfulConnection != null
+          ? DateTime.now().difference(_lastSuccessfulConnection!)
+          : null,
       lastError: _lastError,
       lastPingSent: _lastPingSent,
       lastPongReceived: _lastMessageReceived,
@@ -475,12 +475,9 @@ class SpacetimeDbConnection {
           final message = OneOffQueryMessage(queryString: pingQuery);
           send(message.encode());
           _lastPingSent = DateTime.now();
-          final sinceLastRx =
-              _lastMessageReceived != null
-                  ? DateTime.now()
-                      .difference(_lastMessageReceived!)
-                      .inMilliseconds
-                  : null;
+          final sinceLastRx = _lastMessageReceived != null
+              ? DateTime.now().difference(_lastMessageReceived!).inMilliseconds
+              : null;
           SdkLogger.i(
             'KEEPALIVE_PING sent (last inbound ${sinceLastRx}ms ago)',
           );
@@ -489,12 +486,9 @@ class SpacetimeDbConnection {
         }
       },
       onDisconnect: () {
-        final sinceLastRx =
-            _lastMessageReceived != null
-                ? DateTime.now()
-                    .difference(_lastMessageReceived!)
-                    .inMilliseconds
-                : null;
+        final sinceLastRx = _lastMessageReceived != null
+            ? DateTime.now().difference(_lastMessageReceived!).inMilliseconds
+            : null;
         SdkLogger.i(
           'Keep-alive timeout - connection declared dead '
           '(last inbound ${sinceLastRx}ms ago)',

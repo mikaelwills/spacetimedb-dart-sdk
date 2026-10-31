@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
 import 'package:spacetimedb_sdk/protocol.dart';
@@ -19,12 +20,11 @@ BsatnRowList createRowList(List<Note> notes) {
     return BsatnRowList.empty();
   }
 
-  final encodedRows =
-      notes.map((note) {
-        final encoder = BsatnEncoder();
-        note.encodeBsatn(encoder);
-        return encoder.toBytes();
-      }).toList();
+  final encodedRows = notes.map((note) {
+    final encoder = BsatnEncoder();
+    note.encodeBsatn(encoder);
+    return encoder.toBytes();
+  }).toList();
 
   final offsets = <int>[];
   var currentOffset = 0;
@@ -62,106 +62,96 @@ void main() {
 
     tearDown(() => cache.dispose());
 
-    test(
-      'V1: single PK delete+insert pair produces one TableUpdateEvent, no TableDeleteEvent',
-      () {
-        final oldNote = createNote(42, 'old title', content: 'before');
-        cache.insertRow(oldNote);
-        expect(cache.find(42)?.content, equals('before'));
+    test('V1: single PK delete+insert pair produces one TableUpdateEvent, no TableDeleteEvent', () {
+      final oldNote = createNote(42, 'old title', content: 'before');
+      cache.insertRow(oldNote);
+      expect(cache.find(42)?.content, equals('before'));
 
-        final newNote = createNote(42, 'new title', content: 'after');
-        cache.applyTransactionUpdate(
-          createRowList([oldNote]),
-          createRowList([newNote]),
-          dummyContext,
-        );
+      final newNote = createNote(42, 'new title', content: 'after');
+      cache.applyTransactionUpdate(
+        createRowList([oldNote]),
+        createRowList([newNote]),
+        dummyContext,
+      );
 
-        final batch = cache.lastBatch.value;
-        expect(batch, isNotNull, reason: 'lastBatch should have fired once');
-        expect(
-          batch!.length,
-          equals(1),
-          reason:
-              'A single PK delete+insert pair must coalesce into exactly one event. '
-              'Events observed: ${batch.events}',
-        );
-        expect(batch.deletes, isEmpty, reason: 'no phantom delete expected');
-        expect(
-          batch.inserts,
-          isEmpty,
-          reason: 'insert must coalesce to update',
-        );
-        expect(batch.updates.length, equals(1));
+      final batch = cache.lastBatch.value;
+      expect(batch, isNotNull, reason: 'lastBatch should have fired once');
+      expect(
+        batch!.length,
+        equals(1),
+        reason:
+            'A single PK delete+insert pair must coalesce into exactly one event. '
+            'Events observed: ${batch.events}',
+      );
+      expect(batch.deletes, isEmpty, reason: 'no phantom delete expected');
+      expect(batch.inserts, isEmpty, reason: 'insert must coalesce to update');
+      expect(batch.updates.length, equals(1));
 
-        final update = batch.updates.first;
+      final update = batch.updates.first;
+      expect(update.oldRow.content, equals('before'));
+      expect(update.newRow.content, equals('after'));
+      expect(update.oldRow.id, equals(42));
+      expect(update.newRow.id, equals(42));
+
+      expect(cache.find(42)?.content, equals('after'));
+    });
+
+    test('V2: mixed batch — standalone deletes + fresh inserts + PK-update pairs — correct counts', () {
+      cache.insertRow(createNote(1, 'to-delete-1'));
+      cache.insertRow(createNote(2, 'to-delete-2'));
+      cache.insertRow(createNote(3, 'to-update-1', content: 'before'));
+      cache.insertRow(createNote(4, 'to-update-2', content: 'before'));
+
+      final deletes = createRowList([
+        createNote(1, 'to-delete-1'),
+        createNote(2, 'to-delete-2'),
+        createNote(3, 'to-update-1', content: 'before'),
+        createNote(4, 'to-update-2', content: 'before'),
+      ]);
+
+      final inserts = createRowList([
+        createNote(3, 'to-update-1', content: 'after'),
+        createNote(4, 'to-update-2', content: 'after'),
+        createNote(5, 'fresh-1'),
+        createNote(6, 'fresh-2'),
+      ]);
+
+      cache.applyTransactionUpdate(deletes, inserts, dummyContext);
+
+      final batch = cache.lastBatch.value;
+      expect(batch, isNotNull);
+      expect(
+        batch!.length,
+        equals(6),
+        reason:
+            '2 standalone deletes + 2 fresh inserts + 2 updates = 6 events. '
+            'Observed: ${batch.events}',
+      );
+      expect(batch.deletes.length, equals(2));
+      expect(batch.inserts.length, equals(2));
+      expect(batch.updates.length, equals(2));
+
+      final deletedIds = batch.deletes.map((e) => e.row.id).toSet();
+      expect(deletedIds, equals({1, 2}));
+
+      final insertedIds = batch.inserts.map((e) => e.row.id).toSet();
+      expect(insertedIds, equals({5, 6}));
+
+      final updatedIds = batch.updates.map((e) => e.newRow.id).toSet();
+      expect(updatedIds, equals({3, 4}));
+
+      for (final update in batch.updates) {
         expect(update.oldRow.content, equals('before'));
         expect(update.newRow.content, equals('after'));
-        expect(update.oldRow.id, equals(42));
-        expect(update.newRow.id, equals(42));
+      }
 
-        expect(cache.find(42)?.content, equals('after'));
-      },
-    );
-
-    test(
-      'V2: mixed batch — standalone deletes + fresh inserts + PK-update pairs — correct counts',
-      () {
-        cache.insertRow(createNote(1, 'to-delete-1'));
-        cache.insertRow(createNote(2, 'to-delete-2'));
-        cache.insertRow(createNote(3, 'to-update-1', content: 'before'));
-        cache.insertRow(createNote(4, 'to-update-2', content: 'before'));
-
-        final deletes = createRowList([
-          createNote(1, 'to-delete-1'),
-          createNote(2, 'to-delete-2'),
-          createNote(3, 'to-update-1', content: 'before'),
-          createNote(4, 'to-update-2', content: 'before'),
-        ]);
-
-        final inserts = createRowList([
-          createNote(3, 'to-update-1', content: 'after'),
-          createNote(4, 'to-update-2', content: 'after'),
-          createNote(5, 'fresh-1'),
-          createNote(6, 'fresh-2'),
-        ]);
-
-        cache.applyTransactionUpdate(deletes, inserts, dummyContext);
-
-        final batch = cache.lastBatch.value;
-        expect(batch, isNotNull);
-        expect(
-          batch!.length,
-          equals(6),
-          reason:
-              '2 standalone deletes + 2 fresh inserts + 2 updates = 6 events. '
-              'Observed: ${batch.events}',
-        );
-        expect(batch.deletes.length, equals(2));
-        expect(batch.inserts.length, equals(2));
-        expect(batch.updates.length, equals(2));
-
-        final deletedIds = batch.deletes.map((e) => e.row.id).toSet();
-        expect(deletedIds, equals({1, 2}));
-
-        final insertedIds = batch.inserts.map((e) => e.row.id).toSet();
-        expect(insertedIds, equals({5, 6}));
-
-        final updatedIds = batch.updates.map((e) => e.newRow.id).toSet();
-        expect(updatedIds, equals({3, 4}));
-
-        for (final update in batch.updates) {
-          expect(update.oldRow.content, equals('before'));
-          expect(update.newRow.content, equals('after'));
-        }
-
-        expect(cache.find(1), isNull);
-        expect(cache.find(2), isNull);
-        expect(cache.find(3)?.content, equals('after'));
-        expect(cache.find(4)?.content, equals('after'));
-        expect(cache.find(5)?.title, equals('fresh-1'));
-        expect(cache.find(6)?.title, equals('fresh-2'));
-      },
-    );
+      expect(cache.find(1), isNull);
+      expect(cache.find(2), isNull);
+      expect(cache.find(3)?.content, equals('after'));
+      expect(cache.find(4)?.content, equals('after'));
+      expect(cache.find(5)?.title, equals('fresh-1'));
+      expect(cache.find(6)?.title, equals('fresh-2'));
+    });
 
     test(
       'V-ghost: delete for a row not in cache still emits TableDeleteEvent',

@@ -1,39 +1,35 @@
 // ignore_for_file: avoid_print
 import 'dart:io';
+
 import 'package:args/args.dart';
 import 'package:spacetimedb_sdk/src/codegen/schema_extractor.dart';
 import 'package:spacetimedb_sdk/src/codegen/dart_generator.dart';
 
 void main(List<String> arguments) async {
-  final parser =
-      ArgParser()
-        // Network approach (existing)
-        ..addOption(
-          'database',
-          abbr: 'd',
-          help: 'Database name to generate from',
-        )
-        ..addOption('server', abbr: 's', help: 'SpacetimeDB server URL')
-        // Local file approach (new)
-        ..addOption(
-          'project-path',
-          abbr: 'p',
-          help: 'Path to SpacetimeDB Rust module project',
-        )
-        ..addOption('bin-path', abbr: 'b', help: 'Path to compiled WASM binary')
-        // Common
-        ..addOption(
-          'output',
-          abbr: 'o',
-          mandatory: true,
-          help: 'Output directory for generated files',
-        )
-        ..addFlag(
-          'help',
-          abbr: 'h',
-          help: 'Show usage information',
-          negatable: false,
-        );
+  final parser = ArgParser()
+    // Network approach (existing)
+    ..addOption('database', abbr: 'd', help: 'Database name to generate from')
+    ..addOption('server', abbr: 's', help: 'SpacetimeDB server URL')
+    // Local file approach (new)
+    ..addOption(
+      'project-path',
+      abbr: 'p',
+      help: 'Path to SpacetimeDB Rust module project',
+    )
+    ..addOption('bin-path', abbr: 'b', help: 'Path to compiled WASM binary')
+    // Common
+    ..addOption(
+      'output',
+      abbr: 'o',
+      mandatory: true,
+      help: 'Output directory for generated files',
+    )
+    ..addFlag(
+      'help',
+      abbr: 'h',
+      help: 'Show usage information',
+      negatable: false,
+    );
 
   try {
     final results = parser.parse(arguments);

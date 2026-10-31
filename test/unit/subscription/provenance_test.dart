@@ -11,12 +11,11 @@ import '../../mocks/mock_connection.dart';
 const _timeout = Duration(seconds: 2);
 
 void _writeFolderRowList(BsatnEncoder encoder, List<Folder> folders) {
-  final encodedRows =
-      folders.map((folder) {
-        final rowEncoder = BsatnEncoder();
-        folder.encodeBsatn(rowEncoder);
-        return rowEncoder.toBytes();
-      }).toList();
+  final encodedRows = folders.map((folder) {
+    final rowEncoder = BsatnEncoder();
+    folder.encodeBsatn(rowEncoder);
+    return rowEncoder.toBytes();
+  }).toList();
 
   final offsets = <int>[];
   var currentOffset = 0;
@@ -2805,47 +2804,44 @@ void main() {
       expect(table.iter().map((f) => f.path), contains('/a/msg'));
     });
 
-    test(
-      'committed OkEmpty — the surviving row must also be durably '
-      'persisted, since a dropIfOffline call is never queued to disk',
-      () async {
-        final committed = Folder(
-          path: '/a/msg',
-          name: 'Guitar Frequencies',
-          createdAt: Int64(0),
-        );
-        final numericRequestId = await subscribeAndSendDirectlyWithOptimistic(
-          committed,
-        );
+    test('committed OkEmpty — the surviving row must also be durably '
+        'persisted, since a dropIfOffline call is never queued to disk', () async {
+      final committed = Folder(
+        path: '/a/msg',
+        name: 'Guitar Frequencies',
+        createdAt: Int64(0),
+      );
+      final numericRequestId = await subscribeAndSendDirectlyWithOptimistic(
+        committed,
+      );
 
-        final table = subscriptionManager.cache.getTableByName('folder');
-        if (table == null) fail('folder table was not registered');
+      final table = subscriptionManager.cache.getTableByName('folder');
+      if (table == null) fail('folder table was not registered');
 
-        mockConnection.simulateIncoming(
-          _createReducerResultOkEmpty(requestId: numericRequestId),
-        );
-        await pumpEventQueue();
+      mockConnection.simulateIncoming(
+        _createReducerResultOkEmpty(requestId: numericRequestId),
+      );
+      await pumpEventQueue();
 
-        expect(table.iter().map((f) => f.path), contains('/a/msg'));
+      expect(table.iter().map((f) => f.path), contains('/a/msg'));
 
-        expect(
-          await offlineStorage.getPendingMutations(),
-          isEmpty,
-          reason:
-              'dropIfOffline bypasses the queue, so the snapshot is the only '
-              'durable copy of this row',
-        );
+      expect(
+        await offlineStorage.getPendingMutations(),
+        isEmpty,
+        reason:
+            'dropIfOffline bypasses the queue, so the snapshot is the only '
+            'durable copy of this row',
+      );
 
-        final snapshot = await offlineStorage.loadTableSnapshot('folder');
-        expect(
-          snapshot?.map((r) => r['path']),
-          contains('/a/msg'),
-          reason:
-              'the server committed this row and it survives in the live cache, '
-              'but it is excluded from every persisted snapshot, so it is lost '
-              'on restart with no queued mutation to replay it',
-        );
-      },
-    );
+      final snapshot = await offlineStorage.loadTableSnapshot('folder');
+      expect(
+        snapshot?.map((r) => r['path']),
+        contains('/a/msg'),
+        reason:
+            'the server committed this row and it survives in the live cache, '
+            'but it is excluded from every persisted snapshot, so it is lost '
+            'on restart with no queued mutation to replay it',
+      );
+    });
   });
 }

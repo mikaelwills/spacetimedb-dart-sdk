@@ -93,11 +93,8 @@ void main() {
   group('sync error surfacing', () {
     test('rejected mutation sets error state on SyncState', () async {
       final harness = _Harness(
-        respond:
-            (name) =>
-                name == 'bad_reducer'
-                    ? _rejected(name, 'nope')
-                    : _committed(name),
+        respond: (name) =>
+            name == 'bad_reducer' ? _rejected(name, 'nope') : _committed(name),
       );
       await harness.storage.enqueueMutation(_mutation('r1', 'good_a'));
       await harness.storage.enqueueMutation(_mutation('r2', 'bad_reducer'));
@@ -124,9 +121,8 @@ void main() {
       () async {
         var rejectAll = true;
         final harness = _Harness(
-          respond:
-              (name) =>
-                  rejectAll ? _rejected(name, 'locked') : _committed(name),
+          respond: (name) =>
+              rejectAll ? _rejected(name, 'locked') : _committed(name),
         );
         await harness.storage.enqueueMutation(_mutation('r1', 'update_note'));
 

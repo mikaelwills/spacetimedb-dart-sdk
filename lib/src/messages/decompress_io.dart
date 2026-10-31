@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+
 import 'package:brotli/brotli.dart';
 
 /// On Dart VM the pure-Dart `package:brotli` works correctly, so there's

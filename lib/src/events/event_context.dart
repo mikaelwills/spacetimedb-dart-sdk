@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+
 import 'event.dart';
 
 /// Context information for a table change event

@@ -34,9 +34,10 @@ void main() async {
   // Pipe stderr to stderr (for compiler warnings/errors)
   process.stderr.pipe(stderr);
 
-  await for (final line in process.stdout
-      .transform(utf8.decoder)
-      .transform(const LineSplitter())) {
+  await for (final line
+      in process.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())) {
     if (line.trim().isEmpty) continue;
 
     try {

@@ -658,87 +658,84 @@ void main() {
       },
     );
 
-    test(
-      'V10 requestId reuse after a full drain: after u1 genuinely lands and '
-      'dequeues, a NEW mutation reusing requestId u1 with a fresh pending, '
-      'not-server-owned overlay is kept queued (no stale record poisons it)',
-      () async {
-        final connection = MockConnection();
-        connection.setStateSilently(const Connected());
-        final storage = InMemoryOfflineStorage();
-        final cache = ClientCache();
-        cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
-        final noteTable = cache.getTableByName('note')!;
-        noteTable.markSubscribed();
-        noteTable.insertServerOwnedRow({'id': 1, 'content': 'landed'});
+    test('V10 requestId reuse after a full drain: after u1 genuinely lands and '
+        'dequeues, a NEW mutation reusing requestId u1 with a fresh pending, '
+        'not-server-owned overlay is kept queued (no stale record poisons it)', () async {
+      final connection = MockConnection();
+      connection.setStateSilently(const Connected());
+      final storage = InMemoryOfflineStorage();
+      final cache = ClientCache();
+      cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
+      final noteTable = cache.getTableByName('note')!;
+      noteTable.markSubscribed();
+      noteTable.insertServerOwnedRow({'id': 1, 'content': 'landed'});
 
-        final optimisticState = OptimisticStateManager(cache);
-        var sends = 0;
-        final syncer = MutationSyncer(
-          connection: connection,
-          storage: storage,
-          optimisticState: optimisticState,
-          cache: cache,
-          send: (reducerName, args, {requestId}) async {
-            sends++;
-            if (sends == 1) return _committed(reducerName);
-            throw SpacetimeDbTimeoutException(
-              'timed out',
-              elapsed: const Duration(seconds: 10),
-            );
-          },
-        );
+      final optimisticState = OptimisticStateManager(cache);
+      var sends = 0;
+      final syncer = MutationSyncer(
+        connection: connection,
+        storage: storage,
+        optimisticState: optimisticState,
+        cache: cache,
+        send: (reducerName, args, {requestId}) async {
+          sends++;
+          if (sends == 1) return _committed(reducerName);
+          throw SpacetimeDbTimeoutException(
+            'timed out',
+            elapsed: const Duration(seconds: 10),
+          );
+        },
+      );
 
-        await storage.enqueueMutation(
-          PendingMutation(
-            requestId: 'u1',
-            reducerName: 'update_note',
-            encodedArgs: Uint8List(0),
-            createdAt: DateTime.now(),
-            optimisticChanges: [
-              OptimisticChange.update(
-                'note',
-                {'id': 1, 'content': 'old'},
-                {'id': 1, 'content': 'landed'},
-              ),
-            ],
-          ),
-        );
-        await syncer.syncPendingMutations();
-        expect(await storage.getPendingMutations(), isEmpty);
+      await storage.enqueueMutation(
+        PendingMutation(
+          requestId: 'u1',
+          reducerName: 'update_note',
+          encodedArgs: Uint8List(0),
+          createdAt: DateTime.now(),
+          optimisticChanges: [
+            OptimisticChange.update(
+              'note',
+              {'id': 1, 'content': 'old'},
+              {'id': 1, 'content': 'landed'},
+            ),
+          ],
+        ),
+      );
+      await syncer.syncPendingMutations();
+      expect(await storage.getPendingMutations(), isEmpty);
 
-        noteTable.insertServerOwnedRow({'id': 2, 'content': 'base'});
-        final reuseChanges = [
-          OptimisticChange.update(
-            'note',
-            {'id': 2, 'content': 'base'},
-            {'id': 2, 'content': 'reuse'},
-          ),
-        ];
-        syncer.onOptimisticChanges('u1', reuseChanges);
-        await storage.enqueueMutation(
-          PendingMutation(
-            requestId: 'u1',
-            reducerName: 'update_note',
-            encodedArgs: Uint8List(0),
-            createdAt: DateTime.now(),
-            optimisticChanges: reuseChanges,
-          ),
-        );
+      noteTable.insertServerOwnedRow({'id': 2, 'content': 'base'});
+      final reuseChanges = [
+        OptimisticChange.update(
+          'note',
+          {'id': 2, 'content': 'base'},
+          {'id': 2, 'content': 'reuse'},
+        ),
+      ];
+      syncer.onOptimisticChanges('u1', reuseChanges);
+      await storage.enqueueMutation(
+        PendingMutation(
+          requestId: 'u1',
+          reducerName: 'update_note',
+          encodedArgs: Uint8List(0),
+          createdAt: DateTime.now(),
+          optimisticChanges: reuseChanges,
+        ),
+      );
 
-        await syncer.syncPendingMutations();
+      await syncer.syncPendingMutations();
 
-        expect(
-          await storage.getPendingMutations(),
-          hasLength(1),
-          reason:
-              'the reused-id mutation has a fresh pending overlay on key 2 that '
-              'is not server-owned; no stale _confirmedOverlayKeys[u1] survives '
-              'the clean drain to false-confirm it',
-        );
-        syncer.cancelRetry();
-      },
-    );
+      expect(
+        await storage.getPendingMutations(),
+        hasLength(1),
+        reason:
+            'the reused-id mutation has a fresh pending overlay on key 2 that '
+            'is not server-owned; no stale _confirmedOverlayKeys[u1] survives '
+            'the clean drain to false-confirm it',
+      );
+      syncer.cancelRetry();
+    });
 
     test('V11 abort-confirm short-circuit: an UPDATE whose overlay was '
         'confirmed-while-queued and is genuinely server-owned in the cache is '

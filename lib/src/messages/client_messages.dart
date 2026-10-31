@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+
 import '../codec/bsatn_encoder.dart';
 
 /// v2 `ClientMessage` tag order (v2.rs:18-29).

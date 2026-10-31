@@ -3,11 +3,14 @@ library;
 
 // ignore_for_file: avoid_print
 import 'dart:async';
+
 import 'package:test/test.dart';
+
 import '../generated/note.dart';
 import '../generated/folder.dart';
 import '../generated/reducer_args.dart';
 import '../generated/reducers.dart' as gen;
+
 import 'package:spacetimedb_sdk/codegen.dart';
 
 /// Chrome variant of the VM stress test. Requires a SpacetimeDB instance

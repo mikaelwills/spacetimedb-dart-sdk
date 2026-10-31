@@ -41,12 +41,11 @@ MutationSyncer _syncer(
     storage: storage,
     optimisticState: optimistic,
     cache: cache,
-    send:
-        (reducerName, args, {requestId}) async => TransactionResult(
-          status: Committed(),
-          timestamp: DateTime.now(),
-          reducerName: reducerName,
-        ),
+    send: (reducerName, args, {requestId}) async => TransactionResult(
+      status: Committed(),
+      timestamp: DateTime.now(),
+      reducerName: reducerName,
+    ),
   );
 }
 

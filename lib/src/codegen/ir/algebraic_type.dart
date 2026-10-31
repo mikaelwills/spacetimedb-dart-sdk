@@ -1,4 +1,5 @@
 import 'package:spacetimedb_sdk/src/exceptions.dart';
+
 import '../models/table_models.dart';
 import '../models/type_models.dart';
 import 'ref_type_name.dart';
@@ -78,26 +79,24 @@ sealed class AlgebraicType {
           }
         }
       }
-      final elements =
-          elementsJson is List
-              ? elementsJson
-                  .whereType<Map<String, dynamic>>()
-                  .map(ProductField.fromJson)
-                  .toList()
-              : <ProductField>[];
+      final elements = elementsJson is List
+          ? elementsJson
+                .whereType<Map<String, dynamic>>()
+                .map(ProductField.fromJson)
+                .toList()
+          : <ProductField>[];
       return IrProductType(elements: elements);
     }
 
     final sum = json['Sum'];
     if (sum is Map<String, dynamic>) {
       final variantsJson = sum['variants'];
-      final variants =
-          variantsJson is List
-              ? variantsJson
-                  .whereType<Map<String, dynamic>>()
-                  .map(IrSumVariant.fromJson)
-                  .toList()
-              : <IrSumVariant>[];
+      final variants = variantsJson is List
+          ? variantsJson
+                .whereType<Map<String, dynamic>>()
+                .map(IrSumVariant.fromJson)
+                .toList()
+          : <IrSumVariant>[];
       final optionInner = _detectOptionInner(variants);
       if (optionInner != null) {
         return OptionType(optionInner);
@@ -248,16 +247,14 @@ sealed class AlgebraicType {
       return 'encoder.writeOption<$innerDart>($valueName, (value) => $innerExpr)';
     }(),
     RefType() => '$valueName.encodeBsatn(encoder)',
-    IrProductType() =>
-      throw StateError(
-        'codegen: unhandled IrProductType in encodeExpression for \$$valueName '
-        '(inline product types are not supported; use a RefType)',
-      ),
-    IrSumType() =>
-      throw StateError(
-        'codegen: unhandled IrSumType in encodeExpression for \$$valueName '
-        '(inline sum types are not supported; use a RefType)',
-      ),
+    IrProductType() => throw StateError(
+      'codegen: unhandled IrProductType in encodeExpression for \$$valueName '
+      '(inline product types are not supported; use a RefType)',
+    ),
+    IrSumType() => throw StateError(
+      'codegen: unhandled IrSumType in encodeExpression for \$$valueName '
+      '(inline sum types are not supported; use a RefType)',
+    ),
   };
 
   String decodeExpression({
@@ -307,16 +304,14 @@ sealed class AlgebraicType {
       );
       return '$name.decodeBsatn(decoder)';
     }(),
-    IrProductType() =>
-      throw StateError(
-        'codegen: unhandled IrProductType in decodeExpression '
-        '(inline product types are not supported; use a RefType)',
-      ),
-    IrSumType() =>
-      throw StateError(
-        'codegen: unhandled IrSumType in decodeExpression '
-        '(inline sum types are not supported; use a RefType)',
-      ),
+    IrProductType() => throw StateError(
+      'codegen: unhandled IrProductType in decodeExpression '
+      '(inline product types are not supported; use a RefType)',
+    ),
+    IrSumType() => throw StateError(
+      'codegen: unhandled IrSumType in decodeExpression '
+      '(inline sum types are not supported; use a RefType)',
+    ),
   };
 
   bool get isPrimitive => switch (this) {
@@ -472,8 +467,9 @@ class ProductField {
     final nameObj = json['name'];
     final fieldName = nameObj is Map ? (nameObj['some'] ?? '') : '';
     final rawType = json['algebraic_type'];
-    final typeJson =
-        rawType is Map<String, dynamic> ? rawType : <String, dynamic>{};
+    final typeJson = rawType is Map<String, dynamic>
+        ? rawType
+        : <String, dynamic>{};
 
     return ProductField(
       name: fieldName is String && fieldName.isNotEmpty ? fieldName : null,
@@ -492,14 +488,14 @@ class IrSumVariant {
     final nameObj = json['name'];
     final variantName = nameObj is Map ? (nameObj['some'] ?? '') : '';
     final rawAlgebraicType = json['algebraic_type'];
-    final algebraicTypeJson =
-        rawAlgebraicType is Map<String, dynamic>
-            ? rawAlgebraicType
-            : <String, dynamic>{};
+    final algebraicTypeJson = rawAlgebraicType is Map<String, dynamic>
+        ? rawAlgebraicType
+        : <String, dynamic>{};
 
     return IrSumVariant(
-      name:
-          variantName is String && variantName.isNotEmpty ? variantName : null,
+      name: variantName is String && variantName.isNotEmpty
+          ? variantName
+          : null,
       type: AlgebraicType.fromJson(algebraicTypeJson),
     );
   }

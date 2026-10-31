@@ -58,12 +58,11 @@ MutationSyncer _syncer(
     storage: storage,
     optimisticState: optimistic,
     cache: cache,
-    send:
-        (reducerName, args, {requestId}) async => TransactionResult(
-          status: Committed(),
-          timestamp: DateTime.now(),
-          reducerName: reducerName,
-        ),
+    send: (reducerName, args, {requestId}) async => TransactionResult(
+      status: Committed(),
+      timestamp: DateTime.now(),
+      reducerName: reducerName,
+    ),
   );
 }
 
@@ -73,53 +72,50 @@ Map<String, dynamic> _nestedRow() => {
 };
 
 void main() {
-  test(
-    'no-PK optimistic insert with a NESTED-MAP column does not duplicate across '
-    'persist/restart (currently RED: shallow _jsonEquals fails to exclude it)',
-    () async {
-      final connection = MockConnection();
-      connection.setStateSilently(const Connected());
-      final storage = InMemoryOfflineStorage();
+  test('no-PK optimistic insert with a NESTED-MAP column does not duplicate across '
+      'persist/restart (currently RED: shallow _jsonEquals fails to exclude it)', () async {
+    final connection = MockConnection();
+    connection.setStateSilently(const Connected());
+    final storage = InMemoryOfflineStorage();
 
-      final cache1 = ClientCache();
-      cache1.registerDecoder<_Event>('events', _EventDecoder());
-      final table1 = cache1.getTableByTypedName<_Event>('events');
-      final optimistic1 = OptimisticStateManager(cache1);
-      final syncer1 = _syncer(connection, storage, cache1, optimistic1);
-      await syncer1.ensureInitialized();
+    final cache1 = ClientCache();
+    cache1.registerDecoder<_Event>('events', _EventDecoder());
+    final table1 = cache1.getTableByTypedName<_Event>('events');
+    final optimistic1 = OptimisticStateManager(cache1);
+    final syncer1 = _syncer(connection, storage, cache1, optimistic1);
+    await syncer1.ensureInitialized();
 
-      await storage.enqueueMutation(
-        PendingMutation(
-          requestId: 'r1',
-          reducerName: 'push_event',
-          encodedArgs: Uint8List(0),
-          createdAt: DateTime.now(),
-          optimisticChanges: [OptimisticChange.insert('events', _nestedRow())],
-        ),
-      );
-      syncer1.onOptimisticChanges('r1', [
-        OptimisticChange.insert('events', _nestedRow()),
-      ]);
-      await Future<void>.delayed(Duration.zero);
-      expect(table1.iter().length, 1);
+    await storage.enqueueMutation(
+      PendingMutation(
+        requestId: 'r1',
+        reducerName: 'push_event',
+        encodedArgs: Uint8List(0),
+        createdAt: DateTime.now(),
+        optimisticChanges: [OptimisticChange.insert('events', _nestedRow())],
+      ),
+    );
+    syncer1.onOptimisticChanges('r1', [
+      OptimisticChange.insert('events', _nestedRow()),
+    ]);
+    await Future<void>.delayed(Duration.zero);
+    expect(table1.iter().length, 1);
 
-      final cache2 = ClientCache();
-      cache2.registerDecoder<_Event>('events', _EventDecoder());
-      final table2 = cache2.getTableByTypedName<_Event>('events');
-      final optimistic2 = OptimisticStateManager(cache2);
-      final syncer2 = _syncer(connection, storage, cache2, optimistic2);
+    final cache2 = ClientCache();
+    cache2.registerDecoder<_Event>('events', _EventDecoder());
+    final table2 = cache2.getTableByTypedName<_Event>('events');
+    final optimistic2 = OptimisticStateManager(cache2);
+    final syncer2 = _syncer(connection, storage, cache2, optimistic2);
 
-      await syncer2.loadFromOfflineCache();
+    await syncer2.loadFromOfflineCache();
 
-      expect(
-        table2.iter().length,
-        1,
-        reason:
-            'snapshot must exclude the optimistic overlay even though the row '
-            'has a nested-map column; otherwise snapshot-load + replay = 2 rows',
-      );
-    },
-  );
+    expect(
+      table2.iter().length,
+      1,
+      reason:
+          'snapshot must exclude the optimistic overlay even though the row '
+          'has a nested-map column; otherwise snapshot-load + replay = 2 rows',
+    );
+  });
 
   test(
     'rolling back a no-PK optimistic insert with a NESTED-MAP column removes '

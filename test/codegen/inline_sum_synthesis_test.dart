@@ -118,10 +118,12 @@ void main() {
       final schema = _schemaWithInlineSumReducerParam();
       final files = DartGenerator(schema).generateAll();
 
-      final args =
-          files.firstWhere((f) => f.filename == 'reducer_args.dart').content;
-      final reducers =
-          files.firstWhere((f) => f.filename == 'reducers.dart').content;
+      final args = files
+          .firstWhere((f) => f.filename == 'reducer_args.dart')
+          .content;
+      final reducers = files
+          .firstWhere((f) => f.filename == 'reducers.dart')
+          .content;
 
       expect(args, isNot(contains('UnknownType')));
       expect(args, isNot(contains('dynamic nextPhase')));
@@ -166,8 +168,9 @@ void main() {
     test('column routes through the companion encode/decode', () {
       final schema = _schemaWithInlineSumColumn(columnName: 'phase');
       final files = DartGenerator(schema).generateAll();
-      final widget =
-          files.firstWhere((f) => f.filename == 'widget.dart').content;
+      final widget = files
+          .firstWhere((f) => f.filename == 'widget.dart')
+          .content;
 
       expect(widget, contains('final Phase phase;'));
       expect(widget, contains('phase.encodeBsatn(encoder);'));
@@ -194,11 +197,12 @@ void main() {
           reason: 'identical shapes should share a single companion',
         );
 
-        final widget =
-            files.firstWhere((f) => f.filename == 'widget.dart').content;
-        final companionName = RegExp(
-          r'final (\w+) phase;',
-        ).firstMatch(widget)!.group(1);
+        final widget = files
+            .firstWhere((f) => f.filename == 'widget.dart')
+            .content;
+        final companionName = RegExp(r'final (\w+) phase;')
+            .firstMatch(widget)!
+            .group(1);
         expect(widget, contains('final $companionName stage;'));
       },
     );

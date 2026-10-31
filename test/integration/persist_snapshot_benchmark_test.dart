@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
+
 import '../generated/note.dart';
 import '../generated/folder.dart';
 import '../generated/reducer_args.dart';
@@ -150,73 +151,69 @@ void main() {
       } catch (_) {}
     }
 
-    test(
-      'single-row update cost with 500 preloaded rows across 5 caches',
-      () async {
-        const preloadRowCount = 500;
-        const measuredUpdates = 20;
+    test('single-row update cost with 500 preloaded rows across 5 caches', () async {
+      const preloadRowCount = 500;
+      const measuredUpdates = 20;
 
-        await setupClient(preloadRowCount: preloadRowCount);
+      await setupClient(preloadRowCount: preloadRowCount);
 
-        try {
-          storage.resetCounters();
+      try {
+        storage.resetCounters();
 
-          final stopwatch = Stopwatch()..start();
+        final stopwatch = Stopwatch()..start();
 
-          for (var i = 0; i < measuredUpdates; i++) {
-            final enc = BsatnEncoder();
-            enc.writeString('Measured update $i');
-            enc.writeString('updated content $i');
-            await subManager.reducers
-                .call('create_note', enc.toBytes())
-                .timeout(_timeout);
-          }
-
-          stopwatch.stop();
-
-          // ignore: avoid_print
-          print('');
-          // ignore: avoid_print
-          print('=== persistTableSnapshots benchmark ===');
-          // ignore: avoid_print
-          print('Preloaded rows:          $preloadRowCount');
-          // ignore: avoid_print
-          print('Registered tables:       5');
-          // ignore: avoid_print
-          print('Measured reducer calls:  $measuredUpdates');
-          // ignore: avoid_print
-          print('Total wall time:         ${stopwatch.elapsedMilliseconds} ms');
-          // ignore: avoid_print
-          print(
-            'Per-call average:        ${(stopwatch.elapsedMilliseconds / measuredUpdates).toStringAsFixed(2)} ms',
-          );
-          // ignore: avoid_print
-          print('saveTableSnapshot calls: ${storage.saveTableSnapshotCalls}');
-          // ignore: avoid_print
-          print('setLastSyncTime calls:   ${storage.setLastSyncTimeCalls}');
-          // ignore: avoid_print
-          print('Total rows serialized:   ${storage.totalRowsSerialized}');
-          // ignore: avoid_print
-          print(
-            'Per-call serialized:     ${(storage.totalRowsSerialized / measuredUpdates).toStringAsFixed(1)} rows',
-          );
-          // ignore: avoid_print
-          print('saveTableSnapshot by table:');
-          for (final entry in storage.saveTableSnapshotCallsByTable.entries) {
-            // ignore: avoid_print
-            print('  ${entry.key.padRight(20)} ${entry.value}');
-          }
-          // ignore: avoid_print
-          print('');
-
-          await subManager.flushOfflineSnapshots();
-          expect(storage.saveTableSnapshotCalls, greaterThan(0));
-          expect(storage.setLastSyncTimeCalls, greaterThan(0));
-        } finally {
-          await cleanup();
+        for (var i = 0; i < measuredUpdates; i++) {
+          final enc = BsatnEncoder();
+          enc.writeString('Measured update $i');
+          enc.writeString('updated content $i');
+          await subManager.reducers
+              .call('create_note', enc.toBytes())
+              .timeout(_timeout);
         }
-      },
-      timeout: const Timeout(Duration(minutes: 3)),
-    );
+
+        stopwatch.stop();
+
+        // ignore: avoid_print
+        print('');
+        // ignore: avoid_print
+        print('=== persistTableSnapshots benchmark ===');
+        // ignore: avoid_print
+        print('Preloaded rows:          $preloadRowCount');
+        // ignore: avoid_print
+        print('Registered tables:       5');
+        // ignore: avoid_print
+        print('Measured reducer calls:  $measuredUpdates');
+        // ignore: avoid_print
+        print('Total wall time:         ${stopwatch.elapsedMilliseconds} ms');
+        // ignore: avoid_print
+        print(
+          'Per-call average:        ${(stopwatch.elapsedMilliseconds / measuredUpdates).toStringAsFixed(2)} ms',
+        );
+        // ignore: avoid_print
+        print('saveTableSnapshot calls: ${storage.saveTableSnapshotCalls}');
+        // ignore: avoid_print
+        print('setLastSyncTime calls:   ${storage.setLastSyncTimeCalls}');
+        // ignore: avoid_print
+        print('Total rows serialized:   ${storage.totalRowsSerialized}');
+        // ignore: avoid_print
+        print(
+          'Per-call serialized:     ${(storage.totalRowsSerialized / measuredUpdates).toStringAsFixed(1)} rows',
+        );
+        // ignore: avoid_print
+        print('saveTableSnapshot by table:');
+        for (final entry in storage.saveTableSnapshotCallsByTable.entries) {
+          // ignore: avoid_print
+          print('  ${entry.key.padRight(20)} ${entry.value}');
+        }
+        // ignore: avoid_print
+        print('');
+
+        await subManager.flushOfflineSnapshots();
+        expect(storage.saveTableSnapshotCalls, greaterThan(0));
+        expect(storage.setLastSyncTimeCalls, greaterThan(0));
+      } finally {
+        await cleanup();
+      }
+    }, timeout: const Timeout(Duration(minutes: 3)));
   });
 }

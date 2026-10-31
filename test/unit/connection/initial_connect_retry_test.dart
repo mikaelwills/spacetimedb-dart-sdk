@@ -18,20 +18,21 @@ void main() {
         host: 'localhost:3000',
         database: 'notesdb',
         config: config,
-        socketFactory: (
-          uri,
-          protocols,
-          headers, {
-          connectTimeout = const Duration(seconds: 10),
-          pingInterval,
-        }) {
-          factoryCalls++;
-          if (factoryCalls <= failTimes) {
-            throw Exception('simulated connect failure $factoryCalls');
-          }
-          socket = SilentWebSocketChannel();
-          return socket!;
-        },
+        socketFactory:
+            (
+              uri,
+              protocols,
+              headers, {
+              connectTimeout = const Duration(seconds: 10),
+              pingInterval,
+            }) {
+              factoryCalls++;
+              if (factoryCalls <= failTimes) {
+                throw Exception('simulated connect failure $factoryCalls');
+              }
+              socket = SilentWebSocketChannel();
+              return socket!;
+            },
       );
     }
 
@@ -125,16 +126,17 @@ void main() {
           maxReconnectAttempts: 5,
           retryInitialConnect: true,
         ),
-        socketFactory: (
-          uri,
-          protocols,
-          headers, {
-          connectTimeout = const Duration(seconds: 10),
-          pingInterval,
-        }) {
-          calls++;
-          throw Exception('HTTP 401 Unauthorized');
-        },
+        socketFactory:
+            (
+              uri,
+              protocols,
+              headers, {
+              connectTimeout = const Duration(seconds: 10),
+              pingInterval,
+            }) {
+              calls++;
+              throw Exception('HTTP 401 Unauthorized');
+            },
       );
       addTearDown(connection.dispose);
 

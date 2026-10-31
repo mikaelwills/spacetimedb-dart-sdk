@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+
 import '../codec/bsatn_decoder.dart';
 import '../exceptions.dart';
 import 'decompress.dart';
@@ -63,24 +64,14 @@ class MessageDecoder {
     final messageType = ServerMessageType.fromTag(tag);
 
     return switch (messageType) {
-      .initialConnection => InitialConnectionMessage.decode(
-        decoder,
-      ),
+      .initialConnection => InitialConnectionMessage.decode(decoder),
       .subscribeApplied => SubscribeApplied.decode(decoder),
-      .unsubscribeApplied => UnsubscribeApplied.decode(
-        decoder,
-      ),
-      .subscriptionError => SubscriptionErrorMessage.decode(
-        decoder,
-      ),
-      .transactionUpdate => TransactionUpdateMessage.decode(
-        decoder,
-      ),
+      .unsubscribeApplied => UnsubscribeApplied.decode(decoder),
+      .subscriptionError => SubscriptionErrorMessage.decode(decoder),
+      .transactionUpdate => TransactionUpdateMessage.decode(decoder),
       .oneOffQueryResult => OneOffQueryResult.decode(decoder),
       .reducerResult => ReducerResultMessage.decode(decoder),
-      .procedureResult => ProcedureResultMessage.decode(
-        decoder,
-      ),
+      .procedureResult => ProcedureResultMessage.decode(decoder),
     };
   }
 }

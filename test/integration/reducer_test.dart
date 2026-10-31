@@ -1,5 +1,6 @@
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
+
 import '../generated/note.dart';
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';

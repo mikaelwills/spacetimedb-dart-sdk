@@ -1,6 +1,8 @@
 import 'dart:async';
+
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/protocol.dart';
+
 import '../helpers/integration_test_helper.dart';
 
 void main() {
@@ -140,36 +142,32 @@ void main() {
   });
 
   group('Error & Retry Logic', () {
-    test(
-      'Connection to invalid host fails and allows retry',
-      () async {
-        final connection = SpacetimeDbConnection(
-          host: 'invalid-host-name-xyz',
-          database: 'db',
-          config: const ConnectionConfig(
-            autoReconnect: false,
-            maxReconnectAttempts: 0,
-          ),
+    test('Connection to invalid host fails and allows retry', () async {
+      final connection = SpacetimeDbConnection(
+        host: 'invalid-host-name-xyz',
+        database: 'db',
+        config: const ConnectionConfig(
+          autoReconnect: false,
+          maxReconnectAttempts: 0,
+        ),
+      );
+
+      try {
+        try {
+          await connection.connect();
+        } catch (_) {}
+
+        await waitForState<Disconnected>(
+          connection,
+          timeout: const Duration(seconds: 20),
         );
 
-        try {
-          try {
-            await connection.connect();
-          } catch (_) {}
-
-          await waitForState<Disconnected>(
-            connection,
-            timeout: const Duration(seconds: 20),
-          );
-
-          expect(connection.state.canRetry, true);
-          expect(connection.isConnected, false);
-        } finally {
-          await connection.dispose();
-        }
-      },
-      timeout: const Timeout(Duration(seconds: 30)),
-    );
+        expect(connection.state.canRetry, true);
+        expect(connection.isConnected, false);
+      } finally {
+        await connection.dispose();
+      }
+    }, timeout: const Timeout(Duration(seconds: 30)));
 
     test('Connection to invalid database handles result', () async {
       final connection = SpacetimeDbConnection(

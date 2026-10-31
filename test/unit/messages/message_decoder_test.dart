@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/src/messages/message_decoder.dart';
 import 'package:spacetimedb_sdk/src/messages/server_messages.dart';

@@ -238,42 +238,36 @@ void main() {
     });
 
     group('journal-before-memory ordering', () {
-      test(
-        'enqueueMutation: journal already contains the entry once the call resolves',
-        () async {
-          await storage
-              .enqueueMutation(_createMutation('req-1'))
-              .timeout(_timeout);
+      test('enqueueMutation: journal already contains the entry once the call resolves', () async {
+        await storage
+            .enqueueMutation(_createMutation('req-1'))
+            .timeout(_timeout);
 
-          final journalFile = File('${tempDir.path}/pending_mutations.jsonl');
-          final lines = await journalFile.readAsLines().timeout(_timeout);
-          expect(lines, hasLength(1));
-          final decoded = jsonDecode(lines.first);
-          expect(decoded, isA<Map<String, dynamic>>());
-          if (decoded is! Map<String, dynamic>) return;
-          expect(decoded['op'], equals('enqueue'));
-          expect(decoded['mutation']['requestId'], equals('req-1'));
-        },
-      );
+        final journalFile = File('${tempDir.path}/pending_mutations.jsonl');
+        final lines = await journalFile.readAsLines().timeout(_timeout);
+        expect(lines, hasLength(1));
+        final decoded = jsonDecode(lines.first);
+        expect(decoded, isA<Map<String, dynamic>>());
+        if (decoded is! Map<String, dynamic>) return;
+        expect(decoded['op'], equals('enqueue'));
+        expect(decoded['mutation']['requestId'], equals('req-1'));
+      });
 
-      test(
-        'dequeueMutation: journal already contains the dequeue entry once the call resolves',
-        () async {
-          await storage
-              .enqueueMutation(_createMutation('req-1'))
-              .timeout(_timeout);
-          await storage.dequeueMutation('req-1').timeout(_timeout);
+      test('dequeueMutation: journal already contains the dequeue entry once the call resolves', () async {
+        await storage
+            .enqueueMutation(_createMutation('req-1'))
+            .timeout(_timeout);
+        await storage.dequeueMutation('req-1').timeout(_timeout);
 
-          final journalFile = File('${tempDir.path}/pending_mutations.jsonl');
-          final lines = await journalFile.readAsLines().timeout(_timeout);
-          expect(lines, hasLength(2));
-          final decoded = jsonDecode(lines.last);
-          expect(decoded, isA<Map<String, dynamic>>());
-          if (decoded is! Map<String, dynamic>) return;
-          expect(decoded['op'], equals('dequeue'));
-          expect(decoded['requestId'], equals('req-1'));
-        },
-      );
+        final journalFile = File('${tempDir.path}/pending_mutations.jsonl');
+        final lines = await journalFile.readAsLines().timeout(_timeout);
+        expect(lines, hasLength(2));
+        final decoded = jsonDecode(lines.last);
+        expect(decoded, isA<Map<String, dynamic>>());
+        if (decoded is! Map<String, dynamic>) return;
+        expect(decoded['op'], equals('dequeue'));
+        expect(decoded['requestId'], equals('req-1'));
+      });
 
       test('enqueueMutation: when the journal append fails, the queue does not '
           'expose the mutation and the call throws', () async {

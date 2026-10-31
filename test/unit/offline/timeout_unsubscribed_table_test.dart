@@ -95,66 +95,63 @@ void main() {
       },
     );
 
-    test(
-      'mirror case: identical state but table IS subscribed → landed, confirmed '
-      'and dequeued',
-      () async {
-        final connection = MockConnection();
-        connection.setStateSilently(const Connected());
-        final storage = InMemoryOfflineStorage();
-        final cache = ClientCache();
-        cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
-        final noteTable = cache.getTableByName('note')!;
-        noteTable.markSubscribed();
-        noteTable.insertServerOwnedRow({'id': 1, 'content': 'new'});
+    test('mirror case: identical state but table IS subscribed → landed, confirmed '
+        'and dequeued', () async {
+      final connection = MockConnection();
+      connection.setStateSilently(const Connected());
+      final storage = InMemoryOfflineStorage();
+      final cache = ClientCache();
+      cache.registerDecoder<Map<String, dynamic>>('note', _MapDecoder());
+      final noteTable = cache.getTableByName('note')!;
+      noteTable.markSubscribed();
+      noteTable.insertServerOwnedRow({'id': 1, 'content': 'new'});
 
-        final optimisticState = OptimisticStateManager(cache);
-        final results = <MutationSyncResult>[];
-        final syncer = MutationSyncer(
-          connection: connection,
-          storage: storage,
-          optimisticState: optimisticState,
-          cache: cache,
-          send: (reducerName, args, {requestId}) async {
-            throw SpacetimeDbTimeoutException(
-              'timed out',
-              elapsed: const Duration(seconds: 10),
-            );
-          },
-        );
-        final sub = syncer.onMutationSyncResult.listen(results.add);
+      final optimisticState = OptimisticStateManager(cache);
+      final results = <MutationSyncResult>[];
+      final syncer = MutationSyncer(
+        connection: connection,
+        storage: storage,
+        optimisticState: optimisticState,
+        cache: cache,
+        send: (reducerName, args, {requestId}) async {
+          throw SpacetimeDbTimeoutException(
+            'timed out',
+            elapsed: const Duration(seconds: 10),
+          );
+        },
+      );
+      final sub = syncer.onMutationSyncResult.listen(results.add);
 
-        await storage.enqueueMutation(
-          PendingMutation(
-            requestId: 'u1',
-            reducerName: 'update_note',
-            encodedArgs: Uint8List(0),
-            createdAt: DateTime.now(),
-            optimisticChanges: [
-              OptimisticChange.update(
-                'note',
-                {'id': 1, 'content': 'old'},
-                {'id': 1, 'content': 'new'},
-              ),
-            ],
-          ),
-        );
+      await storage.enqueueMutation(
+        PendingMutation(
+          requestId: 'u1',
+          reducerName: 'update_note',
+          encodedArgs: Uint8List(0),
+          createdAt: DateTime.now(),
+          optimisticChanges: [
+            OptimisticChange.update(
+              'note',
+              {'id': 1, 'content': 'old'},
+              {'id': 1, 'content': 'new'},
+            ),
+          ],
+        ),
+      );
 
-        await syncer.syncPendingMutations();
-        await Future<void>.delayed(Duration.zero);
-        await sub.cancel();
+      await syncer.syncPendingMutations();
+      await Future<void>.delayed(Duration.zero);
+      await sub.cancel();
 
-        expect(
-          await storage.getPendingMutations(),
-          isEmpty,
-          reason: 'subscribed + effect present → landed → dequeued',
-        );
-        expect(
-          results.where((r) => r.success).map((r) => r.requestId),
-          contains('u1'),
-        );
-        syncer.cancelRetry();
-      },
-    );
+      expect(
+        await storage.getPendingMutations(),
+        isEmpty,
+        reason: 'subscribed + effect present → landed → dequeued',
+      );
+      expect(
+        results.where((r) => r.success).map((r) => r.requestId),
+        contains('u1'),
+      );
+      syncer.cancelRetry();
+    });
   });
 }

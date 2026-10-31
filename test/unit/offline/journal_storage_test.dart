@@ -176,10 +176,9 @@ void main() {
       }
 
       final journalFile = File('${tempDir.path}/pending_mutations.jsonl');
-      final lines =
-          (await journalFile.readAsLines())
-              .where((l) => l.trim().isNotEmpty)
-              .length;
+      final lines = (await journalFile.readAsLines())
+          .where((l) => l.trim().isNotEmpty)
+          .length;
       expect(
         lines,
         lessThan(100),

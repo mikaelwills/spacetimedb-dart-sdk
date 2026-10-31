@@ -225,8 +225,8 @@ void main() {
   group('ref to a table-backed struct named differently from its table', () {
     for (final structName in ['PersonRow', 'Person']) {
       test('struct $structName resolves to the person table class', () {
-        final files =
-            DartGenerator(_mismatchedStructSchema(structName)).generateAll();
+        final files = DartGenerator(_mismatchedStructSchema(structName))
+            .generateAll();
         final byName = {for (final f in files) f.filename: f.content};
 
         for (final file in files) {
@@ -299,10 +299,12 @@ void main() {
 
   group('reducer params with a ref nested in Array/Option', () {
     final files = DartGenerator(_reducerSchema()).generateAll();
-    final reducers =
-        files.firstWhere((f) => f.filename == 'reducers.dart').content;
-    final args =
-        files.firstWhere((f) => f.filename == 'reducer_args.dart').content;
+    final reducers = files
+        .firstWhere((f) => f.filename == 'reducers.dart')
+        .content;
+    final args = files
+        .firstWhere((f) => f.filename == 'reducer_args.dart')
+        .content;
 
     test('reducers.dart imports the nested ref companion once', () {
       expect(reducers, contains('List<SeedFile>'));

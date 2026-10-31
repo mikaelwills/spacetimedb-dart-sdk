@@ -26,11 +26,10 @@ class ProductClassBuilder {
         );
         b.fields.add(
           Field(
-            (f) =>
-                f
-                  ..name = fieldName
-                  ..type = refer(dartType)
-                  ..modifier = FieldModifier.final$,
+            (f) => f
+              ..name = fieldName
+              ..type = refer(dartType)
+              ..modifier = FieldModifier.final$,
           ),
         );
       }
@@ -41,12 +40,11 @@ class ProductClassBuilder {
             final fieldName = toCamelCase(element.name ?? 'unknown');
             c.optionalParameters.add(
               Parameter(
-                (p) =>
-                    p
-                      ..name = fieldName
-                      ..named = true
-                      ..required = true
-                      ..toThis = true,
+                (p) => p
+                  ..name = fieldName
+                  ..named = true
+                  ..required = true
+                  ..toThis = true,
               ),
             );
           }
@@ -65,66 +63,58 @@ class ProductClassBuilder {
   }
 
   Method _buildEquals(String className, ProductType productType) {
-    final fields =
-        productType.elements
-            .map((e) => toCamelCase(e.name ?? 'unknown'))
-            .toList();
+    final fields = productType.elements
+        .map((e) => toCamelCase(e.name ?? 'unknown'))
+        .toList();
     final comparisons = fields.map((f) => '$f == other.$f').join(' && ');
-    final body =
-        comparisons.isEmpty
-            ? 'return identical(this, other) || other is $className;'
-            : 'return identical(this, other) || other is $className && $comparisons;';
+    final body = comparisons.isEmpty
+        ? 'return identical(this, other) || other is $className;'
+        : 'return identical(this, other) || other is $className && $comparisons;';
 
     return Method(
-      (m) =>
-          m
-            ..name = 'operator =='
-            ..annotations.add(refer('override'))
-            ..returns = refer('bool')
-            ..requiredParameters.add(
-              Parameter(
-                (p) =>
-                    p
-                      ..name = 'other'
-                      ..type = refer('Object'),
-              ),
-            )
-            ..body = Code(body),
+      (m) => m
+        ..name = 'operator =='
+        ..annotations.add(refer('override'))
+        ..returns = refer('bool')
+        ..requiredParameters.add(
+          Parameter(
+            (p) => p
+              ..name = 'other'
+              ..type = refer('Object'),
+          ),
+        )
+        ..body = Code(body),
     );
   }
 
   Method _buildHashCode(ProductType productType) {
-    final fields =
-        productType.elements
-            .map((e) => toCamelCase(e.name ?? 'unknown'))
-            .toList();
+    final fields = productType.elements
+        .map((e) => toCamelCase(e.name ?? 'unknown'))
+        .toList();
     final hashArgs = fields.join(', ');
 
     return Method(
-      (m) =>
-          m
-            ..name = 'hashCode'
-            ..annotations.add(refer('override'))
-            ..type = MethodType.getter
-            ..returns = refer('int')
-            ..body = Code('return Object.hashAll([$hashArgs]);'),
+      (m) => m
+        ..name = 'hashCode'
+        ..annotations.add(refer('override'))
+        ..type = MethodType.getter
+        ..returns = refer('int')
+        ..body = Code('return Object.hashAll([$hashArgs]);'),
     );
   }
 
   Method _buildToString(String className, ProductType productType) {
-    final fields =
-        productType.elements
-            .map((e) => toCamelCase(e.name ?? 'unknown'))
-            .toList();
+    final fields = productType.elements
+        .map((e) => toCamelCase(e.name ?? 'unknown'))
+        .toList();
     final parts = fields.map((f) => '$f: \$$f').join(', ');
 
     return Method(
-      (m) =>
-          m
-            ..name = 'toString'
-            ..annotations.add(refer('override'))
-            ..returns = refer('String')
-            ..body = Code("return '$className($parts)';"),
+      (m) => m
+        ..name = 'toString'
+        ..annotations.add(refer('override'))
+        ..returns = refer('String')
+        ..body = Code("return '$className($parts)';"),
     );
   }
 
@@ -142,23 +132,21 @@ class ProductClassBuilder {
       final nullableType = dartType.endsWith('?') ? dartType : '$dartType?';
       params.add(
         Parameter(
-          (p) =>
-              p
-                ..name = fieldName
-                ..named = true
-                ..type = refer(nullableType),
+          (p) => p
+            ..name = fieldName
+            ..named = true
+            ..type = refer(nullableType),
         ),
       );
       args.writeln('$fieldName: $fieldName ?? this.$fieldName,');
     }
 
     return Method(
-      (m) =>
-          m
-            ..name = 'copyWith'
-            ..returns = refer(className)
-            ..optionalParameters.addAll(params)
-            ..body = Code('return $className($args);'),
+      (m) => m
+        ..name = 'copyWith'
+        ..returns = refer(className)
+        ..optionalParameters.addAll(params)
+        ..body = Code('return $className($args);'),
     );
   }
 
@@ -176,19 +164,17 @@ class ProductClassBuilder {
     }
 
     return Method(
-      (m) =>
-          m
-            ..name = 'encodeBsatn'
-            ..returns = refer('void')
-            ..requiredParameters.add(
-              Parameter(
-                (p) =>
-                    p
-                      ..name = 'encoder'
-                      ..type = refer('BsatnEncoder'),
-              ),
-            )
-            ..body = Code(body.toString()),
+      (m) => m
+        ..name = 'encodeBsatn'
+        ..returns = refer('void')
+        ..requiredParameters.add(
+          Parameter(
+            (p) => p
+              ..name = 'encoder'
+              ..type = refer('BsatnEncoder'),
+          ),
+        )
+        ..body = Code(body.toString()),
     );
   }
 
@@ -205,20 +191,18 @@ class ProductClassBuilder {
     }
 
     return Method(
-      (m) =>
-          m
-            ..name = 'decodeBsatn'
-            ..static = true
-            ..returns = refer(className)
-            ..requiredParameters.add(
-              Parameter(
-                (p) =>
-                    p
-                      ..name = 'decoder'
-                      ..type = refer('BsatnDecoder'),
-              ),
-            )
-            ..body = Code('return $className($args);'),
+      (m) => m
+        ..name = 'decodeBsatn'
+        ..static = true
+        ..returns = refer(className)
+        ..requiredParameters.add(
+          Parameter(
+            (p) => p
+              ..name = 'decoder'
+              ..type = refer('BsatnDecoder'),
+          ),
+        )
+        ..body = Code('return $className($args);'),
     );
   }
 
@@ -231,11 +215,10 @@ class ProductClassBuilder {
     }
 
     return Method(
-      (m) =>
-          m
-            ..name = 'toJson'
-            ..returns = refer('Map<String, dynamic>')
-            ..body = Code('return {$entries};'),
+      (m) => m
+        ..name = 'toJson'
+        ..returns = refer('Map<String, dynamic>')
+        ..body = Code('return {$entries};'),
     );
   }
 
@@ -248,19 +231,17 @@ class ProductClassBuilder {
     }
 
     return Constructor(
-      (c) =>
-          c
-            ..factory = true
-            ..name = 'fromJson'
-            ..requiredParameters.add(
-              Parameter(
-                (p) =>
-                    p
-                      ..name = 'json'
-                      ..type = refer('Map<String, dynamic>'),
-              ),
-            )
-            ..body = Code('return $className($args);'),
+      (c) => c
+        ..factory = true
+        ..name = 'fromJson'
+        ..requiredParameters.add(
+          Parameter(
+            (p) => p
+              ..name = 'json'
+              ..type = refer('Map<String, dynamic>'),
+          ),
+        )
+        ..body = Code('return $className($args);'),
     );
   }
 

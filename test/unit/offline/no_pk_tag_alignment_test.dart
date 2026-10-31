@@ -74,12 +74,11 @@ MutationSyncer _syncer(
     storage: storage,
     optimisticState: opt,
     cache: cache,
-    send:
-        (reducerName, args, {requestId}) async => TransactionResult(
-          status: Committed(),
-          timestamp: DateTime.now(),
-          reducerName: reducerName,
-        ),
+    send: (reducerName, args, {requestId}) async => TransactionResult(
+      status: Committed(),
+      timestamp: DateTime.now(),
+      reducerName: reducerName,
+    ),
   );
 }
 
@@ -203,11 +202,9 @@ void main() {
       final s2 = _syncer(connection, storage, e2.cache, e2.opt);
       await s2.loadFromOfflineCache();
 
-      expect(
-        e2.table.iter().toList(),
-        ['pending'],
-        reason: 'snapshot excluded the overlay; replay re-applied it once',
-      );
+      expect(e2.table.iter().toList(), [
+        'pending',
+      ], reason: 'snapshot excluded the overlay; replay re-applied it once');
       e2.opt.rollbackOptimisticChanges('r1');
       expect(
         e2.table.iter(),

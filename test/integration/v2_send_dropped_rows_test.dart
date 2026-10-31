@@ -1,4 +1,5 @@
 import 'package:test/test.dart';
+
 import '../generated/note.dart';
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';
@@ -71,39 +72,34 @@ void main() {
     timeout: const Timeout(Duration(seconds: 30)),
   );
 
-  test(
-    'unsubscribe(sendDroppedRows: false) omits dropped rows',
-    () async {
-      final env = await createTestEnv();
-      await env.connection.connect();
-      await env.subManager.onInitialConnection.first.timeout(
-        const Duration(seconds: 5),
-      );
+  test('unsubscribe(sendDroppedRows: false) omits dropped rows', () async {
+    final env = await createTestEnv();
+    await env.connection.connect();
+    await env.subManager.onInitialConnection.first.timeout(
+      const Duration(seconds: 5),
+    );
 
-      final querySetId = await env.subManager.subscribe(['SELECT * FROM note']);
-      final table = env.subManager.cache.getTableByTypedName<Note>('note');
-      if (table.count() > 0) {
-        await env.reducers.deleteAllNotes();
-      }
-      await env.reducers.createNote(title: 'NoDroppedRows', content: 'a');
+    final querySetId = await env.subManager.subscribe(['SELECT * FROM note']);
+    final table = env.subManager.cache.getTableByTypedName<Note>('note');
+    if (table.count() > 0) {
+      await env.reducers.deleteAllNotes();
+    }
+    await env.reducers.createNote(title: 'NoDroppedRows', content: 'a');
 
-      env.subManager.unsubscribe(querySetId, requestId: 2);
+    env.subManager.unsubscribe(querySetId, requestId: 2);
 
-      final applied = await env.subManager.onUnsubscribeApplied.first.timeout(
-        const Duration(seconds: 5),
-      );
+    final applied = await env.subManager.onUnsubscribeApplied.first.timeout(
+      const Duration(seconds: 5),
+    );
 
-      expect(applied.querySetId, equals(querySetId));
-      expect(
-        applied.rows,
-        isNull,
-        reason:
-            'server must NOT include rows when UnsubscribeFlags::Default (0)',
-      );
+    expect(applied.querySetId, equals(querySetId));
+    expect(
+      applied.rows,
+      isNull,
+      reason: 'server must NOT include rows when UnsubscribeFlags::Default (0)',
+    );
 
-      env.subManager.dispose();
-      await env.disconnect();
-    },
-    timeout: const Timeout(Duration(seconds: 30)),
-  );
+    env.subManager.dispose();
+    await env.disconnect();
+  }, timeout: const Timeout(Duration(seconds: 30)));
 }

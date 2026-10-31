@@ -27,8 +27,9 @@ Uint8List _createSubscribeApplied({
       rowsEncoder.writeString(row);
     }
     final rowsData = rowsEncoder.toBytes();
-    final rowSize =
-        entry.value.isEmpty ? 0 : rowsData.length ~/ entry.value.length;
+    final rowSize = entry.value.isEmpty
+        ? 0
+        : rowsData.length ~/ entry.value.length;
     encoder.writeU16(rowSize);
     encoder.writeU32(rowsData.length);
     encoder.writeBytes(rowsData);
@@ -196,11 +197,11 @@ void main() {
           3,
           reason: 'every Subscribe must have been sent inside the window',
         );
-        expect(
-          subscriptionManager.subscriptionsByQuerySetId.keys.toSet(),
-          {1, 2, 3},
-          reason: 'timed-out sets are retained for the next reconnect',
-        );
+        expect(subscriptionManager.subscriptionsByQuerySetId.keys.toSet(), {
+          1,
+          2,
+          3,
+        }, reason: 'timed-out sets are retained for the next reconnect');
         expect(
           subscriptionManager.subscriptionsReady.value,
           isFalse,

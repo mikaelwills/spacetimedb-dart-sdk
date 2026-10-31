@@ -1,6 +1,7 @@
 // ignore_for_file: unnecessary_cast
 import 'dart:js_interop';
 import 'dart:typed_data';
+
 import 'package:web/web.dart' as web;
 
 bool? _brotliSupported;

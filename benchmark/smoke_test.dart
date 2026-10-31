@@ -1,5 +1,6 @@
 // ignore_for_file: avoid_print
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';

@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+
 import 'package:fixnum/fixnum.dart';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/src/codec/bsatn_decoder.dart';

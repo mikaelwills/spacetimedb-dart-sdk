@@ -2,6 +2,7 @@ library;
 
 // ignore_for_file: avoid_print
 import 'dart:typed_data';
+
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
 
@@ -41,8 +42,7 @@ void main() {
       expect(
         decoder,
         isA<RowDecoder<Note>>(),
-        reason:
-            'NoteDecoder must implement RowDecoder<Note> with concrete type, not dynamic',
+        reason: 'NoteDecoder must implement RowDecoder<Note> with concrete type, not dynamic',
       );
 
       // Verify getPrimaryKey returns the correct type
@@ -292,8 +292,7 @@ void main() {
       expect(
         true,
         isTrue,
-        reason:
-            'If this test runs, note.dart successfully imports note_status.dart',
+        reason: 'If this test runs, note.dart successfully imports note_status.dart',
       );
     });
 

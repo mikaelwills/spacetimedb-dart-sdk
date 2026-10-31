@@ -1,4 +1,5 @@
 import 'package:test/test.dart';
+
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';
 
@@ -22,424 +23,382 @@ void main() {
   });
 
   group('blind spot variants', () {
-    test(
-      "variant: caller's own committed insert (non-short-circuit ReducerResult path) survives a later unrelated query-set apply",
-      () async {
-        final env = await createTestEnv(registerNote: true);
-        addTearDown(() async {
-          env.subManager.dispose();
-          await env.disconnect();
-        });
+    test("variant: caller's own committed insert (non-short-circuit ReducerResult path) survives a later unrelated query-set apply", () async {
+      final env = await createTestEnv(registerNote: true);
+      addTearDown(() async {
+        env.subManager.dispose();
+        await env.disconnect();
+      });
 
-        await env.connection.connect();
-        await env.subManager.onInitialConnection.first.timeout(_timeout);
+      await env.connection.connect();
+      await env.subManager.onInitialConnection.first.timeout(_timeout);
 
-        for (var i = 1; i <= 2; i++) {
-          await env.reducers
-              .createNote(title: 'seed-$i', content: 'c$i')
-              .timeout(_timeout);
-        }
-
-        await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 1 AND id <= 5',
-        ]);
-
-        final result = await env.reducers
-            .createNote(title: 'own-commit-insert', content: 'no optimistic')
+      for (var i = 1; i <= 2; i++) {
+        await env.reducers
+            .createNote(title: 'seed-$i', content: 'c$i')
             .timeout(_timeout);
-        expect(result.isSuccess, isTrue);
+      }
 
-        final ownNote = env.noteTable.iter().firstWhere(
-          (n) => n.title == 'own-commit-insert',
-        );
+      await env.subManager.subscribe([
+        'SELECT * FROM note WHERE id >= 1 AND id <= 5',
+      ]);
 
-        expect(env.noteTable.getRow(ownNote.id), isNotNull);
+      final result = await env.reducers
+          .createNote(title: 'own-commit-insert', content: 'no optimistic')
+          .timeout(_timeout);
+      expect(result.isSuccess, isTrue);
 
-        await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 1 AND id <= 2',
-        ]);
+      final ownNote = env.noteTable.iter().firstWhere(
+        (n) => n.title == 'own-commit-insert',
+      );
 
-        expect(env.noteTable.getRow(ownNote.id), isNotNull);
-      },
-      timeout: const Timeout(Duration(seconds: 60)),
-    );
+      expect(env.noteTable.getRow(ownNote.id), isNotNull);
 
-    test(
-      'variant: live insert on a table with an active query set survives partial unsubscribe of an unrelated query set',
-      () async {
-        final writer = await createTestEnv(registerNote: true);
-        final env = await createTestEnv(registerNote: true);
-        addTearDown(() async {
-          writer.subManager.dispose();
-          env.subManager.dispose();
-          await writer.disconnect();
-          await env.disconnect();
-        });
+      await env.subManager.subscribe([
+        'SELECT * FROM note WHERE id >= 1 AND id <= 2',
+      ]);
 
-        await writer.connection.connect();
-        await writer.subManager.onInitialConnection.first.timeout(_timeout);
-        await env.connection.connect();
-        await env.subManager.onInitialConnection.first.timeout(_timeout);
+      expect(env.noteTable.getRow(ownNote.id), isNotNull);
+    }, timeout: const Timeout(Duration(seconds: 60)));
 
-        for (var i = 1; i <= 2; i++) {
-          await writer.reducers
-              .createNote(title: 'seed-$i', content: 'c$i')
-              .timeout(_timeout);
-        }
+    test('variant: live insert on a table with an active query set survives partial unsubscribe of an unrelated query set', () async {
+      final writer = await createTestEnv(registerNote: true);
+      final env = await createTestEnv(registerNote: true);
+      addTearDown(() async {
+        writer.subManager.dispose();
+        env.subManager.dispose();
+        await writer.disconnect();
+        await env.disconnect();
+      });
 
-        final querySetA = await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 1 AND id <= 5',
-        ]);
-        final querySetB = await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 1 AND id <= 2',
-        ]);
+      await writer.connection.connect();
+      await writer.subManager.onInitialConnection.first.timeout(_timeout);
+      await env.connection.connect();
+      await env.subManager.onInitialConnection.first.timeout(_timeout);
 
-        final txUpdateFuture = env.subManager.onTransactionUpdate.first.timeout(
-          _timeout,
-        );
+      for (var i = 1; i <= 2; i++) {
         await writer.reducers
-            .createNote(title: 'live-multi-tag', content: 'tagged for A and B')
+            .createNote(title: 'seed-$i', content: 'c$i')
             .timeout(_timeout);
-        await txUpdateFuture;
+      }
 
-        final liveNote = env.noteTable.iter().firstWhere(
-          (n) => n.title == 'live-multi-tag',
-        );
+      final querySetA = await env.subManager.subscribe([
+        'SELECT * FROM note WHERE id >= 1 AND id <= 5',
+      ]);
+      final querySetB = await env.subManager.subscribe([
+        'SELECT * FROM note WHERE id >= 1 AND id <= 2',
+      ]);
 
-        expect(env.noteTable.getRow(liveNote.id), isNotNull);
+      final txUpdateFuture = env.subManager.onTransactionUpdate.first.timeout(
+        _timeout,
+      );
+      await writer.reducers
+          .createNote(title: 'live-multi-tag', content: 'tagged for A and B')
+          .timeout(_timeout);
+      await txUpdateFuture;
 
-        env.subManager.unsubscribe(querySetB);
-        await Future.delayed(const Duration(seconds: 1));
+      final liveNote = env.noteTable.iter().firstWhere(
+        (n) => n.title == 'live-multi-tag',
+      );
 
-        expect(env.noteTable.getRow(liveNote.id), isNotNull);
+      expect(env.noteTable.getRow(liveNote.id), isNotNull);
 
-        expect(querySetA, isNot(equals(querySetB)));
-      },
-      timeout: const Timeout(Duration(seconds: 60)),
-    );
+      env.subManager.unsubscribe(querySetB);
+      await Future.delayed(const Duration(seconds: 1));
 
-    test(
-      'variant: a live-inserted row is correctly dropped after unsubscribe, then correctly rehydrated by a fresh matching subscribe',
-      () async {
-        final writer = await createTestEnv(registerNote: true);
-        final env = await createTestEnv(registerNote: true);
-        addTearDown(() async {
-          writer.subManager.dispose();
-          env.subManager.dispose();
-          await writer.disconnect();
-          await env.disconnect();
-        });
+      expect(env.noteTable.getRow(liveNote.id), isNotNull);
 
-        await writer.connection.connect();
-        await writer.subManager.onInitialConnection.first.timeout(_timeout);
-        await env.connection.connect();
-        await env.subManager.onInitialConnection.first.timeout(_timeout);
+      expect(querySetA, isNot(equals(querySetB)));
+    }, timeout: const Timeout(Duration(seconds: 60)));
 
-        final querySetA = await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 1 AND id <= 100',
-        ]);
+    test('variant: a live-inserted row is correctly dropped after unsubscribe, then correctly rehydrated by a fresh matching subscribe', () async {
+      final writer = await createTestEnv(registerNote: true);
+      final env = await createTestEnv(registerNote: true);
+      addTearDown(() async {
+        writer.subManager.dispose();
+        env.subManager.dispose();
+        await writer.disconnect();
+        await env.disconnect();
+      });
 
-        final txUpdateFuture = env.subManager.onTransactionUpdate.first.timeout(
-          _timeout,
-        );
-        await writer.reducers
-            .createNote(title: 'lifecycle-row', content: 'insert-unsub-resub')
-            .timeout(_timeout);
-        await txUpdateFuture;
+      await writer.connection.connect();
+      await writer.subManager.onInitialConnection.first.timeout(_timeout);
+      await env.connection.connect();
+      await env.subManager.onInitialConnection.first.timeout(_timeout);
 
-        final liveNote = env.noteTable.iter().firstWhere(
-          (n) => n.title == 'lifecycle-row',
-        );
+      final querySetA = await env.subManager.subscribe([
+        'SELECT * FROM note WHERE id >= 1 AND id <= 100',
+      ]);
 
-        expect(env.noteTable.getRow(liveNote.id), isNotNull);
+      final txUpdateFuture = env.subManager.onTransactionUpdate.first.timeout(
+        _timeout,
+      );
+      await writer.reducers
+          .createNote(title: 'lifecycle-row', content: 'insert-unsub-resub')
+          .timeout(_timeout);
+      await txUpdateFuture;
 
-        env.subManager.unsubscribe(querySetA);
-        await Future.delayed(const Duration(seconds: 1));
+      final liveNote = env.noteTable.iter().firstWhere(
+        (n) => n.title == 'lifecycle-row',
+      );
 
-        expect(env.noteTable.getRow(liveNote.id), isNull);
+      expect(env.noteTable.getRow(liveNote.id), isNotNull);
 
-        await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 1 AND id <= 100',
-        ]);
+      env.subManager.unsubscribe(querySetA);
+      await Future.delayed(const Duration(seconds: 1));
 
-        expect(env.noteTable.getRow(liveNote.id), isNotNull);
-      },
-      timeout: const Timeout(Duration(seconds: 60)),
-    );
+      expect(env.noteTable.getRow(liveNote.id), isNull);
 
-    test(
-      'variant: bulk live insert (many rows, one TransactionUpdate) tags every inserted key, not just the first',
-      () async {
-        final writer = await createTestEnv(registerNote: true);
-        final env = await createTestEnv(registerNote: true);
-        addTearDown(() async {
-          writer.subManager.dispose();
-          env.subManager.dispose();
-          await writer.disconnect();
-          await env.disconnect();
-        });
+      await env.subManager.subscribe([
+        'SELECT * FROM note WHERE id >= 1 AND id <= 100',
+      ]);
 
-        await writer.connection.connect();
-        await writer.subManager.onInitialConnection.first.timeout(_timeout);
-        await env.connection.connect();
-        await env.subManager.onInitialConnection.first.timeout(_timeout);
+      expect(env.noteTable.getRow(liveNote.id), isNotNull);
+    }, timeout: const Timeout(Duration(seconds: 60)));
 
-        await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 1 AND id <= 1000',
-        ]);
+    test('variant: bulk live insert (many rows, one TransactionUpdate) tags every inserted key, not just the first', () async {
+      final writer = await createTestEnv(registerNote: true);
+      final env = await createTestEnv(registerNote: true);
+      addTearDown(() async {
+        writer.subManager.dispose();
+        env.subManager.dispose();
+        await writer.disconnect();
+        await env.disconnect();
+      });
 
-        final txUpdateFuture = env.subManager.onTransactionUpdate.first.timeout(
-          _timeout,
-        );
-        await writer.reducers
-            .createNotesBulk(count: 5, titlePrefix: 'bulk-live')
-            .timeout(_timeout);
-        await txUpdateFuture;
-        await Future.delayed(const Duration(seconds: 1));
+      await writer.connection.connect();
+      await writer.subManager.onInitialConnection.first.timeout(_timeout);
+      await env.connection.connect();
+      await env.subManager.onInitialConnection.first.timeout(_timeout);
 
-        final bulkNotes =
-            env.noteTable
-                .iter()
-                .where((n) => n.title.startsWith('bulk-live'))
-                .toList();
+      await env.subManager.subscribe([
+        'SELECT * FROM note WHERE id >= 1 AND id <= 1000',
+      ]);
 
-        expect(bulkNotes.length, equals(5));
+      final txUpdateFuture = env.subManager.onTransactionUpdate.first.timeout(
+        _timeout,
+      );
+      await writer.reducers
+          .createNotesBulk(count: 5, titlePrefix: 'bulk-live')
+          .timeout(_timeout);
+      await txUpdateFuture;
+      await Future.delayed(const Duration(seconds: 1));
 
-        await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 1 AND id <= 1',
-        ]);
+      final bulkNotes = env.noteTable
+          .iter()
+          .where((n) => n.title.startsWith('bulk-live'))
+          .toList();
 
-        for (final note in bulkNotes) {
-          expect(env.noteTable.getRow(note.id), isNotNull);
-        }
-      },
-      timeout: const Timeout(Duration(seconds: 60)),
-    );
+      expect(bulkNotes.length, equals(5));
 
-    test(
-      'variant: a live UPDATE does not widen a precise provenance tag to every query set active on the table',
-      () async {
-        final writer = await createTestEnv(registerNote: true);
-        final env = await createTestEnv(registerNote: true);
-        addTearDown(() async {
-          writer.subManager.dispose();
-          env.subManager.dispose();
-          await writer.disconnect();
-          await env.disconnect();
-        });
+      await env.subManager.subscribe([
+        'SELECT * FROM note WHERE id >= 1 AND id <= 1',
+      ]);
 
-        await writer.connection.connect();
-        await writer.subManager.onInitialConnection.first.timeout(_timeout);
-        await env.connection.connect();
-        await env.subManager.onInitialConnection.first.timeout(_timeout);
+      for (final note in bulkNotes) {
+        expect(env.noteTable.getRow(note.id), isNotNull);
+      }
+    }, timeout: const Timeout(Duration(seconds: 60)));
 
-        final seedResult = await writer.reducers
-            .createNote(title: 'narrow-tag-me', content: 'before')
-            .timeout(_timeout);
-        expect(seedResult.isSuccess, isTrue);
+    test('variant: a live UPDATE does not widen a precise provenance tag to every query set active on the table', () async {
+      final writer = await createTestEnv(registerNote: true);
+      final env = await createTestEnv(registerNote: true);
+      addTearDown(() async {
+        writer.subManager.dispose();
+        env.subManager.dispose();
+        await writer.disconnect();
+        await env.disconnect();
+      });
 
-        final querySetA = await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 1 AND id <= 5',
-        ]);
-        final seededNote = env.noteTable.iter().firstWhere(
-          (n) => n.title == 'narrow-tag-me',
-        );
+      await writer.connection.connect();
+      await writer.subManager.onInitialConnection.first.timeout(_timeout);
+      await env.connection.connect();
+      await env.subManager.onInitialConnection.first.timeout(_timeout);
 
-        final querySetB = await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 1000 AND id <= 2000',
-        ]);
-        expect(querySetA, isNot(equals(querySetB)));
+      final seedResult = await writer.reducers
+          .createNote(title: 'narrow-tag-me', content: 'before')
+          .timeout(_timeout);
+      expect(seedResult.isSuccess, isTrue);
 
-        final txUpdateFuture = env.subManager.onTransactionUpdate.first.timeout(
-          _timeout,
-        );
-        await writer.reducers
-            .updateNote(
-              noteId: seededNote.id,
-              title: 'narrow-tag-me',
-              content: 'after-live-update-with-B-active',
-            )
-            .timeout(_timeout);
-        await txUpdateFuture;
+      final querySetA = await env.subManager.subscribe([
+        'SELECT * FROM note WHERE id >= 1 AND id <= 5',
+      ]);
+      final seededNote = env.noteTable.iter().firstWhere(
+        (n) => n.title == 'narrow-tag-me',
+      );
 
-        expect(
-          env.noteTable.getRow(seededNote.id)?.content,
-          equals('after-live-update-with-B-active'),
-        );
+      final querySetB = await env.subManager.subscribe([
+        'SELECT * FROM note WHERE id >= 1000 AND id <= 2000',
+      ]);
+      expect(querySetA, isNot(equals(querySetB)));
 
-        env.subManager.unsubscribe(querySetA);
+      final txUpdateFuture = env.subManager.onTransactionUpdate.first.timeout(
+        _timeout,
+      );
+      await writer.reducers
+          .updateNote(
+            noteId: seededNote.id,
+            title: 'narrow-tag-me',
+            content: 'after-live-update-with-B-active',
+          )
+          .timeout(_timeout);
+      await txUpdateFuture;
 
-        expect(env.noteTable.getRow(seededNote.id), isNull);
-      },
-      timeout: const Timeout(Duration(seconds: 60)),
-    );
+      expect(
+        env.noteTable.getRow(seededNote.id)?.content,
+        equals('after-live-update-with-B-active'),
+      );
 
-    test(
-      "variant: a live-inserted row's provenance entry is removed (not leaked) once the row is live-deleted",
-      () async {
-        final writer = await createTestEnv(registerNote: true);
-        final env = await createTestEnv(registerNote: true);
-        addTearDown(() async {
-          writer.subManager.dispose();
-          env.subManager.dispose();
-          await writer.disconnect();
-          await env.disconnect();
-        });
+      env.subManager.unsubscribe(querySetA);
 
-        await writer.connection.connect();
-        await writer.subManager.onInitialConnection.first.timeout(_timeout);
-        await env.connection.connect();
-        await env.subManager.onInitialConnection.first.timeout(_timeout);
+      expect(env.noteTable.getRow(seededNote.id), isNull);
+    }, timeout: const Timeout(Duration(seconds: 60)));
 
-        await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 1 AND id <= 1000',
-        ]);
+    test("variant: a live-inserted row's provenance entry is removed (not leaked) once the row is live-deleted", () async {
+      final writer = await createTestEnv(registerNote: true);
+      final env = await createTestEnv(registerNote: true);
+      addTearDown(() async {
+        writer.subManager.dispose();
+        env.subManager.dispose();
+        await writer.disconnect();
+        await env.disconnect();
+      });
 
-        final baselineCount = env.subManager.rowProvenanceCountForTable('note');
+      await writer.connection.connect();
+      await writer.subManager.onInitialConnection.first.timeout(_timeout);
+      await env.connection.connect();
+      await env.subManager.onInitialConnection.first.timeout(_timeout);
 
-        final insertUpdateFuture = env.subManager.onTransactionUpdate.first
-            .timeout(_timeout);
-        final createResult = await writer.reducers
-            .createNote(title: 'churned-row', content: 'will be deleted')
-            .timeout(_timeout);
-        expect(createResult.isSuccess, isTrue);
-        await insertUpdateFuture;
+      await env.subManager.subscribe([
+        'SELECT * FROM note WHERE id >= 1 AND id <= 1000',
+      ]);
 
-        final churnedNote = env.noteTable.iter().firstWhere(
-          (n) => n.title == 'churned-row',
-        );
+      final baselineCount = env.subManager.rowProvenanceCountForTable('note');
 
-        expect(env.noteTable.getRow(churnedNote.id), isNotNull);
-        expect(
-          env.subManager.rowProvenanceCountForTable('note'),
-          equals(baselineCount + 1),
-        );
+      final insertUpdateFuture = env.subManager.onTransactionUpdate.first
+          .timeout(_timeout);
+      final createResult = await writer.reducers
+          .createNote(title: 'churned-row', content: 'will be deleted')
+          .timeout(_timeout);
+      expect(createResult.isSuccess, isTrue);
+      await insertUpdateFuture;
 
-        final deleteUpdateFuture = env.subManager.onTransactionUpdate.first
-            .timeout(_timeout);
-        final deleteResult = await writer.reducers
-            .deleteNote(noteId: churnedNote.id)
-            .timeout(_timeout);
-        expect(deleteResult.isSuccess, isTrue);
-        await deleteUpdateFuture;
+      final churnedNote = env.noteTable.iter().firstWhere(
+        (n) => n.title == 'churned-row',
+      );
 
-        expect(env.noteTable.getRow(churnedNote.id), isNull);
+      expect(env.noteTable.getRow(churnedNote.id), isNotNull);
+      expect(
+        env.subManager.rowProvenanceCountForTable('note'),
+        equals(baselineCount + 1),
+      );
 
-        expect(
-          env.subManager.rowProvenanceCountForTable('note'),
-          equals(baselineCount),
-        );
-      },
-      timeout: const Timeout(Duration(seconds: 60)),
-    );
+      final deleteUpdateFuture = env.subManager.onTransactionUpdate.first
+          .timeout(_timeout);
+      final deleteResult = await writer.reducers
+          .deleteNote(noteId: churnedNote.id)
+          .timeout(_timeout);
+      expect(deleteResult.isSuccess, isTrue);
+      await deleteUpdateFuture;
+
+      expect(env.noteTable.getRow(churnedNote.id), isNull);
+
+      expect(
+        env.subManager.rowProvenanceCountForTable('note'),
+        equals(baselineCount),
+      );
+    }, timeout: const Timeout(Duration(seconds: 60)));
   });
 
   group('join subscription', () {
-    test(
-      "a JOIN subscription projecting a non-FROM table applies that table's rows and completes subscribed",
-      () async {
-        final env = await createTestEnv(
-          registerNote: true,
-          registerFolder: true,
-        );
-        addTearDown(() async {
-          env.subManager.dispose();
-          await env.disconnect();
-        });
+    test("a JOIN subscription projecting a non-FROM table applies that table's rows and completes subscribed", () async {
+      final env = await createTestEnv(registerNote: true, registerFolder: true);
+      addTearDown(() async {
+        env.subManager.dispose();
+        await env.disconnect();
+      });
 
-        await env.connection.connect();
-        await env.subManager.onInitialConnection.first.timeout(_timeout);
+      await env.connection.connect();
+      await env.subManager.onInitialConnection.first.timeout(_timeout);
 
-        await env.reducers
-            .createFolder(path: '/join-test', name: 'join-test')
-            .timeout(_timeout);
-        await env.reducers
-            .createNote(title: 'joined-note', content: 'c')
-            .timeout(_timeout);
+      await env.reducers
+          .createFolder(path: '/join-test', name: 'join-test')
+          .timeout(_timeout);
+      await env.reducers
+          .createNote(title: 'joined-note', content: 'c')
+          .timeout(_timeout);
 
-        await env.subManager.subscribe([
-          'SELECT n.* FROM folder f JOIN note n ON n.timestamp = f.created_at',
-        ]);
+      await env.subManager.subscribe([
+        'SELECT n.* FROM folder f JOIN note n ON n.timestamp = f.created_at',
+      ]);
 
-        await env.noteTable.subscribed.timeout(_timeout);
+      await env.noteTable.subscribed.timeout(_timeout);
 
-        expect(
-          env.noteTable.iter().any((n) => n.title == 'joined-note'),
-          isTrue,
-        );
-      },
-      timeout: const Timeout(Duration(seconds: 60)),
-    );
+      expect(env.noteTable.iter().any((n) => n.title == 'joined-note'), isTrue);
+    }, timeout: const Timeout(Duration(seconds: 60)));
   });
 
   group('T4 protocol balance (ship gate)', () {
-    test(
-      'a row entering two overlapping query sets arrives in both QuerySetUpdates; '
-      'a server-side delete arrives in both; the row is evicted exactly once '
-      'with owners draining {A,B} -> {}; the ownership-imbalance counter stays zero',
-      () async {
-        final writer = await createTestEnv(registerNote: true);
-        final env = await createTestEnv(registerNote: true);
-        addTearDown(() async {
-          writer.subManager.dispose();
-          env.subManager.dispose();
-          await writer.disconnect();
-          await env.disconnect();
-        });
+    test('a row entering two overlapping query sets arrives in both QuerySetUpdates; '
+        'a server-side delete arrives in both; the row is evicted exactly once '
+        'with owners draining {A,B} -> {}; the ownership-imbalance counter stays zero', () async {
+      final writer = await createTestEnv(registerNote: true);
+      final env = await createTestEnv(registerNote: true);
+      addTearDown(() async {
+        writer.subManager.dispose();
+        env.subManager.dispose();
+        await writer.disconnect();
+        await env.disconnect();
+      });
 
-        await writer.connection.connect();
-        await writer.subManager.onInitialConnection.first.timeout(_timeout);
-        await env.connection.connect();
-        await env.subManager.onInitialConnection.first.timeout(_timeout);
+      await writer.connection.connect();
+      await writer.subManager.onInitialConnection.first.timeout(_timeout);
+      await env.connection.connect();
+      await env.subManager.onInitialConnection.first.timeout(_timeout);
 
-        final querySetA = await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 1 AND id <= 100',
-        ]);
-        final querySetB = await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 1 AND id <= 200',
-        ]);
-        expect(querySetA, isNot(equals(querySetB)));
+      final querySetA = await env.subManager.subscribe([
+        'SELECT * FROM note WHERE id >= 1 AND id <= 100',
+      ]);
+      final querySetB = await env.subManager.subscribe([
+        'SELECT * FROM note WHERE id >= 1 AND id <= 200',
+      ]);
+      expect(querySetA, isNot(equals(querySetB)));
 
-        expect(env.noteTable.ownershipImbalanceCount, equals(0));
+      expect(env.noteTable.ownershipImbalanceCount, equals(0));
 
-        final txUpdateFuture = env.subManager.onTransactionUpdate.first.timeout(
-          _timeout,
-        );
-        final createResult = await writer.reducers
-            .createNote(title: 'balance-check', content: 'X')
-            .timeout(_timeout);
-        expect(createResult.isSuccess, isTrue);
-        await txUpdateFuture;
+      final txUpdateFuture = env.subManager.onTransactionUpdate.first.timeout(
+        _timeout,
+      );
+      final createResult = await writer.reducers
+          .createNote(title: 'balance-check', content: 'X')
+          .timeout(_timeout);
+      expect(createResult.isSuccess, isTrue);
+      await txUpdateFuture;
 
-        final rowX = env.noteTable.iter().firstWhere(
-          (n) => n.title == 'balance-check',
-        );
+      final rowX = env.noteTable.iter().firstWhere(
+        (n) => n.title == 'balance-check',
+      );
 
-        expect(env.noteTable.getRow(rowX.id), isNotNull);
-        expect(
-          env.subManager.rowProvenanceCountForTable('note'),
-          greaterThan(0),
-        );
-        expect(env.noteTable.ownershipImbalanceCount, equals(0));
+      expect(env.noteTable.getRow(rowX.id), isNotNull);
+      expect(env.subManager.rowProvenanceCountForTable('note'), greaterThan(0));
+      expect(env.noteTable.ownershipImbalanceCount, equals(0));
 
-        env.subManager.unsubscribe(querySetA);
-        await Future.delayed(const Duration(milliseconds: 500));
+      env.subManager.unsubscribe(querySetA);
+      await Future.delayed(const Duration(milliseconds: 500));
 
-        expect(env.noteTable.getRow(rowX.id), isNotNull);
+      expect(env.noteTable.getRow(rowX.id), isNotNull);
 
-        final deleteUpdateFuture = env.subManager.onTransactionUpdate.first
-            .timeout(_timeout);
-        final deleteResult = await writer.reducers
-            .deleteNote(noteId: rowX.id)
-            .timeout(_timeout);
-        expect(deleteResult.isSuccess, isTrue);
-        await deleteUpdateFuture;
+      final deleteUpdateFuture = env.subManager.onTransactionUpdate.first
+          .timeout(_timeout);
+      final deleteResult = await writer.reducers
+          .deleteNote(noteId: rowX.id)
+          .timeout(_timeout);
+      expect(deleteResult.isSuccess, isTrue);
+      await deleteUpdateFuture;
 
-        expect(env.noteTable.getRow(rowX.id), isNull);
-        expect(env.subManager.rowProvenanceCountForTable('note'), equals(0));
-        expect(env.noteTable.ownershipImbalanceCount, equals(0));
-      },
-      timeout: const Timeout(Duration(seconds: 60)),
-    );
+      expect(env.noteTable.getRow(rowX.id), isNull);
+      expect(env.subManager.rowProvenanceCountForTable('note'), equals(0));
+      expect(env.noteTable.ownershipImbalanceCount, equals(0));
+    }, timeout: const Timeout(Duration(seconds: 60)));
   });
 }

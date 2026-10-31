@@ -35,13 +35,9 @@ class TableGenerator {
     ).buildDataClass(className, productType);
 
     final lib = Library(
-      (b) =>
-          b
-            ..directives.addAll(imports)
-            ..body.addAll([
-              dataClass,
-              _buildDecoderClass(className, productType),
-            ]),
+      (b) => b
+        ..directives.addAll(imports)
+        ..body.addAll([dataClass, _buildDecoderClass(className, productType)]),
     );
 
     return emitLibrary(lib, header: kGeneratedHeader);
@@ -54,20 +50,18 @@ class TableGenerator {
 
       b.methods.add(
         Method(
-          (m) =>
-              m
-                ..name = 'decode'
-                ..annotations.add(refer('override'))
-                ..returns = refer(className)
-                ..requiredParameters.add(
-                  Parameter(
-                    (p) =>
-                        p
-                          ..name = 'decoder'
-                          ..type = refer('BsatnDecoder'),
-                  ),
-                )
-                ..body = Code('return $className.decodeBsatn(decoder);'),
+          (m) => m
+            ..name = 'decode'
+            ..annotations.add(refer('override'))
+            ..returns = refer(className)
+            ..requiredParameters.add(
+              Parameter(
+                (p) => p
+                  ..name = 'decoder'
+                  ..type = refer('BsatnDecoder'),
+              ),
+            )
+            ..body = Code('return $className.decodeBsatn(decoder);'),
         ),
       );
 
@@ -83,20 +77,18 @@ class TableGenerator {
           );
           b.methods.add(
             Method(
-              (m) =>
-                  m
-                    ..name = 'getPrimaryKey'
-                    ..annotations.add(refer('override'))
-                    ..returns = refer('$pkDartType?')
-                    ..requiredParameters.add(
-                      Parameter(
-                        (p) =>
-                            p
-                              ..name = 'row'
-                              ..type = refer(className),
-                      ),
-                    )
-                    ..body = Code('return row.$pkFieldName;'),
+              (m) => m
+                ..name = 'getPrimaryKey'
+                ..annotations.add(refer('override'))
+                ..returns = refer('$pkDartType?')
+                ..requiredParameters.add(
+                  Parameter(
+                    (p) => p
+                      ..name = 'row'
+                      ..type = refer(className),
+                  ),
+                )
+                ..body = Code('return row.$pkFieldName;'),
             ),
           );
         } else {
@@ -108,51 +100,46 @@ class TableGenerator {
 
       b.methods.add(
         Method(
-          (m) =>
-              m
-                ..name = 'toJson'
-                ..annotations.add(refer('override'))
-                ..returns = refer('Map<String, dynamic>?')
-                ..requiredParameters.add(
-                  Parameter(
-                    (p) =>
-                        p
-                          ..name = 'row'
-                          ..type = refer(className),
-                  ),
-                )
-                ..body = const Code('return row.toJson();'),
+          (m) => m
+            ..name = 'toJson'
+            ..annotations.add(refer('override'))
+            ..returns = refer('Map<String, dynamic>?')
+            ..requiredParameters.add(
+              Parameter(
+                (p) => p
+                  ..name = 'row'
+                  ..type = refer(className),
+              ),
+            )
+            ..body = const Code('return row.toJson();'),
         ),
       );
 
       b.methods.add(
         Method(
-          (m) =>
-              m
-                ..name = 'fromJson'
-                ..annotations.add(refer('override'))
-                ..returns = refer('$className?')
-                ..requiredParameters.add(
-                  Parameter(
-                    (p) =>
-                        p
-                          ..name = 'json'
-                          ..type = refer('Map<String, dynamic>'),
-                  ),
-                )
-                ..body = Code('return $className.fromJson(json);'),
+          (m) => m
+            ..name = 'fromJson'
+            ..annotations.add(refer('override'))
+            ..returns = refer('$className?')
+            ..requiredParameters.add(
+              Parameter(
+                (p) => p
+                  ..name = 'json'
+                  ..type = refer('Map<String, dynamic>'),
+              ),
+            )
+            ..body = Code('return $className.fromJson(json);'),
         ),
       );
 
       b.methods.add(
         Method(
-          (m) =>
-              m
-                ..name = 'supportsJsonSerialization'
-                ..annotations.add(refer('override'))
-                ..type = MethodType.getter
-                ..returns = refer('bool')
-                ..body = const Code('return true;'),
+          (m) => m
+            ..name = 'supportsJsonSerialization'
+            ..annotations.add(refer('override'))
+            ..type = MethodType.getter
+            ..returns = refer('bool')
+            ..body = const Code('return true;'),
         ),
       );
     });
@@ -161,31 +148,28 @@ class TableGenerator {
   void _addNullPkMethod(ClassBuilder b, String className) {
     b.methods.add(
       Method(
-        (m) =>
-            m
-              ..name = 'hasPrimaryKey'
-              ..annotations.add(refer('override'))
-              ..type = MethodType.getter
-              ..returns = refer('bool')
-              ..body = const Code('return false;'),
+        (m) => m
+          ..name = 'hasPrimaryKey'
+          ..annotations.add(refer('override'))
+          ..type = MethodType.getter
+          ..returns = refer('bool')
+          ..body = const Code('return false;'),
       ),
     );
     b.methods.add(
       Method(
-        (m) =>
-            m
-              ..name = 'getPrimaryKey'
-              ..annotations.add(refer('override'))
-              ..returns = refer('dynamic')
-              ..requiredParameters.add(
-                Parameter(
-                  (p) =>
-                      p
-                        ..name = 'row'
-                        ..type = refer(className),
-                ),
-              )
-              ..body = const Code('return null;'),
+        (m) => m
+          ..name = 'getPrimaryKey'
+          ..annotations.add(refer('override'))
+          ..returns = refer('dynamic')
+          ..requiredParameters.add(
+            Parameter(
+              (p) => p
+                ..name = 'row'
+                ..type = refer(className),
+            ),
+          )
+          ..body = const Code('return null;'),
       ),
     );
   }

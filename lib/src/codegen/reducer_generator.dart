@@ -17,15 +17,14 @@ class ReducerGenerator {
 
   String generate() {
     final lib = Library(
-      (b) =>
-          b
-            ..directives.addAll([
-              Directive.import('dart:async'),
-              Directive.import('package:spacetimedb_sdk/codegen.dart'),
-              Directive.import('reducer_args.dart'),
-              ..._refTypeImports(),
-            ])
-            ..body.add(_buildReducersClass()),
+      (b) => b
+        ..directives.addAll([
+          Directive.import('dart:async'),
+          Directive.import('package:spacetimedb_sdk/codegen.dart'),
+          Directive.import('reducer_args.dart'),
+          ..._refTypeImports(),
+        ])
+        ..body.add(_buildReducersClass()),
     );
 
     return emitLibrary(lib, header: kGeneratedHeader);
@@ -42,19 +41,17 @@ class ReducerGenerator {
     }
 
     final lib = Library(
-      (b) =>
-          b
-            ..directives.addAll([
-              Directive.import('package:spacetimedb_sdk/codegen.dart'),
-              ..._refTypeImports(),
-            ])
-            ..body.addAll(specs),
+      (b) => b
+        ..directives.addAll([
+          Directive.import('package:spacetimedb_sdk/codegen.dart'),
+          ..._refTypeImports(),
+        ])
+        ..body.addAll(specs),
     );
 
     return emitLibrary(
       lib,
-      header:
-          '// GENERATED REDUCER ARGUMENT CLASSES AND DECODERS - DO NOT MODIFY BY HAND',
+      header: '// GENERATED REDUCER ARGUMENT CLASSES AND DECODERS - DO NOT MODIFY BY HAND',
     );
   }
 
@@ -81,39 +78,34 @@ class ReducerGenerator {
 
       b.fields.addAll([
         Field(
-          (f) =>
-              f
-                ..name = '_reducerCaller'
-                ..type = refer('ReducerCaller')
-                ..modifier = FieldModifier.final$,
+          (f) => f
+            ..name = '_reducerCaller'
+            ..type = refer('ReducerCaller')
+            ..modifier = FieldModifier.final$,
         ),
         Field(
-          (f) =>
-              f
-                ..name = '_reducerEmitter'
-                ..type = refer('ReducerEmitter')
-                ..modifier = FieldModifier.final$,
+          (f) => f
+            ..name = '_reducerEmitter'
+            ..type = refer('ReducerEmitter')
+            ..modifier = FieldModifier.final$,
         ),
       ]);
 
       b.constructors.add(
         Constructor(
-          (c) =>
-              c
-                ..requiredParameters.addAll([
-                  Parameter(
-                    (p) =>
-                        p
-                          ..name = '_reducerCaller'
-                          ..toThis = true,
-                  ),
-                  Parameter(
-                    (p) =>
-                        p
-                          ..name = '_reducerEmitter'
-                          ..toThis = true,
-                  ),
-                ]),
+          (c) => c
+            ..requiredParameters.addAll([
+              Parameter(
+                (p) => p
+                  ..name = '_reducerCaller'
+                  ..toThis = true,
+              ),
+              Parameter(
+                (p) => p
+                  ..name = '_reducerEmitter'
+                  ..toThis = true,
+              ),
+            ]),
         ),
       );
 
@@ -166,31 +158,28 @@ class ReducerGenerator {
         );
         m.optionalParameters.add(
           Parameter(
-            (p) =>
-                p
-                  ..name = paramName
-                  ..named = true
-                  ..required = true
-                  ..type = refer(dartType),
+            (p) => p
+              ..name = paramName
+              ..named = true
+              ..required = true
+              ..type = refer(dartType),
           ),
         );
       }
 
       m.optionalParameters.addAll([
         Parameter(
-          (p) =>
-              p
-                ..name = 'optimisticChanges'
-                ..named = true
-                ..type = refer('List<OptimisticChange>?'),
+          (p) => p
+            ..name = 'optimisticChanges'
+            ..named = true
+            ..type = refer('List<OptimisticChange>?'),
         ),
         Parameter(
-          (p) =>
-              p
-                ..name = 'dropIfOffline'
-                ..named = true
-                ..defaultTo = const Code('false')
-                ..type = refer('bool'),
+          (p) => p
+            ..name = 'dropIfOffline'
+            ..named = true
+            ..defaultTo = const Code('false')
+            ..type = refer('bool'),
         ),
       ]);
 
@@ -233,19 +222,17 @@ class ReducerGenerator {
     argExtractors.writeln('});');
 
     return Method(
-      (m) =>
-          m
-            ..name = methodName
-            ..returns = refer('StreamSubscription<void>')
-            ..requiredParameters.add(
-              Parameter(
-                (p) =>
-                    p
-                      ..name = 'callback'
-                      ..type = refer('void Function($callbackParams)'),
-              ),
-            )
-            ..body = Code(argExtractors.toString()),
+      (m) => m
+        ..name = methodName
+        ..returns = refer('StreamSubscription<void>')
+        ..requiredParameters.add(
+          Parameter(
+            (p) => p
+              ..name = 'callback'
+              ..type = refer('void Function($callbackParams)'),
+          ),
+        )
+        ..body = Code(argExtractors.toString()),
     );
   }
 
@@ -264,11 +251,10 @@ class ReducerGenerator {
         );
         b.fields.add(
           Field(
-            (f) =>
-                f
-                  ..name = paramName
-                  ..type = refer(dartType)
-                  ..modifier = FieldModifier.final$,
+            (f) => f
+              ..name = paramName
+              ..type = refer(dartType)
+              ..modifier = FieldModifier.final$,
           ),
         );
       }
@@ -282,12 +268,11 @@ class ReducerGenerator {
               final paramName = toCamelCase(param.name ?? 'unknown');
               c.optionalParameters.add(
                 Parameter(
-                  (p) =>
-                      p
-                        ..name = paramName
-                        ..named = true
-                        ..required = true
-                        ..toThis = true,
+                  (p) => p
+                    ..name = paramName
+                    ..named = true
+                    ..required = true
+                    ..toThis = true,
                 ),
               );
             }
@@ -316,29 +301,26 @@ class ReducerGenerator {
     decodeBody.writeln(');');
 
     return Class(
-      (b) =>
-          b
-            ..name = decoderClassName
-            ..implements.add(refer('ReducerArgDecoder<$argsClassName>'))
-            ..constructors.add(Constructor((c) => c..constant = true))
-            ..methods.add(
-              Method(
-                (m) =>
-                    m
-                      ..name = 'decode'
-                      ..annotations.add(refer('override'))
-                      ..returns = refer(argsClassName)
-                      ..requiredParameters.add(
-                        Parameter(
-                          (p) =>
-                              p
-                                ..name = 'decoder'
-                                ..type = refer('BsatnDecoder'),
-                        ),
-                      )
-                      ..body = Code(decodeBody.toString()),
-              ),
-            ),
+      (b) => b
+        ..name = decoderClassName
+        ..implements.add(refer('ReducerArgDecoder<$argsClassName>'))
+        ..constructors.add(Constructor((c) => c..constant = true))
+        ..methods.add(
+          Method(
+            (m) => m
+              ..name = 'decode'
+              ..annotations.add(refer('override'))
+              ..returns = refer(argsClassName)
+              ..requiredParameters.add(
+                Parameter(
+                  (p) => p
+                    ..name = 'decoder'
+                    ..type = refer('BsatnDecoder'),
+                ),
+              )
+              ..body = Code(decodeBody.toString()),
+          ),
+        ),
     );
   }
 

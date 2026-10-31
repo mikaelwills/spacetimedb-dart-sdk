@@ -17,12 +17,11 @@ import 'package:spacetimedb_sdk/src/offline/pending_mutation.dart';
 import 'package:spacetimedb_sdk/src/offline/sync_state.dart';
 import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 
-typedef SendReducer =
-    Future<TransactionResult> Function(
-      String reducerName,
-      Uint8List args, {
-      String? requestId,
-    });
+typedef SendReducer = Future<TransactionResult> Function(
+  String reducerName,
+  Uint8List args, {
+  String? requestId,
+});
 
 class MutationSyncer implements MutationHandler {
   final SpacetimeDbConnection _connection;

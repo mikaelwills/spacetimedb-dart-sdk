@@ -38,10 +38,9 @@ class ProductTypeGenerator {
     ).buildDataClass(className, productType);
 
     final lib = Library(
-      (b) =>
-          b
-            ..directives.addAll(imports)
-            ..body.add(dataClass),
+      (b) => b
+        ..directives.addAll(imports)
+        ..body.add(dataClass),
     );
 
     return emitLibrary(lib, header: kGeneratedHeader);

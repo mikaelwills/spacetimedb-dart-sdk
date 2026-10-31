@@ -80,13 +80,11 @@ void main() {
 
       final bytes = await firstFrame.future.timeout(
         const Duration(seconds: 5),
-        onTimeout:
-            () =>
-                throw TimeoutException(
-                  'No server frame within 5s — server accepted v2 upgrade but never '
-                  'sent InitialConnection. Possibly silently falling back to v1 '
-                  'without actually speaking v2.',
-                ),
+        onTimeout: () => throw TimeoutException(
+          'No server frame within 5s — server accepted v2 upgrade but never '
+          'sent InitialConnection. Possibly silently falling back to v1 '
+          'without actually speaking v2.',
+        ),
       );
 
       print('  Received ${bytes.length} bytes');

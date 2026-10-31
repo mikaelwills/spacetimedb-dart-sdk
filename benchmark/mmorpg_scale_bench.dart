@@ -1,6 +1,7 @@
 // ignore_for_file: avoid_print
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
 import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
@@ -168,15 +169,11 @@ void main() {
   tearDownAll(cleanupTestEnvironment);
 
   for (final config in _configs) {
-    test(
-      'benchmark: ${config.name}',
-      () async {
-        final result = await _runConfig(config);
-        print(result.toMarkdown());
-        _results.add(result);
-      },
-      timeout: Timeout(Duration(seconds: config.durationSec + 120)),
-    );
+    test('benchmark: ${config.name}', () async {
+      final result = await _runConfig(config);
+      print(result.toMarkdown());
+      _results.add(result);
+    }, timeout: Timeout(Duration(seconds: config.durationSec + 120)));
   }
 
   tearDownAll(() async {
@@ -255,8 +252,11 @@ Future<_BenchResult> _runConfig(_BenchConfig config) async {
     final rowNotifiersAttached = <ValueNotifier<Entity?>>[];
 
     if (config.useRowNotifier) {
-      final entityIds =
-          client.entity.iter().map((e) => e.id).take(config.listeners).toList();
+      final entityIds = client.entity
+          .iter()
+          .map((e) => e.id)
+          .take(config.listeners)
+          .toList();
       for (final id in entityIds) {
         void listener() {
           final sw = Stopwatch()..start();

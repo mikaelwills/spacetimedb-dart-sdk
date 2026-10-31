@@ -5,6 +5,7 @@ import 'dart:async';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/protocol.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
+
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';
 
@@ -32,11 +33,9 @@ void main() {
         .firstWhere((state) => state is T)
         .timeout(
           timeout,
-          onTimeout:
-              () =>
-                  throw TimeoutException(
-                    'Timed out waiting for state $T. Current: ${connection.state}',
-                  ),
+          onTimeout: () => throw TimeoutException(
+            'Timed out waiting for state $T. Current: ${connection.state}',
+          ),
         );
   }
 
@@ -53,83 +52,75 @@ void main() {
   }
 
   group('Shared-table overlapping subscriptions', () {
-    test(
-      'two overlapping WHERE subsets on one table: both sets survive after both apply',
-      () async {
-        final writer = await seedNotes(5);
-        final env = await createTestEnv(registerNote: true);
-        addTearDown(() async {
-          writer.subManager.dispose();
-          env.subManager.dispose();
-          await writer.disconnect();
-          await env.disconnect();
-        });
+    test('two overlapping WHERE subsets on one table: both sets survive after both apply', () async {
+      final writer = await seedNotes(5);
+      final env = await createTestEnv(registerNote: true);
+      addTearDown(() async {
+        writer.subManager.dispose();
+        env.subManager.dispose();
+        await writer.disconnect();
+        await env.disconnect();
+      });
 
-        await env.connection.connect();
-        await env.subManager.onInitialConnection.first.timeout(_timeout);
+      await env.connection.connect();
+      await env.subManager.onInitialConnection.first.timeout(_timeout);
 
-        await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 1 AND id <= 3',
-        ]);
-        await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 3 AND id <= 5',
-        ]);
-        await Future.delayed(const Duration(seconds: 1));
+      await env.subManager.subscribe([
+        'SELECT * FROM note WHERE id >= 1 AND id <= 3',
+      ]);
+      await env.subManager.subscribe([
+        'SELECT * FROM note WHERE id >= 3 AND id <= 5',
+      ]);
+      await Future.delayed(const Duration(seconds: 1));
 
-        for (var id = 1; id <= 5; id++) {
-          expect(
-            env.noteTable.getRow(id),
-            isNotNull,
-            reason:
-                'id $id must survive: set A matches 1..3, set B matches 3..5, '
-                'the cache is the union — no set\'s apply may clobber the other\'s rows',
-          );
-        }
-      },
-      timeout: const Timeout(Duration(seconds: 60)),
-    );
+      for (var id = 1; id <= 5; id++) {
+        expect(
+          env.noteTable.getRow(id),
+          isNotNull,
+          reason:
+              'id $id must survive: set A matches 1..3, set B matches 3..5, '
+              'the cache is the union — no set\'s apply may clobber the other\'s rows',
+        );
+      }
+    }, timeout: const Timeout(Duration(seconds: 60)));
 
-    test(
-      'overlapping shared-table sets both rehydrate on reconnect without clobbering',
-      () async {
-        final writer = await seedNotes(5);
-        final env = await createTestEnv(registerNote: true);
-        addTearDown(() async {
-          writer.subManager.dispose();
-          env.subManager.dispose();
-          await writer.disconnect();
-          await env.disconnect();
-        });
+    test('overlapping shared-table sets both rehydrate on reconnect without clobbering', () async {
+      final writer = await seedNotes(5);
+      final env = await createTestEnv(registerNote: true);
+      addTearDown(() async {
+        writer.subManager.dispose();
+        env.subManager.dispose();
+        await writer.disconnect();
+        await env.disconnect();
+      });
 
-        await env.connection.connect();
-        await env.subManager.onInitialConnection.first.timeout(_timeout);
-        await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 1 AND id <= 3',
-        ]);
-        await env.subManager.subscribe([
-          'SELECT * FROM note WHERE id >= 3 AND id <= 5',
-        ]);
-        await Future.delayed(const Duration(seconds: 1));
+      await env.connection.connect();
+      await env.subManager.onInitialConnection.first.timeout(_timeout);
+      await env.subManager.subscribe([
+        'SELECT * FROM note WHERE id >= 1 AND id <= 3',
+      ]);
+      await env.subManager.subscribe([
+        'SELECT * FROM note WHERE id >= 3 AND id <= 5',
+      ]);
+      await Future.delayed(const Duration(seconds: 1));
 
-        await env.connection.disconnect();
-        await waitForState<Disconnected>(env.connection);
+      await env.connection.disconnect();
+      await waitForState<Disconnected>(env.connection);
 
-        await env.connection.reconnect();
-        await waitForState<Connected>(env.connection);
-        await Future.delayed(const Duration(seconds: 2));
+      await env.connection.reconnect();
+      await waitForState<Connected>(env.connection);
+      await Future.delayed(const Duration(seconds: 2));
 
-        for (var id = 1; id <= 5; id++) {
-          expect(
-            env.noteTable.getRow(id),
-            isNotNull,
-            reason:
-                'id $id must rehydrate on reconnect: serial per-set re-subscribe '
-                'must not let one set\'s apply transiently clobber the other\'s rows',
-          );
-        }
-      },
-      timeout: const Timeout(Duration(seconds: 60)),
-    );
+      for (var id = 1; id <= 5; id++) {
+        expect(
+          env.noteTable.getRow(id),
+          isNotNull,
+          reason:
+              'id $id must rehydrate on reconnect: serial per-set re-subscribe '
+              'must not let one set\'s apply transiently clobber the other\'s rows',
+        );
+      }
+    }, timeout: const Timeout(Duration(seconds: 60)));
 
     test(
       'eviction still works: a row no active set matches is removed',

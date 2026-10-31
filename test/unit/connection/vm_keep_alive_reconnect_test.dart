@@ -21,17 +21,18 @@ void main() {
           pongTimeout: Duration(milliseconds: 40),
           appLevelKeepAlive: true,
         ),
-        socketFactory: (
-          uri,
-          protocols,
-          headers, {
-          connectTimeout = const Duration(seconds: 10),
-          pingInterval,
-        }) {
-          final socket = SilentWebSocketChannel();
-          sockets.add(socket);
-          return socket;
-        },
+        socketFactory:
+            (
+              uri,
+              protocols,
+              headers, {
+              connectTimeout = const Duration(seconds: 10),
+              pingInterval,
+            }) {
+              final socket = SilentWebSocketChannel();
+              sockets.add(socket);
+              return socket;
+            },
       );
       addTearDown(connection.dispose);
 

@@ -31,8 +31,9 @@ RefTypeName? resolveRefTypeName(
 TableSchema _pickBackingTable(List<TableSchema> backing, String structName) {
   if (structName.isNotEmpty) {
     final structClass = toTypeClassName(structName);
-    final match =
-        backing.where((t) => toPascalCase(t.name) == structClass).firstOrNull;
+    final match = backing
+        .where((t) => toPascalCase(t.name) == structClass)
+        .firstOrNull;
     if (match != null) return match;
   }
   return backing.reduce(

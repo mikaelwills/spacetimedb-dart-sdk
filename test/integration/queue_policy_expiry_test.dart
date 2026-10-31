@@ -5,6 +5,7 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
+
 import '../generated/note.dart';
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';
@@ -98,108 +99,105 @@ void main() {
         final mutation = decoded['mutation'];
         if (mutation is Map<String, dynamic> &&
             mutation['requestId'] == requestId) {
-          mutation['createdAt'] =
-              DateTime.now().subtract(age).toIso8601String();
+          mutation['createdAt'] = DateTime.now()
+              .subtract(age)
+              .toIso8601String();
         }
         rewritten.add(jsonEncode(decoded));
       }
       await file.writeAsString('${rewritten.join('\n')}\n', flush: true);
     }
 
-    test(
-      'expired mutation never reaches the wire, fresh one lands',
-      () async {
-        final title = 'Expiry-${DateTime.now().microsecondsSinceEpoch}';
+    test('expired mutation never reaches the wire, fresh one lands', () async {
+      final title = 'Expiry-${DateTime.now().microsecondsSinceEpoch}';
 
-        final env1 = await connectEnv(
-          await createTestEnv(
-            offlineStorage: JsonFileStorage(basePath: tempDir.path),
-          ),
-        );
-        final note = await createAndSync(env1, title, 'server v1');
-
-        final disconnected = env1.connection.onStateChanged
-            .firstWhere((s) => s is! Connected)
-            .timeout(_timeout);
-        await env1.connection.disconnect();
-        await disconnected;
-
-        final staleResult = await env1.reducers.updateNote(
-          noteId: note.id,
-          title: note.title,
-          content: 'stale edit A',
-        );
-        await queueEdit(env1, env1.noteTable.getRow(note.id)!, 'fresh edit');
-
-        await env1.subManager.dispose();
-        await env1.connection.disconnect();
-
-        await backdateMutation(
-          staleResult.pendingRequestId!,
-          const Duration(hours: 2),
-        );
-
-        final observer = await connectEnv(await createTestEnv());
-        addTearDown(() async {
-          await observer.subManager.dispose();
-          await observer.connection.disconnect();
-        });
-        final observedContents = <String>[];
-        final observerSub = observer.noteTable.onUpdate.listen((event) {
-          if (event.newRow.id == note.id) {
-            observedContents.add(event.newRow.content);
-          }
-        });
-
-        final env2 = await createTestEnv(
+      final env1 = await connectEnv(
+        await createTestEnv(
           offlineStorage: JsonFileStorage(basePath: tempDir.path),
-          queuePolicy: const OfflineQueuePolicy(
-            maxMutationAge: Duration(hours: 1),
-          ),
-        );
-        addTearDown(() async {
-          await env2.subManager.dispose();
-          await env2.connection.disconnect();
-        });
-        await env2.subManager.loadFromOfflineCache();
-        expect(env2.subManager.syncState.pendingCount, equals(2));
+        ),
+      );
+      final note = await createAndSync(env1, title, 'server v1');
 
-        final results = <MutationSyncResult>[];
-        final allDone = Completer<void>();
-        final resultSub = env2.subManager.onMutationSyncResult.listen((r) {
-          results.add(r);
-          if (results.length == 2 && !allDone.isCompleted) allDone.complete();
-        });
-        await connectEnv(env2);
-        await allDone.future.timeout(_timeout);
-        await resultSub.cancel();
-        await Future.delayed(const Duration(milliseconds: 300));
-        await observerSub.cancel();
+      final disconnected = env1.connection.onStateChanged
+          .firstWhere((s) => s is! Connected)
+          .timeout(_timeout);
+      await env1.connection.disconnect();
+      await disconnected;
 
-        final expired = results.where((r) => r.expired).toList();
-        expect(expired, hasLength(1));
-        expect(expired.single.success, isFalse);
-        expect(results.where((r) => r.success), hasLength(1));
-        expect(env2.subManager.syncState.failedCount, equals(1));
+      final staleResult = await env1.reducers.updateNote(
+        noteId: note.id,
+        title: note.title,
+        content: 'stale edit A',
+      );
+      await queueEdit(env1, env1.noteTable.getRow(note.id)!, 'fresh edit');
 
-        expect(
-          observer.noteTable.getRow(note.id)!.content,
-          equals('fresh edit'),
-          reason: 'fresh edit must land on the server',
-        );
-        expect(
-          observedContents,
-          isNot(contains('stale edit A')),
-          reason: 'expired mutation content must never appear on the wire',
-        );
-        expect(
-          env2.noteTable.getRow(note.id)!.content,
-          equals('fresh edit'),
-          reason: 'local cache converges to the surviving edit',
-        );
-      },
-      timeout: const Timeout(Duration(seconds: 90)),
-    );
+      await env1.subManager.dispose();
+      await env1.connection.disconnect();
+
+      await backdateMutation(
+        staleResult.pendingRequestId!,
+        const Duration(hours: 2),
+      );
+
+      final observer = await connectEnv(await createTestEnv());
+      addTearDown(() async {
+        await observer.subManager.dispose();
+        await observer.connection.disconnect();
+      });
+      final observedContents = <String>[];
+      final observerSub = observer.noteTable.onUpdate.listen((event) {
+        if (event.newRow.id == note.id) {
+          observedContents.add(event.newRow.content);
+        }
+      });
+
+      final env2 = await createTestEnv(
+        offlineStorage: JsonFileStorage(basePath: tempDir.path),
+        queuePolicy: const OfflineQueuePolicy(
+          maxMutationAge: Duration(hours: 1),
+        ),
+      );
+      addTearDown(() async {
+        await env2.subManager.dispose();
+        await env2.connection.disconnect();
+      });
+      await env2.subManager.loadFromOfflineCache();
+      expect(env2.subManager.syncState.pendingCount, equals(2));
+
+      final results = <MutationSyncResult>[];
+      final allDone = Completer<void>();
+      final resultSub = env2.subManager.onMutationSyncResult.listen((r) {
+        results.add(r);
+        if (results.length == 2 && !allDone.isCompleted) allDone.complete();
+      });
+      await connectEnv(env2);
+      await allDone.future.timeout(_timeout);
+      await resultSub.cancel();
+      await Future.delayed(const Duration(milliseconds: 300));
+      await observerSub.cancel();
+
+      final expired = results.where((r) => r.expired).toList();
+      expect(expired, hasLength(1));
+      expect(expired.single.success, isFalse);
+      expect(results.where((r) => r.success), hasLength(1));
+      expect(env2.subManager.syncState.failedCount, equals(1));
+
+      expect(
+        observer.noteTable.getRow(note.id)!.content,
+        equals('fresh edit'),
+        reason: 'fresh edit must land on the server',
+      );
+      expect(
+        observedContents,
+        isNot(contains('stale edit A')),
+        reason: 'expired mutation content must never appear on the wire',
+      );
+      expect(
+        env2.noteTable.getRow(note.id)!.content,
+        equals('fresh edit'),
+        reason: 'local cache converges to the surviving edit',
+      );
+    }, timeout: const Timeout(Duration(seconds: 90)));
 
     test(
       'bounded queue with dropOldest keeps the latest state for the row',
@@ -372,49 +370,45 @@ void main() {
       );
     }, timeout: const Timeout(Duration(seconds: 90)));
 
-    test(
-      'maxRetainedFailures caps recentFailures while failedCount tracks the true total',
-      () async {
-        final title = 'Retain-${DateTime.now().microsecondsSinceEpoch}';
+    test('maxRetainedFailures caps recentFailures while failedCount tracks the true total', () async {
+      final title = 'Retain-${DateTime.now().microsecondsSinceEpoch}';
 
-        final env = await connectEnv(
-          await createTestEnv(
-            offlineStorage: JsonFileStorage(basePath: tempDir.path),
-            queuePolicy: const OfflineQueuePolicy(
-              maxQueueLength: 1,
-              overflow: OverflowStrategy.dropOldest,
-              maxRetainedFailures: 2,
-            ),
+      final env = await connectEnv(
+        await createTestEnv(
+          offlineStorage: JsonFileStorage(basePath: tempDir.path),
+          queuePolicy: const OfflineQueuePolicy(
+            maxQueueLength: 1,
+            overflow: OverflowStrategy.dropOldest,
+            maxRetainedFailures: 2,
           ),
-        );
-        addTearDown(() async {
-          await env.subManager.dispose();
-          await env.connection.disconnect();
-        });
-        final note = await createAndSync(env, title, 'v1');
-
-        final disconnected = env.connection.onStateChanged
-            .firstWhere((s) => s is! Connected)
-            .timeout(_timeout);
+        ),
+      );
+      addTearDown(() async {
+        await env.subManager.dispose();
         await env.connection.disconnect();
-        await disconnected;
+      });
+      final note = await createAndSync(env, title, 'v1');
 
-        for (var v = 2; v <= 7; v++) {
-          await queueEdit(env, env.noteTable.getRow(note.id)!, 'v$v');
-        }
+      final disconnected = env.connection.onStateChanged
+          .firstWhere((s) => s is! Connected)
+          .timeout(_timeout);
+      await env.connection.disconnect();
+      await disconnected;
 
-        expect(
-          env.subManager.syncState.failedCount,
-          equals(5),
-          reason: '6 edits into a depth-1 queue => 5 overflow drops total',
-        );
-        expect(
-          env.subManager.syncState.recentFailures,
-          hasLength(2),
-          reason: 'recentFailures is capped at maxRetainedFailures=2',
-        );
-      },
-      timeout: const Timeout(Duration(seconds: 90)),
-    );
+      for (var v = 2; v <= 7; v++) {
+        await queueEdit(env, env.noteTable.getRow(note.id)!, 'v$v');
+      }
+
+      expect(
+        env.subManager.syncState.failedCount,
+        equals(5),
+        reason: '6 edits into a depth-1 queue => 5 overflow drops total',
+      );
+      expect(
+        env.subManager.syncState.recentFailures,
+        hasLength(2),
+        reason: 'recentFailures is capped at maxRetainedFailures=2',
+      );
+    }, timeout: const Timeout(Duration(seconds: 90)));
   });
 }

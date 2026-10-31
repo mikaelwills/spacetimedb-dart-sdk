@@ -50,8 +50,9 @@ void main() {
     test('generates a class file for a non-table product type', () {
       final files = DartGenerator(_schema()).generateAll();
 
-      final posFile =
-          files.where((f) => f.filename == 'server_position.dart').firstOrNull;
+      final posFile = files
+          .where((f) => f.filename == 'server_position.dart')
+          .firstOrNull;
       expect(
         posFile,
         isNotNull,
@@ -91,8 +92,9 @@ void main() {
       );
 
       final files = DartGenerator(schema).generateAll();
-      final content =
-          files.firstWhere((f) => f.filename == 'unit.dart').content;
+      final content = files
+          .firstWhere((f) => f.filename == 'unit.dart')
+          .content;
 
       expect(content, contains('class Unit {'));
       expect(content, isNot(contains('other is Unit && ;')));

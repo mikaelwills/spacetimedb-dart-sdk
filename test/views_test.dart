@@ -16,8 +16,7 @@ void main() {
       expect(
         schema.views.length,
         equals(3),
-        reason:
-            'Test module has three views: all_notes, first_note, notes_query_all',
+        reason: 'Test module has three views: all_notes, first_note, notes_query_all',
       );
 
       final allNotesView = schema.views.firstWhere(

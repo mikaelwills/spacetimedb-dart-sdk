@@ -16,12 +16,11 @@ Note createNote(int id, String title, {String content = ''}) => Note(
 
 BsatnRowList _rowList(List<Note> notes) {
   if (notes.isEmpty) return BsatnRowList.empty();
-  final encoded =
-      notes.map((n) {
-        final e = BsatnEncoder();
-        n.encodeBsatn(e);
-        return e.toBytes();
-      }).toList();
+  final encoded = notes.map((n) {
+    final e = BsatnEncoder();
+    n.encodeBsatn(e);
+    return e.toBytes();
+  }).toList();
   final offsets = <int>[];
   var cursor = 0;
   for (final row in encoded) {

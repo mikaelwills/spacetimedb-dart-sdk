@@ -61,11 +61,10 @@ class PendingMutation {
       reducerName: reducerName,
       encodedArgs: Uint8List.fromList(encodedArgs.cast<int>()),
       createdAt: DateTime.parse(createdAt),
-      optimisticChanges:
-          changesJson
-              ?.whereType<Map<String, dynamic>>()
-              .map(OptimisticChange.fromJson)
-              .toList(),
+      optimisticChanges: changesJson
+          ?.whereType<Map<String, dynamic>>()
+          .map(OptimisticChange.fromJson)
+          .toList(),
     );
   }
 

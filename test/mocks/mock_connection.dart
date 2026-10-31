@@ -88,10 +88,9 @@ class MockConnection implements SpacetimeDbConnection {
 
   final List<bool> keepAliveWorkInFlightCalls = <bool>[];
 
-  bool get keepAliveWorkInFlight =>
-      keepAliveWorkInFlightCalls.isEmpty
-          ? false
-          : keepAliveWorkInFlightCalls.last;
+  bool get keepAliveWorkInFlight => keepAliveWorkInFlightCalls.isEmpty
+      ? false
+      : keepAliveWorkInFlightCalls.last;
 
   @override
   void setKeepAliveWorkInFlight(bool inFlight) {
