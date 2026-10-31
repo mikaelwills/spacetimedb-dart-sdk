@@ -1,4 +1,4 @@
-library spacetimedb_sdk.protocol;
+library;
 
 export 'spacetimedb_sdk.dart';
 

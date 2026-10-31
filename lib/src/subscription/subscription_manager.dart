@@ -76,8 +76,8 @@ class SubscriptionManager {
     this._connection, {
     OfflineStorage? offlineStorage,
     OfflineQueuePolicy queuePolicy = const OfflineQueuePolicy(),
-    bool retainRowsOnUnsubscribe = false,
-  }) : _retainRowsOnUnsubscribe = retainRowsOnUnsubscribe {
+    this._retainRowsOnUnsubscribe = false,
+  }) {
     _optimisticState = OptimisticStateManager(cache);
 
     if (offlineStorage != null) {

@@ -64,18 +64,13 @@ class MutationSyncer implements MutationHandler {
       StreamController<MutationSyncResult>.broadcast();
 
   MutationSyncer({
-    required SpacetimeDbConnection connection,
-    required OfflineStorage storage,
-    required OptimisticStateManager optimisticState,
-    required ClientCache cache,
-    required SendReducer send,
-    OfflineQueuePolicy policy = const OfflineQueuePolicy(),
-  }) : _connection = connection,
-       _storage = storage,
-       _optimisticState = optimisticState,
-       _cache = cache,
-       _send = send,
-       _policy = policy;
+    required this._connection,
+    required this._storage,
+    required this._optimisticState,
+    required this._cache,
+    required this._send,
+    this._policy = const OfflineQueuePolicy(),
+  });
 
   Stream<SyncState> get onSyncStateChanged => _syncStateController.stream;
   Stream<MutationSyncResult> get onMutationSyncResult =>

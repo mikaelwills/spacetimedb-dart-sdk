@@ -37,7 +37,7 @@ DatabaseSchema _schemaWithInlineSumColumn({
   final elements = <Map<String, dynamic>>[
     _column('id', {'U32': []}),
     _column(columnName, _pendingActiveDoneSum()),
-    if (extraColumn != null) extraColumn,
+    ?extraColumn,
   ];
 
   return DatabaseSchema.fromJson('inlinedb', {

@@ -1,4 +1,4 @@
-library spacetimedb_sdk.codegen;
+library;
 
 export 'spacetimedb_sdk.dart';
 

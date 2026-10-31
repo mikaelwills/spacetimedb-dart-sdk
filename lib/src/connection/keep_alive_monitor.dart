@@ -45,12 +45,10 @@ class KeepAliveMonitor {
   KeepAliveMonitor({
     required void Function() onSendPing,
     required void Function() onDisconnect,
-    Duration idleThreshold = const Duration(seconds: 30),
-    Duration pongTimeout = const Duration(seconds: 5),
+    this._idleThreshold = const Duration(seconds: 30),
+    this._pongTimeout = const Duration(seconds: 5),
   }) : _sendPingCallback = onSendPing,
-       _onTimeoutCallback = onDisconnect,
-       _idleThreshold = idleThreshold,
-       _pongTimeout = pongTimeout {
+       _onTimeoutCallback = onDisconnect {
     _armIdleTimer();
   }
 

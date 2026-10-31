@@ -35,11 +35,11 @@ class EventContext {
   final String? pendingRequestId;
 
   EventContext({
-    required Uint8List? myConnectionId,
+    required this._myConnectionId,
     required this.event,
     this.isOptimistic = false,
     this.pendingRequestId,
-  }) : _myConnectionId = myConnectionId;
+  });
 
   EventContext.optimistic({required String requestId})
     : _myConnectionId = null,

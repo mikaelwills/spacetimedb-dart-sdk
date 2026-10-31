@@ -51,12 +51,10 @@ class ReducerCaller {
 
   ReducerCaller(
     this._connection, {
-    OfflineStorage? offlineStorage,
-    MutationHandler? mutationHandler,
-    OfflineQueuePolicy policy = const OfflineQueuePolicy(),
-  }) : _offlineStorage = offlineStorage,
-       _mutationHandler = mutationHandler,
-       _policy = policy;
+    this._offlineStorage,
+    this._mutationHandler,
+    this._policy = const OfflineQueuePolicy(),
+  });
 
   Future<TransactionResult> call(
     String reducerName,
