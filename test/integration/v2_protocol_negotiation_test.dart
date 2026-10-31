@@ -8,55 +8,6 @@ import 'package:web_socket_channel/io.dart';
 
 import '../helpers/integration_test_helper.dart';
 
-/// v2 Protocol Negotiation Investigation (W1 from the 2026-04-18 v2 pipeline)
-///
-/// Question: does a SpacetimeDB 2.x server accept the `v2.bsatn.spacetimedb`
-/// WebSocket subprotocol, and if so, does it send `InitialConnection` as the
-/// first server frame under the v2 schema?
-///
-/// The Dart SDK's 2.0.0 branch hinges on the answer. The prior 2026-04-13
-/// investigation did not verify this against a live server — the plan was
-/// assembled from reading `crates/client-api-messages/src/websocket/v2.rs`
-/// and assuming the server accepts clients that advertise v2 in the
-/// subprotocol list. This test closes that assumption.
-///
-/// What we do:
-///   1. Open a raw WebSocket to `/v1/database/<name>/subscribe` with the
-///      v2 subprotocol string in the `protocols` list (the URL path itself
-///      is *not* a protocol version — it's the HTTP API version, mounted at
-///      `/v1` on the server side regardless of wire protocol).
-///   2. Observe the upgrade response. If the server rejects v2 outright, we
-///      get a `WebSocketChannelException` from `IOWebSocketChannel.connect`.
-///   3. If the upgrade succeeds, read the first frame and decode it against
-///      the v2 `ServerMessage` tag space:
-///        - tag 0 = `InitialConnection { identity: 32B, connection_id: 16B,
-///          token: Box<str> }`  (v2.rs:175-204)
-///      Frame envelope: 1 byte compression tag (0=none, 1=brotli, 2=gzip)
-///      followed by the BSATN payload. We only exercise the compression=none
-///      path here — servers advertise default compression based on the
-///      `?compression=` query param (absent here, defaults to `Brotli`), but
-///      the initial connection frame predates any subscription and is short
-///      enough that the server sends it uncompressed (observed in v1; verify
-///      empirically).
-///
-/// Expected outcomes:
-///   A. v2 accepted, InitialConnection received → W1 closes, 2.0.0 plan is
-///      executable as designed.
-///   B. v2 rejected (HTTP 400 on upgrade) → server does not advertise v2 on
-///      this release; 2.0.0 would need a server-version gate or we wait for
-///      the next server release.
-///   C. v2 accepted but server silently sends v1 bytes → indistinguishable
-///      from a v1 `IdentityToken` decode (different tag, different shape).
-///      Caught by tag inspection.
-///
-/// Prerequisites: SpacetimeDB server from `test_setup.dart` must be running
-/// with `notesdb` (the shared test module) published. Uses port 3000, local
-/// instance.
-///
-/// Not a regression test — this is diagnostic. Findings get written to
-/// `tasks/v2-wire-protocol/research.md` (or a follow-up note) and the 2.0.0
-/// plan is refined accordingly.
-
 void main() {
   setUpAll(ensureTestEnvironment);
   tearDownAll(cleanupTestEnvironment);

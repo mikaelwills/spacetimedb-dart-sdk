@@ -141,7 +141,7 @@ SubscriptionManager _managerOn(MockConnection connection, OfflineStorage s) {
 }
 
 Iterable<String> _paths(List<Map<String, dynamic>>? rows) =>
-    (rows ?? const []).map((r) => r['path'] as String);
+    (rows ?? const []).map((r) => r['path'] ?? '');
 
 void main() {
   late MockConnection connection;

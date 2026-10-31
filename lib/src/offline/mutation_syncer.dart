@@ -324,6 +324,39 @@ class MutationSyncer implements MutationHandler {
     await _writeTableSnapshots(onlyTables ?? _cache.activatedTableNames);
   }
 
+  @visibleForTesting
+  static String tagSnapshotName(String tableName) => '__tags__$tableName';
+
+  Future<void> dispose() async {
+    if (!_disposed) await flushPendingSnapshots();
+    _disposed = true;
+    _snapshotFlushTimer?.cancel();
+    _snapshotFlushTimer = null;
+    cancelRetry();
+    _syncStateController.close();
+    _mutationSyncResultController.close();
+    await _storage.dispose();
+  }
+
+  @visibleForTesting
+  Duration retryDelayForAttempt(int attempt) {
+    // Clamp the shift exponent BEFORE the multiply: `1 << attempt` overflows
+    // 64-bit int arithmetic past attempt ~50 and the delay collapses to 0
+    // (permanently from ~63), turning a persistently-stuck mutation into a
+    // send-every-10s hot loop. The exponent that reaches _maxRetryDelay is
+    // small (5s * 2^4 = 80s > 60s cap), so cap it there.
+    final maxShift =
+        (_maxRetryDelay.inMilliseconds ~/ _initialRetryDelay.inMilliseconds)
+            .bitLength;
+    final exponent = attempt < maxShift ? attempt : maxShift;
+    return Duration(
+      milliseconds: (_initialRetryDelay.inMilliseconds * (1 << exponent)).clamp(
+        0,
+        _maxRetryDelay.inMilliseconds,
+      ),
+    );
+  }
+
   void _clearDirtySnapshots(Set<String>? tables) {
     if (tables == null) {
       _dirtySnapshotTables.clear();
@@ -386,39 +419,6 @@ class MutationSyncer implements MutationHandler {
     } catch (e) {
       SdkLogger.e('Error persisting table snapshots: $e');
     }
-  }
-
-  @visibleForTesting
-  static String tagSnapshotName(String tableName) => '__tags__$tableName';
-
-  Future<void> dispose() async {
-    if (!_disposed) await flushPendingSnapshots();
-    _disposed = true;
-    _snapshotFlushTimer?.cancel();
-    _snapshotFlushTimer = null;
-    cancelRetry();
-    _syncStateController.close();
-    _mutationSyncResultController.close();
-    await _storage.dispose();
-  }
-
-  @visibleForTesting
-  Duration retryDelayForAttempt(int attempt) {
-    // Clamp the shift exponent BEFORE the multiply: `1 << attempt` overflows
-    // 64-bit int arithmetic past attempt ~50 and the delay collapses to 0
-    // (permanently from ~63), turning a persistently-stuck mutation into a
-    // send-every-10s hot loop. The exponent that reaches _maxRetryDelay is
-    // small (5s * 2^4 = 80s > 60s cap), so cap it there.
-    final maxShift =
-        (_maxRetryDelay.inMilliseconds ~/ _initialRetryDelay.inMilliseconds)
-            .bitLength;
-    final exponent = attempt < maxShift ? attempt : maxShift;
-    return Duration(
-      milliseconds: (_initialRetryDelay.inMilliseconds * (1 << exponent)).clamp(
-        0,
-        _maxRetryDelay.inMilliseconds,
-      ),
-    );
   }
 
   bool _takeResyncRequest() {
