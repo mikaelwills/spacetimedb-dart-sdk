@@ -27,6 +27,8 @@ import '../offline/pending_mutation.dart';
 import '../offline/optimistic_state_manager.dart';
 import '../offline/mutation_syncer.dart';
 
+typedef _DecodedFrame = ({List<ServerMessage> messages, Object? error});
+
 class SubscriptionManager {
   final SpacetimeDbConnection _connection;
   final ClientCache cache = ClientCache();
@@ -71,6 +73,13 @@ class SubscriptionManager {
 
   StreamSubscription<Uint8List>? _messageSubscription;
   StreamSubscription<ConnectionState>? _connectionStatusSubscription;
+
+  Future<void> _routeTail = Future<void>.value();
+  int _frameGeneration = 0;
+
+  @visibleForTesting
+  Future<List<ServerMessage>> Function(Uint8List bytes) frameDecoder =
+      MessageDecoder.decodeAll;
 
   SubscriptionManager(
     this._connection, {
@@ -426,6 +435,7 @@ class SubscriptionManager {
     _connectionStatusSubscription = _connection.onStateChanged.listen((state) {
       if (_disposed) return;
       if (state is Connected) {
+        _frameGeneration++;
         if (hasConnectedBefore) {
           _mutationSyncer?.resetRetryAttempts();
           _onReconnected();
@@ -562,21 +572,48 @@ class SubscriptionManager {
   }
 
   void _startListening() {
-    _messageSubscription = _connection.onMessage.listen(_handleMessage);
+    _messageSubscription = _connection.onMessage.listen(_enqueueFrame);
   }
 
-  Future<void> _handleMessage(Uint8List bytes) async {
+  void _enqueueFrame(Uint8List bytes) {
     if (_disposed) return;
-    final List<ServerMessage> messages;
+    final generation = _frameGeneration;
+    final decoding = _decodeFrame(bytes);
+    _routeTail = _routeTail
+        .then((_) => _routeFrame(bytes, decoding, generation))
+        .catchError((Object e, StackTrace st) {
+          SdkLogger.e('RX_ROUTE_FAILED: $e\n$st');
+        });
+  }
+
+  Future<_DecodedFrame> _decodeFrame(Uint8List bytes) async {
     try {
-      messages = await MessageDecoder.decodeAll(bytes);
+      return (messages: await frameDecoder(bytes), error: null);
     } catch (e, st) {
       SdkLogger.e(
         'RX_DECODE_FAILED: $e (${bytes.length} bytes, '
         'head=${bytes.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')})\n$st',
       );
-      if (_disposed) return;
-      closeForReconnect(_connection, 'inbound frame failed to decode: $e');
+      return (messages: const <ServerMessage>[], error: e);
+    }
+  }
+
+  Future<void> _routeFrame(
+    Uint8List bytes,
+    Future<_DecodedFrame> decoding,
+    int generation,
+  ) async {
+    final (:messages, :error) = await decoding;
+    if (_disposed) return;
+    if (generation != _frameGeneration) {
+      SdkLogger.w(
+        'RX_STALE_FRAME_DROPPED: ${bytes.length} bytes from a socket that '
+        'has since been replaced',
+      );
+      return;
+    }
+    if (error != null) {
+      closeForReconnect(_connection, 'inbound frame failed to decode: $error');
       return;
     }
     try {
