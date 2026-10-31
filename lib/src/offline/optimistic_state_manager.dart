@@ -153,7 +153,7 @@ class OptimisticStateManager {
       if (!table.decoder.supportsJsonSerialization) continue;
 
       switch (change.type) {
-        case OptimisticChangeType.insert:
+        case .insert:
           final row = table.decoder.fromJson(change.newRowJson!);
           if (row != null) {
             final pk = table.decoder.getPrimaryKey(row);
@@ -170,7 +170,7 @@ class OptimisticStateManager {
               TableEventSpec.insert(row),
             );
           }
-        case OptimisticChangeType.update:
+        case .update:
           final oldRow = table.decoder.fromJson(change.oldRowJson!);
           final newRow = table.decoder.fromJson(change.newRowJson!);
           if (oldRow != null && newRow != null) {
@@ -195,7 +195,7 @@ class OptimisticStateManager {
               TableEventSpec.update(oldRow, newRow),
             );
           }
-        case OptimisticChangeType.delete:
+        case .delete:
           final row = table.decoder.fromJson(change.oldRowJson!);
           if (row != null) {
             final pk = table.decoder.getPrimaryKey(row);
@@ -444,7 +444,7 @@ class OptimisticStateManager {
 
     var rolledBackUncommittedInsert = false;
     switch (entry.type) {
-      case OptimisticChangeType.insert:
+      case .insert:
         if (!table.hasPrimaryKey) {
           if (entry.newRowJson != null) {
             table.removeNoPkRow(entry.newRowJson!, requestId: requestId);
@@ -458,9 +458,9 @@ class OptimisticStateManager {
             rolledBackUncommittedInsert = true;
           }
         }
-      case OptimisticChangeType.update:
+      case .update:
         _restoreCommittedBase(table, entry);
-      case OptimisticChangeType.delete:
+      case .delete:
         _restoreCommittedBase(table, entry);
     }
 
@@ -502,13 +502,13 @@ class OptimisticStateManager {
       return;
     }
     switch (newest.type) {
-      case OptimisticChangeType.insert:
-      case OptimisticChangeType.update:
+      case .insert:
+      case .update:
         if (newest.newRowJson != null) {
           final row = table.decoder.fromJson(newest.newRowJson!);
           if (row != null) table.updateRow(row);
         }
-      case OptimisticChangeType.delete:
+      case .delete:
         table.deleteRow(primaryKey);
     }
   }

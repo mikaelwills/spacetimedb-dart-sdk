@@ -817,13 +817,13 @@ class TableCache<T> {
     final events = <TableEvent<T>>[];
     for (final spec in specs) {
       switch (spec.kind) {
-        case TableEventKind.insert:
+        case .insert:
           events.add(TableInsertEvent<T>(context, spec.newRow as T));
-        case TableEventKind.update:
+        case .update:
           events.add(
             TableUpdateEvent<T>(context, spec.oldRow as T, spec.newRow as T),
           );
-        case TableEventKind.delete:
+        case .delete:
           events.add(TableDeleteEvent<T>(context, spec.oldRow as T));
       }
     }

@@ -38,9 +38,9 @@ class MessageDecoder {
     final payload = outer.readBytes(outer.remaining);
 
     final messageBytes = switch (compressionTag) {
-      CompressionTag.none => payload,
-      CompressionTag.brotli => await decompressBrotli(payload),
-      CompressionTag.gzip => await decompressGzip(payload),
+      .none => payload,
+      .brotli => await decompressBrotli(payload),
+      .gzip => await decompressGzip(payload),
     };
 
     if (messageBytes.isEmpty) {
@@ -63,22 +63,22 @@ class MessageDecoder {
     final messageType = ServerMessageType.fromTag(tag);
 
     return switch (messageType) {
-      ServerMessageType.initialConnection => InitialConnectionMessage.decode(
+      .initialConnection => InitialConnectionMessage.decode(
         decoder,
       ),
-      ServerMessageType.subscribeApplied => SubscribeApplied.decode(decoder),
-      ServerMessageType.unsubscribeApplied => UnsubscribeApplied.decode(
+      .subscribeApplied => SubscribeApplied.decode(decoder),
+      .unsubscribeApplied => UnsubscribeApplied.decode(
         decoder,
       ),
-      ServerMessageType.subscriptionError => SubscriptionErrorMessage.decode(
+      .subscriptionError => SubscriptionErrorMessage.decode(
         decoder,
       ),
-      ServerMessageType.transactionUpdate => TransactionUpdateMessage.decode(
+      .transactionUpdate => TransactionUpdateMessage.decode(
         decoder,
       ),
-      ServerMessageType.oneOffQueryResult => OneOffQueryResult.decode(decoder),
-      ServerMessageType.reducerResult => ReducerResultMessage.decode(decoder),
-      ServerMessageType.procedureResult => ProcedureResultMessage.decode(
+      .oneOffQueryResult => OneOffQueryResult.decode(decoder),
+      .reducerResult => ReducerResultMessage.decode(decoder),
+      .procedureResult => ProcedureResultMessage.decode(
         decoder,
       ),
     };

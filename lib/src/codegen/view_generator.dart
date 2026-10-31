@@ -29,13 +29,13 @@ class ViewGenerator {
     if (rt == null) return null;
 
     return switch (pattern) {
-      ViewReturnType.array => _rowTypeFromAlgebraic(
+      .array => _rowTypeFromAlgebraic(
         rt is ArrayType ? rt.element : null,
       ),
-      ViewReturnType.option => _rowTypeFromOption(rt),
-      ViewReturnType.query => _rowTypeFromQuery(rt),
-      ViewReturnType.single => _rowTypeFromAlgebraic(rt),
-      ViewReturnType.unknown => null,
+      .option => _rowTypeFromOption(rt),
+      .query => _rowTypeFromQuery(rt),
+      .single => _rowTypeFromAlgebraic(rt),
+      .unknown => null,
     };
   }
 
@@ -45,14 +45,14 @@ class ViewGenerator {
     if (rt == null) return null;
 
     return switch (pattern) {
-      ViewReturnType.array =>
+      .array =>
         rt is ArrayType && rt.element is RefType
             ? (rt.element as RefType).index
             : null,
-      ViewReturnType.option => _refFromOption(rt),
-      ViewReturnType.query => _refFromQuery(rt),
-      ViewReturnType.single => rt is RefType ? rt.index : null,
-      ViewReturnType.unknown => null,
+      .option => _refFromOption(rt),
+      .query => _refFromQuery(rt),
+      .single => rt is RefType ? rt.index : null,
+      .unknown => null,
     };
   }
 

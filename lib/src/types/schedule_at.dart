@@ -6,29 +6,19 @@ import '../codec/bsatn_decoder.dart';
 sealed class ScheduleAt {
   const ScheduleAt();
 
-  factory ScheduleAt.decodeBsatn(BsatnDecoder decoder) {
-    final tag = decoder.readU8();
-    switch (tag) {
-      case 0:
-        return ScheduleAtInterval(decoder.readI64());
-      case 1:
-        return ScheduleAtTime(decoder.readI64());
-      default:
-        throw Exception('Unknown ScheduleAt variant: $tag');
-    }
-  }
+  factory ScheduleAt.decodeBsatn(BsatnDecoder decoder) =>
+      switch (decoder.readU8()) {
+        0 => ScheduleAtInterval(decoder.readI64()),
+        1 => ScheduleAtTime(decoder.readI64()),
+        final tag => throw Exception('Unknown ScheduleAt variant: $tag'),
+      };
 
-  factory ScheduleAt.fromJson(Map<String, dynamic> json) {
-    final type = json['type'] ?? '';
-    switch (type) {
-      case 'Interval':
-        return ScheduleAtInterval(Int64(json['value'] ?? 0));
-      case 'Time':
-        return ScheduleAtTime(Int64(json['value'] ?? 0));
-      default:
-        throw Exception('Unknown ScheduleAt variant: $type');
-    }
-  }
+  factory ScheduleAt.fromJson(Map<String, dynamic> json) =>
+      switch (json['type'] ?? '') {
+        'Interval' => ScheduleAtInterval(Int64(json['value'] ?? 0)),
+        'Time' => ScheduleAtTime(Int64(json['value'] ?? 0)),
+        final type => throw Exception('Unknown ScheduleAt variant: $type'),
+      };
 
   void encodeBsatn(BsatnEncoder encoder);
   Map<String, dynamic> toJson();

@@ -109,17 +109,17 @@ class OptimisticChange {
 
     final type = OptimisticChangeType.values.byName(typeName);
     switch (type) {
-      case OptimisticChangeType.insert:
+      case .insert:
         if (newRowJson == null) {
           throw FormatException('Insert missing newRowJson: $json');
         }
         return OptimisticChange.insert(tableName, newRowJson);
-      case OptimisticChangeType.update:
+      case .update:
         if (oldRowJson == null || newRowJson == null) {
           throw FormatException('Update missing old/newRowJson: $json');
         }
         return OptimisticChange.update(tableName, oldRowJson, newRowJson);
-      case OptimisticChangeType.delete:
+      case .delete:
         if (oldRowJson == null) {
           throw FormatException('Delete missing oldRowJson: $json');
         }

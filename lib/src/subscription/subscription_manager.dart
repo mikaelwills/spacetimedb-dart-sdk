@@ -1167,7 +1167,7 @@ class SubscriptionManager {
       confirmedTables.add(tableName);
       final touchedKeys = touchedKeysByTable[tableName] ?? const {};
       switch (entry.type) {
-        case OptimisticChangeType.insert:
+        case .insert:
           if (message.querySets.isEmpty) {
             if (table.ownedKeys(pk).isEmpty &&
                 _optimisticState.isRequestDurablyQueued(effectiveRequestId)) {
@@ -1187,8 +1187,8 @@ class SubscriptionManager {
           if (!touchedKeys.contains(pk) && table.ownedKeys(pk).isEmpty) {
             table.deleteRow(pk);
           }
-        case OptimisticChangeType.delete:
-        case OptimisticChangeType.update:
+        case .delete:
+        case .update:
           break;
       }
     }

@@ -85,20 +85,20 @@ $fromJsonCases      default: throw Exception('Unknown $enumName variant: \$type'
     final variantName = variant.name ?? 'Variant$tag';
 
     return switch (variantType) {
-      VariantType.unit => _buildUnitVariant(className, tag, variantName),
-      VariantType.tupleSingle => _buildTupleSingleVariant(
+      .unit => _buildUnitVariant(className, tag, variantName),
+      .tupleSingle => _buildTupleSingleVariant(
         className,
         variant,
         tag,
         variantName,
       ),
-      VariantType.tupleMultiple => _buildTupleMultipleVariant(
+      .tupleMultiple => _buildTupleMultipleVariant(
         className,
         variant,
         tag,
         variantName,
       ),
-      VariantType.struct => _buildStructVariant(
+      .struct => _buildStructVariant(
         className,
         variant,
         tag,

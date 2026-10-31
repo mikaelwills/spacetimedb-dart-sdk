@@ -530,14 +530,14 @@ class MutationSyncer implements MutationHandler {
       }
 
       switch (change.type) {
-        case OptimisticChangeType.insert:
+        case .insert:
           final expected = table.decoder.fromJson(change.newRowJson!);
           if (expected == null) return _TimeoutOutcome.undetectable;
           final pk = table.decoder.getPrimaryKey(expected);
           if (table.ownedKeys(pk).isEmpty) {
             allLanded = false;
           }
-        case OptimisticChangeType.update:
+        case .update:
           final expected = table.decoder.fromJson(change.newRowJson!);
           if (expected == null) return _TimeoutOutcome.undetectable;
           final pk = table.decoder.getPrimaryKey(expected);
@@ -556,7 +556,7 @@ class MutationSyncer implements MutationHandler {
           if (!_jsonEquals(currentJson, change.newRowJson)) {
             allLanded = false;
           }
-        case OptimisticChangeType.delete:
+        case .delete:
           final target = table.decoder.fromJson(change.oldRowJson!);
           if (target == null) return _TimeoutOutcome.undetectable;
           final pk = table.decoder.getPrimaryKey(target);

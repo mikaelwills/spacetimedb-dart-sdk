@@ -226,8 +226,8 @@ class ClientGenerator {
       final pattern = _viewGenerator.getViewReturnPattern(view);
 
       switch (pattern) {
-        case ViewReturnType.array:
-        case ViewReturnType.query:
+        case .array:
+        case .query:
           b.methods.add(
             Method(
               (m) =>
@@ -241,7 +241,7 @@ class ClientGenerator {
             ),
           );
 
-        case ViewReturnType.option:
+        case .option:
           b.methods.add(
             Method(
               (m) =>
@@ -258,7 +258,7 @@ return null;
             ),
           );
 
-        case ViewReturnType.single:
+        case .single:
           b.methods.add(
             Method(
               (m) =>
@@ -273,7 +273,7 @@ return cache.iter().first;
             ),
           );
 
-        case ViewReturnType.unknown:
+        case .unknown:
           continue;
       }
     }
