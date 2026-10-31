@@ -567,19 +567,26 @@ class SubscriptionManager {
 
   Future<void> _handleMessage(Uint8List bytes) async {
     if (_disposed) return;
+    final List<ServerMessage> messages;
     try {
-      final messages = await MessageDecoder.decodeAll(bytes);
+      messages = await MessageDecoder.decodeAll(bytes);
+    } catch (e, st) {
+      SdkLogger.e(
+        'RX_DECODE_FAILED: $e (${bytes.length} bytes, '
+        'head=${bytes.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')})\n$st',
+      );
       if (_disposed) return;
+      closeForReconnect(_connection, 'inbound frame failed to decode: $e');
+      return;
+    }
+    try {
       for (final message in messages) {
         if (_disposed) return;
         SdkLogger.d('RX_MSG: ${message.runtimeType}');
         _routeMessage(message);
       }
     } catch (e, st) {
-      SdkLogger.e(
-        'RX_DECODE_FAILED: $e (${bytes.length} bytes, '
-        'head=${bytes.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')})\n$st',
-      );
+      SdkLogger.e('RX_APPLY_FAILED: $e\n$st');
     }
   }
 

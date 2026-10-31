@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:meta/meta.dart';
 import 'package:spacetimedb_sdk/src/connection/connection_state.dart';
 import 'package:spacetimedb_sdk/src/exceptions.dart';
 import 'package:spacetimedb_sdk/src/connection/connection_quality.dart';
@@ -28,6 +29,21 @@ typedef WebSocketFactory = WebSocketChannel Function(
   Duration connectTimeout,
   Duration? pingInterval,
 });
+
+final Expando<void Function(String reason)> _reconnectClosers = Expando();
+
+@internal
+void closeForReconnect(SpacetimeDbConnection connection, String reason) {
+  _reconnectClosers[connection]?.call(reason);
+}
+
+@internal
+void setReconnectCloser(
+  SpacetimeDbConnection connection,
+  void Function(String reason) closer,
+) {
+  _reconnectClosers[connection] = closer;
+}
 
 class SpacetimeDbConnection {
   final String host;
@@ -95,6 +111,7 @@ class SpacetimeDbConnection {
   }) : _currentToken = initialToken,
        _socketFactory = socketFactory ?? ws.connectWebSocket {
     _shouldReconnect = config.autoReconnect;
+    setReconnectCloser(this, _closeForReconnect);
     scheduleMicrotask(() => _updateQuality());
   }
 
@@ -489,18 +506,18 @@ class SpacetimeDbConnection {
         final sinceLastRx = _lastMessageReceived != null
             ? DateTime.now().difference(_lastMessageReceived!).inMilliseconds
             : null;
-        SdkLogger.i(
-          'Keep-alive timeout - connection declared dead '
+        _closeForReconnect(
+          'keep-alive timeout, connection declared dead '
           '(last inbound ${sinceLastRx}ms ago)',
         );
-        _handleStaleConnection();
       },
       idleThreshold: config.pingInterval,
       pongTimeout: config.pongTimeout,
     );
   }
 
-  void _handleStaleConnection() {
+  void _closeForReconnect(String reason) {
+    SdkLogger.w('Closing socket for reconnect: $reason');
     _keepAlive?.stop();
     _channel?.sink.close();
   }

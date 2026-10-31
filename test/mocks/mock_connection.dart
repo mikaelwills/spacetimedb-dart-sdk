@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:spacetimedb_sdk/codegen.dart';
+import 'package:spacetimedb_sdk/src/connection/spacetimedb_connection.dart'
+    show setReconnectCloser;
 
 class MockConnection implements SpacetimeDbConnection {
   final List<Uint8List> sentMessages = [];
@@ -31,7 +33,9 @@ class MockConnection implements SpacetimeDbConnection {
     _state = newState;
   }
 
-  MockConnection();
+  MockConnection() {
+    setReconnectCloser(this, closeForReconnectReasons.add);
+  }
 
   @override
   Stream<Uint8List> get onMessage => _incomingController.stream;
@@ -105,6 +109,8 @@ class MockConnection implements SpacetimeDbConnection {
 
   @override
   void clearToken() {}
+
+  final List<String> closeForReconnectReasons = <String>[];
 
   void simulateIncoming(Uint8List data) {
     _incomingController.add(data);
