@@ -104,7 +104,7 @@ class SubscriptionManager {
     }
 
     if (_retainRowsOnUnsubscribe) {
-      _mutationSyncer?.querySetTagResolver = _tagForQuerySetId;
+      _mutationSyncer?.querySetTagResolver = _tagsForQuerySetTable;
     }
 
     _startListening();
@@ -288,11 +288,11 @@ class SubscriptionManager {
     final queries =
         _subscriptionsByQuerySetId.remove(querySetId) ??
         _everSubscribedQueriesByQuerySetId[querySetId];
-    final retainTag = _retainTagFor(queries);
-    _dropQuerySetEverywhere(querySetId, retainTag: retainTag);
-    if (retainTag != null) {
+    final retainQueries = _retainRowsOnUnsubscribe ? queries : null;
+    _dropQuerySetEverywhere(querySetId, retainQueries: retainQueries);
+    if (retainQueries != null) {
       _mutationSyncer?.persistTableSnapshots(
-        onlyTables: _tablesFromQueries(queries!),
+        onlyTables: _tablesFromQueries(retainQueries),
       );
     }
   }
@@ -300,16 +300,17 @@ class SubscriptionManager {
   bool forgetQuerySet(int querySetId) {
     final queries = _subscriptionsByQuerySetId.remove(querySetId);
     if (queries == null) return false;
-    final retainTag = _retainTagFor(queries);
-    if (retainTag != null) {
-      for (final table in cache.allTables) {
-        if (!table.hasPrimaryKey) continue;
-        table.convertQuerySetToRetainTag(querySetId, retainTag);
-      }
-      _mutationSyncer?.persistTableSnapshots(
-        onlyTables: _tablesFromQueries(queries),
+    if (!_retainRowsOnUnsubscribe) return true;
+    for (final table in cache.allTables) {
+      if (!table.hasPrimaryKey) continue;
+      table.convertQuerySetToRetainTags(
+        querySetId,
+        _tagsForQueriesOnTable(queries, table.tableName),
       );
     }
+    _mutationSyncer?.persistTableSnapshots(
+      onlyTables: _tablesFromQueries(queries),
+    );
     return true;
   }
 
@@ -385,15 +386,25 @@ class SubscriptionManager {
             _subscribeWaiters[id]!.isCompleted,
       );
 
-  int? _tagForQuerySetId(int querySetId) {
+  Set<int> _tagsForQuerySetTable(int querySetId, String tableName) {
     final queries = _subscriptionsByQuerySetId[querySetId];
-    return queries == null ? null : computeQuerySetHash(queries);
+    if (queries == null) return const {};
+    return _tagsForQueriesOnTable(queries, tableName);
   }
 
-  int? _retainTagFor(List<String>? queries) =>
-      _retainRowsOnUnsubscribe && queries != null
-          ? computeQuerySetHash(queries)
-          : null;
+  Set<int> _tagsForQueriesOnTable(List<String> queries, String tableName) {
+    final onTable = [
+      for (final query in queries)
+        if (_tableRefRegex
+            .allMatches(query)
+            .any((match) => match.group(1) == tableName))
+          query,
+    ];
+    return {
+      for (final query in onTable.isEmpty ? queries : onTable)
+        computeQuerySetHash([query]),
+    };
+  }
 
   void _completeSubscribeWaiter(int querySetId) {
     final waiter = _subscribeWaiters[querySetId];
@@ -725,7 +736,6 @@ class SubscriptionManager {
     int querySetId,
     EventContext context,
   ) {
-    final retainTag = _tagForQuerySetId(querySetId);
     for (final tableName in querySetTables) {
       final table = cache.getTableByName(tableName);
       if (table == null) continue;
@@ -744,7 +754,7 @@ class SubscriptionManager {
           querySetId: querySetId,
           protectedKeys: protectedKeys,
           reconnectInFlight: _reconnectInFlight,
-          retainTag: retainTag,
+          retainTags: _tagsForQuerySetTable(querySetId, tableName),
         );
       } else {
         _optimisticState.clearNonOptimisticRows(tableName);
@@ -807,7 +817,7 @@ class SubscriptionManager {
     );
   }
 
-  void _dropQuerySetEverywhere(int querySetId, {int? retainTag}) {
+  void _dropQuerySetEverywhere(int querySetId, {List<String>? retainQueries}) {
     for (final table in cache.allTables) {
       if (!table.hasPrimaryKey) continue;
       table.dropQuerySet(
@@ -815,13 +825,21 @@ class SubscriptionManager {
         protectedKeys: _optimisticState.optimisticPrimaryKeysForTable(
           table.tableName,
         ),
-        retainTag: retainTag,
+        retainTags:
+            retainQueries == null
+                ? null
+                : _tagsForQueriesOnTable(retainQueries, table.tableName),
       );
     }
   }
 
   static final _fromRegex = RegExp(
     r'FROM\s+[`"]?(\w+)[`"]?',
+    caseSensitive: false,
+  );
+
+  static final _tableRefRegex = RegExp(
+    r'(?:FROM|JOIN)\s+[`"]?(\w+)[`"]?',
     caseSensitive: false,
   );
 
@@ -845,11 +863,11 @@ class SubscriptionManager {
     final queries =
         _subscriptionsByQuerySetId.remove(querySetId) ??
         _everSubscribedQueriesByQuerySetId[querySetId];
-    final retainTag = _retainTagFor(queries);
-    _dropQuerySetEverywhere(querySetId, retainTag: retainTag);
-    if (retainTag != null) {
+    final retainQueries = _retainRowsOnUnsubscribe ? queries : null;
+    _dropQuerySetEverywhere(querySetId, retainQueries: retainQueries);
+    if (retainQueries != null) {
       _mutationSyncer?.persistTableSnapshots(
-        onlyTables: _tablesFromQueries(queries!),
+        onlyTables: _tablesFromQueries(retainQueries),
       );
     }
 

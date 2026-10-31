@@ -9,6 +9,10 @@ const _timeout = Duration(seconds: 30);
 
 const _agentAQueries = ["SELECT * FROM chat WHERE agent_id = 'a'"];
 const _agentBQueries = ["SELECT * FROM chat WHERE agent_id = 'b'"];
+const _regroupedAQueries = [
+  "SELECT * FROM chat WHERE agent_id = 'a'",
+  "SELECT * FROM activity WHERE agent_id = 'a'",
+];
 
 Uint8List _createSubscribeApplied({
   required int requestId,
@@ -330,6 +334,37 @@ void main() {
     });
   });
 
+  group('join queries', () {
+    const joinQuery =
+        'SELECT c.* FROM agent a JOIN chat c ON c.agent_id = a.id';
+
+    test(
+      'a set mixing a JOIN that projects the table with a direct query '
+      'keeps the JOIN rows retained when only the direct query returns',
+      () async {
+        await start(retain: true);
+        final id = await subscribeWithRows(
+          [joinQuery, ..._agentBQueries],
+          ['j1', 'b1'],
+        );
+        subscriptionManager.unsubscribe(id);
+        expect(chat.count(), 2);
+
+        await subscribeWithRows(_agentBQueries, ['b1']);
+
+        expect(
+          chat.find('j1'),
+          isNotNull,
+          reason: 'a set without the JOIN query must not evict its rows',
+        );
+        expect(
+          chat.retainedTagsFor('j1'),
+          contains(SubscriptionManager.computeQuerySetHash([joinQuery])),
+        );
+      },
+    );
+  });
+
   group('tag persistence (slice 3)', () {
     test('retained tags survive persist/restore: restored rows survive a '
         'foreign snapshot and reconcile under their own set', () async {
@@ -416,6 +451,108 @@ void main() {
 
       await subscribeWithRows(_agentBQueries, ['b1']);
       expect(chat.count(), 1, reason: 'untagged disk rows are swept');
+    });
+
+    Future<void> persistOwnedThenRestore(
+      InMemoryOfflineStorage storage,
+      List<List<String>> ownedSets,
+    ) async {
+      await start(retain: true, storage: storage);
+      for (final queries in ownedSets) {
+        final owner = queries.single.contains("'a'") ? 'a' : 'b';
+        await subscribeWithRows(queries, ['${owner}1', '${owner}2']);
+      }
+      await pumpEventQueue();
+      await subscriptionManager.dispose();
+      await start(retain: true, storage: storage);
+      await subscriptionManager.loadFromOfflineCache();
+    }
+
+    test('cold start: a regrouped set carrying the same query reconciles '
+        'rows tagged under the old grouping', () async {
+      final storage = InMemoryOfflineStorage();
+      await persistOwnedThenRestore(storage, [_agentAQueries]);
+      expect(chat.count(), 2);
+
+      await subscribeWithRows(_regroupedAQueries, ['a2']);
+
+      expect(chat.find('a1'), isNull, reason: 'ghost under the old grouping');
+      expect(chat.find('a2'), isNotNull);
+      expect(chat.retainedTagEntryCount, 0);
+    });
+
+    test('reconnect: a regrouped set carrying the same query reconciles '
+        'rows tagged under the old grouping', () async {
+      final storage = InMemoryOfflineStorage();
+      await persistOwnedThenRestore(storage, [_agentAQueries]);
+      expect(chat.count(), 2);
+
+      final pending = subscriptionManager.subscribe(_regroupedAQueries);
+      final id = subscriptionManager.subscriptionsByQuerySetId.keys.last;
+      await mockConnection.disconnect();
+      await pumpEventQueue();
+      await mockConnection.connect();
+      await pumpEventQueue();
+      mockConnection.simulateIncoming(
+        _createSubscribeApplied(
+          requestId: 0,
+          querySetId: id,
+          rowsByTable: {
+            'chat': ['a2'],
+          },
+        ),
+      );
+      await pending.timeout(_timeout);
+      await pumpEventQueue();
+
+      expect(chat.sweepEvictionCount, 0, reason: 'sweep is off on reconnect');
+      expect(chat.find('a1'), isNull, reason: 'ghost under the old grouping');
+      expect(chat.find('a2'), isNotNull);
+    });
+
+    test('per-query tags stay scoped: another owner\'s set neither evicts '
+        'nor untags rows tagged under a different query', () async {
+      final storage = InMemoryOfflineStorage();
+      await persistOwnedThenRestore(storage, [_agentAQueries, _agentBQueries]);
+      expect(chat.count(), 4);
+
+      await subscribeWithRows(_agentBQueries, []);
+
+      expect(chat.find('b1'), isNull);
+      expect(chat.find('b2'), isNull);
+      final tagA = SubscriptionManager.computeQuerySetHash(_agentAQueries);
+      expect(chat.retainedTagsFor('a1'), {tagA});
+      expect(chat.retainedTagsFor('a2'), {tagA});
+    });
+
+    test('a set-level tag sidecar from an earlier build is ignored: rows '
+        'load untagged and are swept', () async {
+      final storage = InMemoryOfflineStorage();
+      await persistOwnedThenRestore(storage, [_agentAQueries]);
+      await subscriptionManager.dispose();
+      final oldSetHash = SubscriptionManager.computeQuerySetHash(
+        _regroupedAQueries,
+      );
+      await storage.saveTableSnapshot(MutationSyncer.tagSnapshotName('chat'), [
+        {
+          'pk': 'a1',
+          'tags': [oldSetHash],
+        },
+        {
+          'pk': 'a2',
+          'tags': [oldSetHash],
+        },
+      ]);
+
+      await start(retain: true, storage: storage);
+      await subscriptionManager.loadFromOfflineCache();
+      expect(chat.count(), 2);
+      expect(chat.retainedTagEntryCount, 0);
+
+      await subscribeWithRows(_agentBQueries, ['b1']);
+      expect(chat.find('a1'), isNull);
+      expect(chat.find('a2'), isNull);
+      expect(chat.sweepEvictionCount, 2);
     });
   });
 }

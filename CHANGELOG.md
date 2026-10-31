@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- **Retained rows no longer outlive a regrouped query set.** With `retainRowsOnUnsubscribe`, rows are now tagged per query instead of per query set, so a set that keeps a query but changes the rest still reconciles those rows on cold start and reconnect. Tag sidecars written by earlier versions are ignored once, and their rows are swept by the first covering snapshot.
+
 ## 2.5.0 - 2026-08-18
 
 ### Added

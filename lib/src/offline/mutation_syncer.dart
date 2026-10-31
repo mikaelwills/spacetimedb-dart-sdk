@@ -32,7 +32,7 @@ class MutationSyncer implements MutationHandler {
   final SendReducer _send;
   final OfflineQueuePolicy _policy;
 
-  int? Function(int querySetId)? querySetTagResolver;
+  Set<int> Function(int querySetId, String tableName)? querySetTagResolver;
 
   bool _isSyncing = false;
   bool _syncLoopActive = false;

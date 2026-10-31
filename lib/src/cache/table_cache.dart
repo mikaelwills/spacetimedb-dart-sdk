@@ -302,7 +302,7 @@ class TableCache<T> {
     required int querySetId,
     Set<dynamic>? protectedKeys,
     bool reconnectInFlight = false,
-    int? retainTag,
+    Set<int>? retainTags,
   }) {
     final changes = _applyChanges(
       BsatnRowList.empty(),
@@ -327,11 +327,13 @@ class TableCache<T> {
       }
     }
 
-    if (retainTag != null && _retainedTags.isNotEmpty) {
+    if (retainTags != null && _retainedTags.isNotEmpty) {
       for (final entry in _retainedTags.entries.toList()) {
         final pk = entry.key;
         final tags = entry.value;
-        if (!tags.remove(retainTag)) continue;
+        final tagCountBefore = tags.length;
+        tags.removeAll(retainTags);
+        if (tags.length == tagCountBefore) continue;
         if (tags.isEmpty) _retainedTags.remove(pk);
         if (snapshotKeys.contains(pk)) continue;
         if (tags.isNotEmpty) continue;
@@ -376,12 +378,12 @@ class TableCache<T> {
   void dropQuerySet(
     int querySetId, {
     Set<dynamic>? protectedKeys,
-    int? retainTag,
+    Set<int>? retainTags,
   }) {
     final toEvict = <dynamic>[];
     void evictOrRetain(dynamic pk) {
-      if (retainTag != null) {
-        _retainedTags.putIfAbsent(pk, () => <int>{}).add(retainTag);
+      if (retainTags != null) {
+        _retainedTags.putIfAbsent(pk, () => <int>{}).addAll(retainTags);
         return;
       }
       toEvict.add(pk);
@@ -421,14 +423,14 @@ class TableCache<T> {
   }
 
   @internal
-  void convertQuerySetToRetainTag(int querySetId, int retainTag) {
+  void convertQuerySetToRetainTags(int querySetId, Set<int> retainTags) {
     for (final entry in _rowOwners.entries.toList()) {
       final pk = entry.key;
       final owners = entry.value;
       if (!owners.remove(querySetId)) continue;
       if (owners.isEmpty) {
         _rowOwners.remove(pk);
-        _retainedTags.putIfAbsent(pk, () => <int>{}).add(retainTag);
+        _retainedTags.putIfAbsent(pk, () => <int>{}).addAll(retainTags);
       }
     }
     for (final entry in _previousOwners.entries.toList()) {
@@ -438,7 +440,7 @@ class TableCache<T> {
       if (owners.isEmpty) {
         _previousOwners.remove(pk);
         if (!_rowOwners.containsKey(pk)) {
-          _retainedTags.putIfAbsent(pk, () => <int>{}).add(retainTag);
+          _retainedTags.putIfAbsent(pk, () => <int>{}).addAll(retainTags);
         }
       }
     }
@@ -670,7 +672,7 @@ class TableCache<T> {
 
   @internal
   List<Map<String, dynamic>> tagsToSerializable(
-    int? Function(int querySetId) resolveQuerySetTag,
+    Set<int> Function(int querySetId, String tableName) resolveQueryTags,
   ) {
     final effective = <dynamic, Set<int>>{
       for (final entry in _retainedTags.entries) entry.key: {...entry.value},
@@ -678,9 +680,9 @@ class TableCache<T> {
     void fold(Map<dynamic, Set<int>> owners) {
       for (final entry in owners.entries) {
         for (final querySetId in entry.value) {
-          final tag = resolveQuerySetTag(querySetId);
-          if (tag == null) continue;
-          effective.putIfAbsent(entry.key, () => <int>{}).add(tag);
+          final tags = resolveQueryTags(querySetId, tableName);
+          if (tags.isEmpty) continue;
+          effective.putIfAbsent(entry.key, () => <int>{}).addAll(tags);
         }
       }
     }
@@ -690,7 +692,7 @@ class TableCache<T> {
     return [
       for (final entry in effective.entries)
         if (_rowsByPrimaryKey.containsKey(entry.key))
-          {'pk': entry.key.toString(), 'tags': entry.value.toList()},
+          {'pk': entry.key.toString(), 'qtags': entry.value.toList()},
     ];
   }
 
@@ -702,7 +704,7 @@ class TableCache<T> {
     };
     for (final tagRow in tagRows) {
       final pkString = tagRow['pk'];
-      final tags = tagRow['tags'];
+      final tags = tagRow['qtags'];
       if (pkString is! String || tags is! List) continue;
       final pk = pksByString[pkString];
       if (pk == null) continue;
