@@ -5,33 +5,21 @@ import 'package:spacetimedb_sdk/codegen.dart';
 sealed class NoteStatus {
   const NoteStatus();
 
-  factory NoteStatus.decodeBsatn(BsatnDecoder decoder) {
-    final tag = decoder.readU8();
-    switch (tag) {
-      case 0:
-        return NoteStatusDraft.decodeBsatn(decoder);
-      case 1:
-        return NoteStatusPublished.decodeBsatn(decoder);
-      case 2:
-        return NoteStatusArchived.decodeBsatn(decoder);
-      default:
-        throw Exception('Unknown NoteStatus variant: $tag');
-    }
-  }
+  factory NoteStatus.decodeBsatn(BsatnDecoder decoder) =>
+      switch (decoder.readU8()) {
+        0 => NoteStatusDraft.decodeBsatn(decoder),
+        1 => NoteStatusPublished.decodeBsatn(decoder),
+        2 => NoteStatusArchived.decodeBsatn(decoder),
+        final tag => throw Exception('Unknown NoteStatus variant: $tag'),
+      };
 
-  factory NoteStatus.fromJson(Map<String, dynamic> json) {
-    final type = json['type'] ?? '';
-    switch (type) {
-      case 'draft':
-        return NoteStatusDraft.fromJson(json);
-      case 'published':
-        return NoteStatusPublished.fromJson(json);
-      case 'archived':
-        return NoteStatusArchived.fromJson(json);
-      default:
-        throw Exception('Unknown NoteStatus variant: $type');
-    }
-  }
+  factory NoteStatus.fromJson(Map<String, dynamic> json) =>
+      switch (json['type'] ?? '') {
+        'draft' => NoteStatusDraft.fromJson(json),
+        'published' => NoteStatusPublished.fromJson(json),
+        'archived' => NoteStatusArchived.fromJson(json),
+        final type => throw Exception('Unknown NoteStatus variant: $type'),
+      };
 
   void encodeBsatn(BsatnEncoder encoder);
   Map<String, dynamic> toJson();

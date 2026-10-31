@@ -40,9 +40,7 @@ class SumTypeGenerator {
     for (var i = 0; i < sumType.variants.length; i++) {
       final variant = sumType.variants[i];
       final variantClassName = _getVariantClassName(variant, i);
-      switchCases.writeln(
-        'case $i: return $variantClassName.decodeBsatn(decoder);',
-      );
+      switchCases.writeln('$i => $variantClassName.decodeBsatn(decoder),');
     }
 
     final fromJsonCases = StringBuffer();
@@ -51,7 +49,7 @@ class SumTypeGenerator {
       final variantClassName = _getVariantClassName(variant, i);
       final variantName = variant.name ?? 'Variant$i';
       fromJsonCases.writeln(
-        "case '$variantName': return $variantClassName.fromJson(json);",
+        "'$variantName' => $variantClassName.fromJson(json),",
       );
     }
 
@@ -59,19 +57,15 @@ class SumTypeGenerator {
 sealed class $enumName {
   const $enumName();
 
-  factory $enumName.decodeBsatn(BsatnDecoder decoder) {
-    final tag = decoder.readU8();
-    switch (tag) {
-$switchCases      default: throw Exception('Unknown $enumName variant: \$tag');
-    }
-  }
+  factory $enumName.decodeBsatn(BsatnDecoder decoder) =>
+      switch (decoder.readU8()) {
+$switchCases        final tag => throw Exception('Unknown $enumName variant: \$tag'),
+      };
 
-  factory $enumName.fromJson(Map<String, dynamic> json) {
-    final type = json['type'] ?? '';
-    switch (type) {
-$fromJsonCases      default: throw Exception('Unknown $enumName variant: \$type');
-    }
-  }
+  factory $enumName.fromJson(Map<String, dynamic> json) =>
+      switch (json['type'] ?? '') {
+$fromJsonCases        final type => throw Exception('Unknown $enumName variant: \$type'),
+      };
 
   void encodeBsatn(BsatnEncoder encoder);
   Map<String, dynamic> toJson();

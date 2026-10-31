@@ -1,6 +1,7 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
 import 'package:spacetimedb_sdk/codegen.dart';
+
 import 'note_status.dart';
 
 class Note {
