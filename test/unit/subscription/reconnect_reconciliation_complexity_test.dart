@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
 
+import '../../helpers/reconnect_replay.dart';
 import '../../mocks/mock_connection.dart';
 
 const _timeout = Duration(seconds: 30);
@@ -124,20 +125,24 @@ void main() {
       bulkDecoder.primaryKeyReads = 0;
 
       final sw = Stopwatch()..start();
-      mockConnection.simulateIncoming(
-        _createSubscribeApplied(
-          requestId: 0,
-          querySetId: 1,
-          rowsByTable: {'live': liveKeys.sublist(deletedOnServer)},
-        ),
-      );
-      await pumpEventQueue();
-      mockConnection.simulateIncoming(
-        _createSubscribeApplied(
-          requestId: 0,
-          querySetId: 2,
-          rowsByTable: {'bulk': bulkKeys},
-        ),
+      answerReconnectReplay(
+        mockConnection,
+        applied: {
+          1: queryRowsOf(
+            _createSubscribeApplied(
+              requestId: 0,
+              querySetId: 1,
+              rowsByTable: {'live': liveKeys.sublist(deletedOnServer)},
+            ),
+          ),
+          2: queryRowsOf(
+            _createSubscribeApplied(
+              requestId: 0,
+              querySetId: 2,
+              rowsByTable: {'bulk': bulkKeys},
+            ),
+          ),
+        },
       );
       await pumpEventQueue();
       sw.stop();
@@ -208,12 +213,17 @@ void main() {
       final sw = Stopwatch()..start();
       await mockConnection.connect();
       await pumpEventQueue();
-      mockConnection.simulateIncoming(
-        _createSubscribeApplied(
-          requestId: 0,
-          querySetId: 1,
-          rowsByTable: {'live': liveKeys.sublist(50)},
-        ),
+      answerReconnectReplay(
+        mockConnection,
+        applied: {
+          1: queryRowsOf(
+            _createSubscribeApplied(
+              requestId: 0,
+              querySetId: 1,
+              rowsByTable: {'live': liveKeys.sublist(50)},
+            ),
+          ),
+        },
       );
       await pumpEventQueue();
       sw.stop();

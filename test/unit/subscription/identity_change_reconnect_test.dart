@@ -3,6 +3,9 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
 
+import 'package:spacetimedb_sdk/src/messages/subscribe_batch.dart';
+
+import '../../helpers/reconnect_replay.dart';
 import '../../mocks/silent_socket.dart';
 
 const _timeout = Duration(seconds: 2);
@@ -151,6 +154,51 @@ void main() {
     expect(harness.notes.find(2), isNull);
     expect(harness.sockets, hasLength(2));
     expect(harness.sockets.last.closeCalls, 1);
+  });
+
+  test('a batch reply after an identity-change InitialConnection applies '
+      'nothing', () async {
+    final harness = _Harness(initialToken: 'tok');
+    addTearDown(harness.dispose);
+
+    await harness.connectAs(_identityA);
+    final subscribed = harness.manager.subscribe(['SELECT * FROM $_table']);
+    harness.sockets.last.deliver(
+      _frame([_subscribeAppliedBody(querySetId: 1, id: 1)]),
+    );
+    await subscribed.timeout(_timeout);
+
+    await harness.dropAndAwaitReconnect();
+    final batch = decodeSentSubscribeBatch(
+      sentWithTag([
+        for (final frame in harness.sockets.last.sent)
+          if (frame is Uint8List) frame,
+      ], subscribeBatchTag).single,
+    );
+    harness.sockets.last.deliver(
+      _frame([
+        _initialConnectionBody(_identityB),
+        subscribeBatchAppliedBody(batch.requestId, [
+          (
+            querySetId: 1,
+            outcome: SubscribeSetApplied(
+              queryRows({
+                _table: [(BsatnEncoder()..writeU32(2)).toBytes()],
+              }),
+            ),
+          ),
+        ]),
+      ]),
+    );
+    final stopwatch = Stopwatch()..start();
+    await _settleFrames();
+
+    expect(harness.connection.state, isA<FatalError>());
+    expect(harness.notes.find(2), isNull);
+    expect(harness.notes.find(1), 1);
+    expect(harness.subscribeApplied, 1);
+    expect(harness.manager.consecutiveEvictionSkips, 1);
+    expect(stopwatch.elapsed, lessThan(const Duration(seconds: 5)));
   });
 
   test('a reconnect that presents no token accepts a new identity', () async {

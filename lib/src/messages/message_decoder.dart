@@ -1,9 +1,12 @@
 import 'dart:typed_data';
 
+import 'package:meta/meta.dart';
+
 import '../codec/bsatn_decoder.dart';
 import '../exceptions.dart';
 import 'decompress.dart';
 import 'server_messages.dart';
+import 'subscribe_batch.dart';
 
 enum CompressionTag {
   none(0),
@@ -34,6 +37,30 @@ class MessageDecoder {
   }
 
   static Future<List<ServerMessage>> decodeAll(Uint8List bytes) async {
+    final cursor = await _messageCursor(bytes);
+    final results = <ServerMessage>[];
+    while (cursor.remaining > 0) {
+      results.add(_decodeServerMessage(cursor));
+    }
+    return results;
+  }
+
+  @internal
+  static Future<List<Object>> decodeAllInternal(Uint8List bytes) async {
+    final cursor = await _messageCursor(bytes);
+    final results = <Object>[];
+    while (cursor.remaining > 0) {
+      final tag = cursor.readU8();
+      results.add(
+        tag == SubscribeBatchApplied.tag
+            ? SubscribeBatchApplied.decode(cursor)
+            : _decodeServerMessageWithTag(tag, cursor),
+      );
+    }
+    return results;
+  }
+
+  static Future<BsatnDecoder> _messageCursor(Uint8List bytes) async {
     final outer = BsatnDecoder(bytes);
     final compressionTag = CompressionTag.fromValue(outer.readU8());
     final payload = outer.readBytes(outer.remaining);
@@ -51,16 +78,16 @@ class MessageDecoder {
       );
     }
 
-    final cursor = BsatnDecoder(messageBytes);
-    final results = <ServerMessage>[];
-    while (cursor.remaining > 0) {
-      results.add(_decodeServerMessage(cursor));
-    }
-    return results;
+    return BsatnDecoder(messageBytes);
   }
 
-  static ServerMessage _decodeServerMessage(BsatnDecoder decoder) {
-    final tag = decoder.readU8();
+  static ServerMessage _decodeServerMessage(BsatnDecoder decoder) =>
+      _decodeServerMessageWithTag(decoder.readU8(), decoder);
+
+  static ServerMessage _decodeServerMessageWithTag(
+    int tag,
+    BsatnDecoder decoder,
+  ) {
     final messageType = ServerMessageType.fromTag(tag);
 
     return switch (messageType) {

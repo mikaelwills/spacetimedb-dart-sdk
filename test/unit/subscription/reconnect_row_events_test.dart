@@ -1,8 +1,12 @@
 import 'dart:typed_data';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
+import 'package:spacetimedb_sdk/src/connection/spacetimedb_connection.dart'
+    show setSubscribeBatchUnsupported;
 
+import '../../helpers/reconnect_replay.dart';
 import '../../mocks/mock_connection.dart';
 
 const _timeout = Duration(seconds: 2);
@@ -151,7 +155,19 @@ TableCache<T> _register<T>(
   return manager.cache.getTableByTypedName<T>(name);
 }
 
+MockConnection _connection(bool batch) {
+  final connection = MockConnection();
+  if (!batch) setSubscribeBatchUnsupported(connection, true);
+  return connection;
+}
+
 void main() {
+  for (final batch in [true, false]) {
+    group('batch=$batch', () => _suite(batch));
+  }
+}
+
+void _suite(bool batch) {
   late MockConnection connection;
   late SubscriptionManager manager;
 
@@ -161,11 +177,19 @@ void main() {
     await pumpEventQueue();
   }
 
+  void replay(Map<int, Uint8List> snapshots) => answerReconnectReplay(
+    connection,
+    applied: {
+      for (final MapEntry(key: id, value: frame) in snapshots.entries)
+        id: queryRowsOf(frame),
+    },
+  );
+
   group('reconnect snapshot reconciles against the cache', () {
     late TableCache<_Item> item;
 
     setUp(() async {
-      connection = MockConnection();
+      connection = _connection(batch);
       manager = SubscriptionManager(connection);
       item = _register(manager, 'item', _ItemDecoder());
       await connection.connect();
@@ -181,9 +205,13 @@ void main() {
     test('an unchanged row fires no event', () async {
       final events = _Recorder(item);
       await bounce();
-      connection.simulateIncoming(
-        _items(1, [(id: 1, name: 'a'), (id: 2, name: 'b'), (id: 3, name: 'c')]),
-      );
+      replay({
+        1: _items(1, [
+          (id: 1, name: 'a'),
+          (id: 2, name: 'b'),
+          (id: 3, name: 'c'),
+        ]),
+      });
       await pumpEventQueue();
 
       expect(events.total, 0);
@@ -193,9 +221,13 @@ void main() {
     test('a changed row fires one update carrying old and new', () async {
       final events = _Recorder(item);
       await bounce();
-      connection.simulateIncoming(
-        _items(1, [(id: 1, name: 'a'), (id: 2, name: 'B'), (id: 3, name: 'c')]),
-      );
+      replay({
+        1: _items(1, [
+          (id: 1, name: 'a'),
+          (id: 2, name: 'B'),
+          (id: 3, name: 'c'),
+        ]),
+      });
       await pumpEventQueue();
 
       expect(events.inserts, isEmpty);
@@ -209,14 +241,14 @@ void main() {
     test('a row new to the cache fires one insert', () async {
       final events = _Recorder(item);
       await bounce();
-      connection.simulateIncoming(
-        _items(1, [
+      replay({
+        1: _items(1, [
           (id: 1, name: 'a'),
           (id: 2, name: 'b'),
           (id: 3, name: 'c'),
           (id: 4, name: 'd'),
         ]),
-      );
+      });
       await pumpEventQueue();
 
       expect(events.updates, isEmpty);
@@ -228,9 +260,9 @@ void main() {
         'finalize', () async {
       final events = _Recorder(item);
       await bounce();
-      connection.simulateIncoming(
-        _items(1, [(id: 1, name: 'a'), (id: 3, name: 'c')]),
-      );
+      replay({
+        1: _items(1, [(id: 1, name: 'a'), (id: 3, name: 'c')]),
+      });
       await pumpEventQueue();
 
       expect(item.find(2), isNull);
@@ -245,30 +277,68 @@ void main() {
       );
     });
 
-    test('a skipped finalize evicts nothing and fires no delete', () async {
-      final second = manager.subscribe(['SELECT * FROM item WHERE id > 1']);
-      connection.simulateIncoming(
-        _items(2, [(id: 2, name: 'b'), (id: 3, name: 'c')]),
-      );
-      await second.timeout(_timeout);
-      final events = _Recorder(item);
+    if (!batch) {
+      test('a skipped finalize evicts nothing and fires no delete', () async {
+        final second = manager.subscribe(['SELECT * FROM item WHERE id > 1']);
+        connection.simulateIncoming(
+          _items(2, [(id: 2, name: 'b'), (id: 3, name: 'c')]),
+        );
+        await second.timeout(_timeout);
+        final events = _Recorder(item);
 
-      await connection.disconnect();
-      await connection.connect();
-      await pumpEventQueue();
-      connection.simulateIncoming(_items(1, [(id: 1, name: 'a')]));
-      await pumpEventQueue();
-      await connection.disconnect();
-      await pumpEventQueue();
+        await connection.disconnect();
+        await connection.connect();
+        await pumpEventQueue();
+        connection.simulateIncoming(_items(1, [(id: 1, name: 'a')]));
+        await pumpEventQueue();
+        await connection.disconnect();
+        await pumpEventQueue();
 
-      expect(item.find(2), isNotNull);
-      expect(events.deletes, isEmpty);
-    });
+        expect(item.find(2), isNotNull);
+        expect(events.deletes, isEmpty);
+      });
+    }
   });
+
+  if (batch) {
+    test('a batch with no reply evicts nothing and fires no delete at '
+        '+31s', () {
+      fakeAsync((async) {
+        final connection = _connection(batch);
+        final manager = SubscriptionManager(connection);
+        final item = _register(manager, 'item', _ItemDecoder());
+        connection.connect();
+        async.flushMicrotasks();
+        manager.subscribe(['SELECT * FROM item']);
+        connection.simulateIncoming(
+          _items(1, [(id: 1, name: 'a'), (id: 2, name: 'b')]),
+        );
+        async.flushMicrotasks();
+        final events = _Recorder(item);
+
+        connection.disconnect();
+        async.flushMicrotasks();
+        connection.connect();
+        async.flushMicrotasks();
+        expect(sentWithTag(connection.sentMessages, subscribeBatchTag), [
+          isNotEmpty,
+        ]);
+        async.elapse(const Duration(seconds: 31));
+        async.flushMicrotasks();
+
+        expect(events.deletes, isEmpty);
+        expect(item.count(), 2);
+        expect(manager.consecutiveEvictionSkips, 1);
+
+        manager.dispose();
+        async.flushMicrotasks();
+      });
+    });
+  }
 
   group('reconnect evictions inside the snapshot', () {
     test('a retained row the server deleted fires one delete', () async {
-      connection = MockConnection();
+      connection = _connection(batch);
       manager = SubscriptionManager(connection, retainRowsOnUnsubscribe: true);
       final item = _register(manager, 'item', _ItemDecoder());
       addTearDown(manager.dispose);
@@ -288,7 +358,12 @@ void main() {
       await pumpEventQueue();
       final events = _Recorder(item);
 
-      connection.simulateIncoming(_items(2, [(id: 1, name: 'a')]));
+      answerReconnectReplay(
+        connection,
+        applied: {
+          2: queryRowsOf(_items(2, [(id: 1, name: 'a')])),
+        },
+      );
       await second.timeout(_timeout);
       await pumpEventQueue();
 
@@ -300,7 +375,7 @@ void main() {
 
     test('an unsubscribe during the reconnect window fires deletes for the '
         'rows it evicts', () async {
-      connection = MockConnection();
+      connection = _connection(batch);
       manager = SubscriptionManager(connection);
       final item = _register(manager, 'item', _ItemDecoder());
       addTearDown(manager.dispose);
@@ -326,7 +401,7 @@ void main() {
 
     test('unsubscribe(sendDroppedRows: true) in the reconnect window fires '
         'one delete per row, not two', () async {
-      connection = MockConnection();
+      connection = _connection(batch);
       manager = SubscriptionManager(connection);
       final item = _register(manager, 'item', _ItemDecoder());
       addTearDown(manager.dispose);
@@ -342,9 +417,11 @@ void main() {
       await other.timeout(_timeout);
 
       await bounce();
-      connection.simulateIncoming(
-        _items(1, [(id: 1, name: 'a'), (id: 2, name: 'b')]),
-      );
+      if (!batch) {
+        connection.simulateIncoming(
+          _items(1, [(id: 1, name: 'a'), (id: 2, name: 'b')]),
+        );
+      }
       await pumpEventQueue();
       final events = _Recorder(item);
 
@@ -362,7 +439,7 @@ void main() {
     });
 
     test('an evicted row is deleted once, not again at finalize', () async {
-      connection = MockConnection();
+      connection = _connection(batch);
       manager = SubscriptionManager(connection, retainRowsOnUnsubscribe: true);
       final item = _register(manager, 'item', _ItemDecoder());
       addTearDown(manager.dispose);
@@ -383,8 +460,10 @@ void main() {
       await connection.connect();
       await pumpEventQueue();
       final events = _Recorder(item);
-      connection.simulateIncoming(_items(3, [(id: 1, name: 'a')]));
-      connection.simulateIncoming(_items(2, const []));
+      replay({
+        3: _items(3, [(id: 1, name: 'a')]),
+        2: _items(2, const []),
+      });
       await retained.timeout(_timeout);
       await pumpEventQueue();
 
@@ -400,7 +479,7 @@ void main() {
     late TableCache<_Tagged> tagged;
 
     setUp(() async {
-      connection = MockConnection();
+      connection = _connection(batch);
       manager = SubscriptionManager(connection);
       tagged = _register(manager, 'tagged', _TaggedDecoder());
       await connection.connect();
@@ -419,12 +498,12 @@ void main() {
     test('an unchanged row with a List field fires no event', () async {
       final events = _Recorder(tagged);
       await bounce();
-      connection.simulateIncoming(
-        _tagged(1, [
+      replay({
+        1: _tagged(1, [
           (id: 1, tags: [1, 2]),
           (id: 2, tags: [3]),
         ]),
-      );
+      });
       await pumpEventQueue();
 
       expect(events.total, 0);
@@ -433,12 +512,12 @@ void main() {
     test('a row whose list contents changed fires one update', () async {
       final events = _Recorder(tagged);
       await bounce();
-      connection.simulateIncoming(
-        _tagged(1, [
+      replay({
+        1: _tagged(1, [
           (id: 1, tags: [1, 2]),
           (id: 2, tags: [3, 4]),
         ]),
-      );
+      });
       await pumpEventQueue();
 
       expect(events.inserts, isEmpty);
@@ -451,7 +530,7 @@ void main() {
     test(
       'rows loaded from disk are re-inserted by the first snapshot',
       () async {
-        connection = MockConnection();
+        connection = _connection(batch);
         manager = SubscriptionManager(connection);
         final item = _register(manager, 'item', _ItemDecoder());
         addTearDown(manager.dispose);

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
 
+import '../../helpers/reconnect_replay.dart';
 import '../../mocks/mock_connection.dart';
 
 const _timeout = Duration(seconds: 2);
@@ -52,13 +53,12 @@ class _StringDecoder extends RowDecoder<String> {
   dynamic getPrimaryKey(String row) => row;
 }
 
-int _sentQuerySetId(Uint8List sent) {
-  expect(sent[0], 0, reason: 'expected a Subscribe message (tag 0)');
-  return sent[5] | (sent[6] << 8) | (sent[7] << 16) | (sent[8] << 24);
+Iterable<int> _replayedQuerySetIds(List<Uint8List> sent) {
+  final batches = sentWithTag(sent, subscribeBatchTag);
+  expect(batches, hasLength(1), reason: 'expected one SubscribeBatch (tag 5)');
+  expect(sentWithTag(sent, subscribeTag), isEmpty);
+  return batchQuerySetIds(batches.single);
 }
-
-Iterable<Uint8List> _subscribeFrames(List<Uint8List> sent) =>
-    sent.where((m) => m[0] == 0);
 
 void main() {
   group('unsubscribe while disconnected drops the set from the resubscribe '
@@ -110,8 +110,7 @@ void main() {
       await mockConnection.connect();
       await pumpEventQueue();
 
-      final resubscribed = _subscribeFrames(mockConnection.sentMessages)
-          .map(_sentQuerySetId);
+      final resubscribed = _replayedQuerySetIds(mockConnection.sentMessages);
       expect(
         resubscribed,
         isNot(contains(2)),
@@ -174,22 +173,26 @@ void main() {
       await mockConnection.connect();
       await pumpEventQueue();
 
-      final revivedIds = _subscribeFrames(mockConnection.sentMessages)
-          .map(_sentQuerySetId);
+      final revivedIds = _replayedQuerySetIds(mockConnection.sentMessages);
       expect(
         revivedIds,
         isNot(contains(1)),
         reason: 'set 1 was unsubscribed while disconnected',
       );
 
-      mockConnection.simulateIncoming(
-        _createSubscribeApplied(
-          requestId: 0,
-          querySetId: 2,
-          rowsByTable: {
-            'message': ['m1', 'm2'],
-          },
-        ),
+      answerReconnectReplay(
+        mockConnection,
+        applied: {
+          2: queryRowsOf(
+            _createSubscribeApplied(
+              requestId: 0,
+              querySetId: 2,
+              rowsByTable: {
+                'message': ['m1', 'm2'],
+              },
+            ),
+          ),
+        },
       );
       await pumpEventQueue();
 

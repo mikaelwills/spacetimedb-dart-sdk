@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
+import 'package:spacetimedb_sdk/src/messages/message_decoder.dart';
 
 import '../../mocks/mock_connection.dart';
 
@@ -100,6 +101,38 @@ void main() {
     await pumpEventQueue();
 
     expect(connection.closeForReconnectReasons, isEmpty);
+  });
+
+  group('tag 8 opens only for a well-formed SubscribeBatchApplied', () {
+    final batchReply = Uint8List.fromList([0, 8, 7, 0, 0, 0, 1, 0, 0, 0]);
+
+    Future<void> expectClosedOnce(List<int> frame) async {
+      connection.simulateIncoming(Uint8List.fromList(frame));
+      await pumpEventQueue();
+      expect(connection.closeForReconnectReasons, hasLength(1));
+      expect(manager.cache.allTables.every((t) => t.count() == 0), isTrue);
+    }
+
+    test('a tag-9 frame still closes once', () async {
+      await expectClosedOnce([0, 9, 0, 0, 0, 0]);
+    });
+
+    test('a tag-8 frame with outcome tag 2 closes once', () async {
+      await expectClosedOnce([...batchReply, 11, 0, 0, 0, 2]);
+    });
+
+    test('a truncated tag-8 frame closes once', () async {
+      await expectClosedOnce([...batchReply, 11, 0]);
+    });
+
+    test('MessageDecoder.decodeAll still throws on tag 8', () async {
+      await expectLater(
+        MessageDecoder.decodeAll(
+          Uint8List.fromList([0, 8, 7, 0, 0, 0, 0, 0, 0, 0]),
+        ),
+        throwsA(isA<ArgumentError>()),
+      );
+    });
   });
 
   test('a corrupt frame after dispose does not close the socket', () async {

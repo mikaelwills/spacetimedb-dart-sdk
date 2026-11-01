@@ -3,7 +3,10 @@ import 'dart:typed_data';
 import 'package:fake_async/fake_async.dart';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
+import 'package:spacetimedb_sdk/src/connection/spacetimedb_connection.dart'
+    show setSubscribeBatchUnsupported;
 
+import '../../helpers/reconnect_replay.dart';
 import '../../mocks/mock_connection.dart';
 
 const _timeout = Duration(seconds: 2);
@@ -50,13 +53,215 @@ int _sentQuerySetId(Uint8List sent) {
   return sent[5] | (sent[6] << 8) | (sent[7] << 16) | (sent[8] << 24);
 }
 
+MockConnection _perSetConnection() {
+  final connection = MockConnection();
+  setSubscribeBatchUnsupported(connection, true);
+  return connection;
+}
+
+class _CountingStorage extends InMemoryOfflineStorage {
+  int pendingReads = 0;
+
+  @override
+  Future<List<PendingMutation>> getPendingMutations() {
+    pendingReads++;
+    return super.getPendingMutations();
+  }
+}
+
 void main() {
-  group('reconnect resubscribe is pipelined, not serial', () {
+  group('reconnect replays every set in one SubscribeBatch', () {
     late MockConnection mockConnection;
     late SubscriptionManager subscriptionManager;
 
     setUp(() {
       mockConnection = MockConnection();
+      subscriptionManager = SubscriptionManager(mockConnection);
+    });
+
+    tearDown(() async {
+      await subscriptionManager.dispose();
+    });
+
+    Future<void> establishThreeAppliedSets() async {
+      await mockConnection.connect();
+      final futures = [
+        subscriptionManager.subscribe(['SELECT * FROM notes']),
+        subscriptionManager.subscribe(['SELECT * FROM folders']),
+        subscriptionManager.subscribe(['SELECT * FROM tags']),
+      ];
+      for (var id = 1; id <= 3; id++) {
+        mockConnection.simulateIncoming(
+          _createSubscribeApplied(requestId: 0, querySetId: id),
+        );
+      }
+      await Future.wait(futures).timeout(_timeout);
+      expect(subscriptionManager.subscriptionsReady.value, isTrue);
+    }
+
+    test('cold start sends one tag-0 Subscribe per subscribe() call', () async {
+      await mockConnection.connect();
+      subscriptionManager.subscribe(['SELECT * FROM notes']);
+      subscriptionManager.subscribe(['SELECT * FROM folders']);
+      subscriptionManager.subscribe(['SELECT * FROM tags']);
+      await pumpEventQueue();
+
+      expect(mockConnection.sentMessages, hasLength(3));
+      expect(mockConnection.sentMessages.every((m) => m[0] == 0), isTrue);
+      expect(
+        sentWithTag(mockConnection.sentMessages, subscribeBatchTag),
+        isEmpty,
+      );
+      expect(mockConnection.sentMessages.map(subscribeQuerySetId).toSet(), {
+        1,
+        2,
+        3,
+      });
+    });
+
+    test('a reconnect sends one tag-5 frame holding every set and no tag-0 '
+        'frame', () async {
+      await establishThreeAppliedSets();
+
+      mockConnection.clearSent();
+      await mockConnection.disconnect();
+      await mockConnection.connect();
+      await pumpEventQueue();
+
+      expect(mockConnection.sentMessages, hasLength(1));
+      expect(mockConnection.sentMessages.single[0], subscribeBatchTag);
+      expect(batchQuerySetIds(mockConnection.sentMessages.single).toSet(), {
+        1,
+        2,
+        3,
+      });
+      expect(sentWithTag(mockConnection.sentMessages, subscribeTag), isEmpty);
+    });
+
+    test('ready stays false until the reply lands, then flips once', () async {
+      await establishThreeAppliedSets();
+
+      final transitions = <bool>[];
+      subscriptionManager.subscriptionsReady.addListener(
+        () => transitions.add(subscriptionManager.subscriptionsReady.value),
+      );
+
+      await mockConnection.disconnect();
+      await mockConnection.connect();
+      await pumpEventQueue();
+      expect(subscriptionManager.subscriptionsReady.value, isFalse);
+
+      answerReconnectReplay(mockConnection);
+      await pumpEventQueue();
+
+      expect(subscriptionManager.subscriptionsReady.value, isTrue);
+      expect(transitions, [false, true]);
+      expect(subscriptionManager.subscriptionsByQuerySetId.keys.toSet(), {
+        1,
+        2,
+        3,
+      });
+    });
+
+    test('a reconnect with zero query sets sends nothing new', () async {
+      final storage = _CountingStorage();
+      final manager = SubscriptionManager(
+        mockConnection,
+        offlineStorage: storage,
+      );
+      await mockConnection.connect();
+      await pumpEventQueue();
+
+      mockConnection.clearSent();
+      await mockConnection.disconnect();
+      final readsBefore = storage.pendingReads;
+      await mockConnection.connect();
+      await pumpEventQueue();
+
+      expect(mockConnection.sentMessages, isEmpty);
+      expect(
+        storage.pendingReads,
+        greaterThan(readsBefore),
+        reason: 'the mutation sync after reconnect still runs',
+      );
+      expect(mockConnection.keepAliveWorkInFlight, isFalse);
+      await manager.dispose();
+    });
+  });
+
+  group('the batch has ONE 30s window', () {
+    test('a batch with no reply skips finalize at +31s', () {
+      fakeAsync((async) {
+        final mockConnection = MockConnection();
+        final subscriptionManager = SubscriptionManager(mockConnection);
+        subscriptionManager.cache.registerDecoder<String>(
+          'notes',
+          _StringDecoder(),
+        );
+
+        mockConnection.connect();
+        async.flushMicrotasks();
+
+        subscriptionManager.subscribe(['SELECT * FROM notes']);
+        subscriptionManager.subscribe(['SELECT * FROM folders']);
+        subscriptionManager.subscribe(['SELECT * FROM tags']);
+        async.flushMicrotasks();
+        mockConnection.simulateIncoming(
+          _createSubscribeApplied(
+            requestId: 0,
+            querySetId: 1,
+            rowsByTable: {
+              'notes': ['n1'],
+            },
+          ),
+        );
+        for (var id = 2; id <= 3; id++) {
+          mockConnection.simulateIncoming(
+            _createSubscribeApplied(requestId: 0, querySetId: id),
+          );
+        }
+        async.flushMicrotasks();
+        expect(subscriptionManager.subscriptionsReady.value, isTrue);
+
+        mockConnection.clearSent();
+        mockConnection.disconnect();
+        async.flushMicrotasks();
+        mockConnection.connect();
+        async.flushMicrotasks();
+        expect(mockConnection.keepAliveWorkInFlight, isTrue);
+
+        async.elapse(const Duration(seconds: 31));
+        async.flushMicrotasks();
+
+        expect(async.nonPeriodicTimerCount, 0);
+        expect(mockConnection.sentMessages, hasLength(1));
+        expect(mockConnection.sentMessages.single[0], subscribeBatchTag);
+        expect(subscriptionManager.subscriptionsByQuerySetId.keys.toSet(), {
+          1,
+          2,
+          3,
+        });
+        expect(subscriptionManager.subscriptionsReady.value, isFalse);
+        expect(subscriptionManager.consecutiveEvictionSkips, 1);
+        expect(mockConnection.keepAliveWorkInFlight, isFalse);
+        expect(
+          subscriptionManager.cache.getTableByName('notes')!.iter(),
+          contains('n1'),
+          reason: 'a skipped finalize evicts nothing',
+        );
+
+        subscriptionManager.dispose();
+        async.flushMicrotasks();
+      });
+    });
+  });
+
+  group('fallback: reconnect resubscribe is pipelined, not serial', () {
+    late MockConnection mockConnection;
+    late SubscriptionManager subscriptionManager;
+
+    setUp(() {
+      mockConnection = _perSetConnection();
       subscriptionManager = SubscriptionManager(mockConnection);
     });
 
@@ -153,10 +358,11 @@ void main() {
     });
   });
 
-  group('reconnect worst case is ONE timeout window, not one per set', () {
+  group('fallback: reconnect worst case is ONE timeout window, not one per '
+      'set', () {
     test('all per-set 30s windows elapse concurrently', () {
       fakeAsync((async) {
-        final mockConnection = MockConnection();
+        final mockConnection = _perSetConnection();
         final subscriptionManager = SubscriptionManager(mockConnection);
 
         mockConnection.connect();
@@ -216,7 +422,7 @@ void main() {
     test('partial timeout: applied set reconciles, timed-out set retains rows, '
         'late apply completes readiness, next reconnect evicts stale rows', () {
       fakeAsync((async) {
-        final mockConnection = MockConnection();
+        final mockConnection = _perSetConnection();
         final subscriptionManager = SubscriptionManager(mockConnection);
         subscriptionManager.cache.registerDecoder<String>(
           'ta',

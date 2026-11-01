@@ -11,6 +11,7 @@ import '../messages/message_decoder.dart';
 import '../messages/server_messages.dart';
 import '../messages/shared_types.dart';
 import '../messages/client_messages.dart';
+import '../messages/subscribe_batch.dart';
 import '../messages/update_status.dart';
 import '../reducers/reducer_caller.dart';
 import '../reducers/reducer_registry.dart';
@@ -27,7 +28,24 @@ import '../offline/pending_mutation.dart';
 import '../offline/optimistic_state_manager.dart';
 import '../offline/mutation_syncer.dart';
 
-typedef _DecodedFrame = ({List<ServerMessage> messages, Object? error});
+typedef _DecodedFrame = ({List<Object> messages, Object? error});
+
+class _PendingBatch {
+  final int requestId;
+  final Set<int> querySetIds;
+  final Completer<bool> completer = Completer<bool>();
+  bool replied = false;
+
+  _PendingBatch(this.requestId, this.querySetIds);
+
+  void finish(bool applied) {
+    if (!completer.isCompleted) completer.complete(applied);
+  }
+}
+
+typedef _TimedOutBatch = ({int requestId, Set<int> querySetIds});
+
+const _reconnectReplayTimeout = Duration(seconds: 30);
 
 class SubscriptionManager {
   final SpacetimeDbConnection _connection;
@@ -78,8 +96,8 @@ class SubscriptionManager {
   int _frameGeneration = 0;
 
   @visibleForTesting
-  Future<List<ServerMessage>> Function(Uint8List bytes) frameDecoder =
-      MessageDecoder.decodeAll;
+  Future<List<Object>> Function(Uint8List bytes) frameDecoder =
+      MessageDecoder.decodeAllInternal;
 
   SubscriptionManager(
     this._connection, {
@@ -430,6 +448,8 @@ class SubscriptionManager {
         waiter.complete();
       }
     }
+    _pendingBatch?.finish(false);
+    _timedOutBatch = null;
     _connection.setKeepAliveWorkInFlight(false);
   }
 
@@ -463,6 +483,10 @@ class SubscriptionManager {
 
   int _consecutiveEvictionSkips = 0;
 
+  _PendingBatch? _pendingBatch;
+  int _nextBatchRequestId = 1;
+  _TimedOutBatch? _timedOutBatch;
+
   Future<void> _onReconnected() async {
     if (_subscriptionsByQuerySetId.isNotEmpty) {
       _subscriptionsReady.value = false;
@@ -491,6 +515,9 @@ class SubscriptionManager {
         );
         if (!_connection.isConnected) {
           allResubscribed = false;
+        } else if (!subscribeBatchUnsupported(_connection)) {
+          allResubscribed = await _replayBatch(entries);
+          if (!_connection.isConnected) allResubscribed = false;
         } else {
           final results = await Future.wait([
             for (final entry in entries)
@@ -541,6 +568,128 @@ class SubscriptionManager {
     if (_mutationSyncer != null) {
       SdkLogger.i('Syncing pending mutations after reconnect...');
       _mutationSyncer!.syncPendingMutations();
+    }
+  }
+
+  Future<bool> _replayBatch(List<MapEntry<int, List<String>>> entries) async {
+    _timedOutBatch = null;
+    final batch = _PendingBatch(_nextBatchRequestId++, {
+      for (final entry in entries) entry.key,
+    });
+    _pendingBatch = batch;
+    setSubscribeBatchInFlight(_connection, true);
+    _syncKeepAliveWorkInFlight();
+    _connection.send(
+      SubscribeBatchMessage(
+        requestId: batch.requestId,
+        sets: [
+          for (final entry in entries)
+            (querySetId: entry.key, queries: List.of(entry.value)),
+        ],
+      ).encode(),
+    );
+    var timedOut = false;
+    try {
+      return await batch.completer.future.timeout(
+        _reconnectReplayTimeout,
+        onTimeout: () {
+          timedOut = true;
+          SdkLogger.e(
+            'SubscribeBatch(requestId=${batch.requestId}, '
+            '${entries.length} query sets) timed out during reconnect; '
+            'retaining every set for the next reconnect',
+          );
+          return false;
+        },
+      );
+    } finally {
+      if (identical(_pendingBatch, batch)) _pendingBatch = null;
+      if (timedOut) {
+        _timedOutBatch = (
+          requestId: batch.requestId,
+          querySetIds: batch.querySetIds,
+        );
+      }
+      setSubscribeBatchInFlight(_connection, false);
+      _syncKeepAliveWorkInFlight();
+    }
+  }
+
+  void _routeBatchApplied(SubscribeBatchApplied reply) {
+    if (_disposed) return;
+    final replyIds = [for (final result in reply.results) result.querySetId];
+    bool matches(int requestId, Set<int> querySetIds) =>
+        reply.requestId == requestId &&
+        replyIds.length == querySetIds.length &&
+        querySetIds.containsAll(replyIds);
+
+    final pending = _pendingBatch;
+    if (pending != null &&
+        !pending.replied &&
+        !pending.completer.isCompleted &&
+        matches(pending.requestId, pending.querySetIds)) {
+      pending.replied = true;
+      _applyBatchResults(reply).whenComplete(() => pending.finish(true));
+      return;
+    }
+
+    final timedOut = _timedOutBatch;
+    if (timedOut != null && matches(timedOut.requestId, timedOut.querySetIds)) {
+      _timedOutBatch = null;
+      _applyBatchResults(reply).whenComplete(() {
+        if (_disposed) return;
+        if (!_reconnectInFlight &&
+            _connection.isConnected &&
+            _allQuerySetsApplied) {
+          _subscriptionsReady.value = true;
+        }
+      });
+      return;
+    }
+
+    closeForReconnect(
+      _connection,
+      'unexpected SubscribeBatchApplied(requestId=${reply.requestId}, '
+      'querySetIds=$replyIds); pending=${pending?.requestId}',
+    );
+  }
+
+  Future<void> _applyBatchResults(SubscribeBatchApplied reply) => Future.wait([
+    for (final result in reply.results)
+      _applyBatchResult(reply.requestId, result),
+  ]);
+
+  Future<void> _applyBatchResult(int requestId, SubscribeSetResult result) {
+    switch (result.outcome) {
+      case SubscribeSetApplied(:final rows):
+        final applied = SubscribeApplied(
+          requestId: requestId,
+          querySetId: result.querySetId,
+          rows: rows,
+        );
+        return _handleSubscribeApplied(applied)
+            .then((_) {
+              if (_disposed) return;
+              _subscribeAppliedController.add(applied);
+              SdkLogger.i(
+                'Syncing pending mutations after SubscribeApplied...',
+              );
+              _mutationSyncer?.syncPendingMutations();
+            })
+            .catchError((Object e, StackTrace st) {
+              SdkLogger.e('SUBSCRIBE_APPLIED_FAILED: $e\n$st');
+            })
+            .whenComplete(() {
+              if (_disposed) return;
+              _completeSubscribeWaiter(result.querySetId);
+            });
+      case SubscribeSetError(:final error):
+        SdkLogger.e(
+          'Subscription error in batch for querySetId '
+          '${result.querySetId}: $error',
+        );
+        _completeSubscribeWaiter(result.querySetId);
+        return Future.value();
     }
   }
 
@@ -600,7 +749,7 @@ class SubscriptionManager {
         'RX_DECODE_FAILED: $e (${bytes.length} bytes, '
         'head=${bytes.take(8).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')})\n$st',
       );
-      return (messages: const <ServerMessage>[], error: e);
+      return (messages: const <Object>[], error: e);
     }
   }
 
@@ -626,7 +775,11 @@ class SubscriptionManager {
       for (final message in messages) {
         if (_disposed || generation != _frameGeneration) return;
         SdkLogger.d('RX_MSG: ${message.runtimeType}');
-        _routeMessage(message);
+        if (message is SubscribeBatchApplied) {
+          _routeBatchApplied(message);
+        } else {
+          _routeMessage(message as ServerMessage);
+        }
       }
     } catch (e, st) {
       SdkLogger.e('RX_APPLY_FAILED: $e\n$st');
@@ -645,6 +798,7 @@ class SubscriptionManager {
       'RX_IDENTITY_CHANGED: reconnected as $identity, expected $_identity',
     );
     _frameGeneration++;
+    _pendingBatch?.finish(false);
     stopForIdentityChange(
       _connection,
       'Reconnected with a different identity; the token was revoked or '
@@ -1337,6 +1491,8 @@ class SubscriptionManager {
   }
 
   void _syncKeepAliveWorkInFlight() {
-    _connection.setKeepAliveWorkInFlight(_subscribeWaiters.isNotEmpty);
+    _connection.setKeepAliveWorkInFlight(
+      _subscribeWaiters.isNotEmpty || _pendingBatch != null,
+    );
   }
 }

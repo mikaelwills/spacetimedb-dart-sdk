@@ -62,6 +62,31 @@ void stopForIdentityChange(SpacetimeDbConnection connection, String reason) {
   _identityChangeStoppers[connection]?.call(reason);
 }
 
+final Expando<bool> _subscribeBatchesInFlight = Expando();
+
+final Expando<bool> _subscribeBatchesUnsupported = Expando();
+
+@internal
+void setSubscribeBatchInFlight(
+  SpacetimeDbConnection connection,
+  bool inFlight,
+) {
+  _subscribeBatchesInFlight[connection] = inFlight;
+}
+
+@internal
+bool subscribeBatchUnsupported(SpacetimeDbConnection connection) =>
+    _subscribeBatchesUnsupported[connection] ?? false;
+
+@internal
+@visibleForTesting
+void setSubscribeBatchUnsupported(
+  SpacetimeDbConnection connection,
+  bool unsupported,
+) {
+  _subscribeBatchesUnsupported[connection] = unsupported;
+}
+
 final Expando<double Function()> _reconnectRandoms = Expando();
 
 @visibleForTesting

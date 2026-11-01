@@ -4,8 +4,11 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
 import 'package:spacetimedb_sdk/protocol.dart';
+import 'package:spacetimedb_sdk/src/connection/spacetimedb_connection.dart'
+    show setSubscribeBatchUnsupported;
 
 import '../../generated/folder.dart';
+import '../../helpers/reconnect_replay.dart';
 import '../../mocks/mock_connection.dart';
 
 const _timeout = Duration(seconds: 2);
@@ -619,14 +622,19 @@ void main() {
           isTrue,
         );
 
-        mockConnection.simulateIncoming(
-          _createSubscribeApplied(
-            requestId: 0,
-            querySetId: 1,
-            rowsByTable: {
-              'folder': [oldFolder],
-            },
-          ),
+        answerReconnectReplay(
+          mockConnection,
+          applied: {
+            1: queryRowsOf(
+              _createSubscribeApplied(
+                requestId: 0,
+                querySetId: 1,
+                rowsByTable: {
+                  'folder': [oldFolder],
+                },
+              ),
+            ),
+          },
         );
         await pumpEventQueue();
 
@@ -734,8 +742,20 @@ void main() {
       if (table == null) fail('folder table was not registered');
       expect(table.iter().map((f) => f.name), contains('New Name'));
 
-      mockConnection.simulateIncoming(
-        _createSubscribeApplied(requestId: 0, querySetId: 2),
+      answerReconnectReplay(
+        mockConnection,
+        applied: {
+          1: queryRowsOf(
+            _createSubscribeApplied(
+              requestId: 0,
+              querySetId: 1,
+              rowsByTable: {
+                'folder': [newFolder],
+              },
+            ),
+          ),
+          2: queryRowsOf(_createSubscribeApplied(requestId: 0, querySetId: 2)),
+        },
       );
       await pumpEventQueue();
 
@@ -1892,12 +1912,13 @@ void main() {
     });
   });
 
-  group('provenance tagging across a reconnect window', () {
+  group('fallback: provenance tagging across a reconnect window', () {
     late MockConnection mockConnection;
     late SubscriptionManager subscriptionManager;
 
     setUp(() {
       mockConnection = MockConnection();
+      setSubscribeBatchUnsupported(mockConnection, true);
       subscriptionManager = SubscriptionManager(mockConnection);
       subscriptionManager.cache.registerDecoder<String>(
         'live_table',

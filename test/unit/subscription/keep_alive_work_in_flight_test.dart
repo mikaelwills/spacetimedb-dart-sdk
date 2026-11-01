@@ -4,6 +4,7 @@ import 'package:fake_async/fake_async.dart';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
 
+import '../../helpers/reconnect_replay.dart';
 import '../../mocks/mock_connection.dart';
 
 const _timeout = Duration(seconds: 2);
@@ -103,6 +104,48 @@ void main() {
         subscriptionManager.dispose();
         async.flushTimers();
       });
+    });
+  });
+
+  group('keep-alive work-in-flight signal follows the reconnect batch', () {
+    late MockConnection mockConnection;
+    late SubscriptionManager subscriptionManager;
+
+    setUp(() async {
+      mockConnection = MockConnection();
+      subscriptionManager = SubscriptionManager(mockConnection);
+      await mockConnection.connect();
+      final future = subscriptionManager.subscribe(['SELECT * FROM notes']);
+      mockConnection.simulateIncoming(
+        _createSubscribeApplied(requestId: 0, querySetId: 1),
+      );
+      await future.timeout(_timeout);
+      await mockConnection.disconnect();
+      await mockConnection.connect();
+      await pumpEventQueue();
+    });
+
+    tearDown(() => subscriptionManager.dispose());
+
+    test(
+      'in flight while the batch is pending, cleared on the reply',
+      () async {
+        expect(mockConnection.keepAliveWorkInFlight, isTrue);
+
+        answerReconnectReplay(mockConnection);
+        await pumpEventQueue();
+
+        expect(mockConnection.keepAliveWorkInFlight, isFalse);
+      },
+    );
+
+    test('cleared on disconnect', () async {
+      expect(mockConnection.keepAliveWorkInFlight, isTrue);
+
+      await mockConnection.disconnect();
+      await pumpEventQueue();
+
+      expect(mockConnection.keepAliveWorkInFlight, isFalse);
     });
   });
 }

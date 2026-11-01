@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
 
+import '../../helpers/reconnect_replay.dart';
 import '../../mocks/mock_connection.dart';
 
 const _timeout = Duration(seconds: 2);
@@ -35,6 +36,16 @@ Uint8List _createSubscribeApplied({
   }
   return encoder.toBytes();
 }
+
+final _coveredC1 = queryRowsOf(
+  _createSubscribeApplied(
+    requestId: 0,
+    querySetId: 1,
+    rowsByTable: {
+      'covered': ['c1'],
+    },
+  ),
+);
 
 class _JsonStringDecoder extends RowDecoder<String> {
   @override
@@ -115,15 +126,7 @@ void main() {
         await mockConnection.disconnect();
         await mockConnection.connect();
         await pumpEventQueue();
-        mockConnection.simulateIncoming(
-          _createSubscribeApplied(
-            requestId: 0,
-            querySetId: 1,
-            rowsByTable: {
-              'covered': ['c1'],
-            },
-          ),
-        );
+        answerReconnectReplay(mockConnection, applied: {1: _coveredC1});
         await pumpEventQueue();
 
         expect(
@@ -181,16 +184,6 @@ void main() {
       await mockConnection.disconnect();
       await mockConnection.connect();
       await pumpEventQueue();
-      mockConnection.simulateIncoming(
-        _createSubscribeApplied(
-          requestId: 0,
-          querySetId: 1,
-          rowsByTable: {
-            'covered': ['c1'],
-          },
-        ),
-      );
-      await pumpEventQueue();
       await mockConnection.disconnect();
       await pumpEventQueue();
 
@@ -202,23 +195,9 @@ void main() {
 
       await mockConnection.connect();
       await pumpEventQueue();
-      mockConnection.simulateIncoming(
-        _createSubscribeApplied(
-          requestId: 0,
-          querySetId: 1,
-          rowsByTable: {
-            'covered': ['c1'],
-          },
-        ),
-      );
-      mockConnection.simulateIncoming(
-        _createSubscribeApplied(
-          requestId: 0,
-          querySetId: 2,
-          rowsByTable: {
-            'covered': ['c1'],
-          },
-        ),
+      answerReconnectReplay(
+        mockConnection,
+        applied: {1: _coveredC1, 2: _coveredC1},
       );
       await pumpEventQueue();
 
@@ -264,15 +243,7 @@ void main() {
         await mockConnection.disconnect();
         await mockConnection.connect();
         await pumpEventQueue();
-        mockConnection.simulateIncoming(
-          _createSubscribeApplied(
-            requestId: 0,
-            querySetId: 1,
-            rowsByTable: {
-              'covered': ['c1'],
-            },
-          ),
-        );
+        answerReconnectReplay(mockConnection, applied: {1: _coveredC1});
         await pumpEventQueue();
 
         expect(covered.iter(), contains('c1'));

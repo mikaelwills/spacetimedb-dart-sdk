@@ -2,7 +2,10 @@ import 'dart:typed_data';
 
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
+import 'package:spacetimedb_sdk/src/connection/spacetimedb_connection.dart'
+    show setSubscribeBatchUnsupported;
 
+import '../../helpers/reconnect_replay.dart';
 import '../../mocks/mock_connection.dart';
 
 const _timeout = Duration(seconds: 2);
@@ -56,13 +59,29 @@ class _JsonStringDecoder extends RowDecoder<String> {
   }
 }
 
+MockConnection _connection({required bool batch}) {
+  final connection = MockConnection();
+  if (!batch) setSubscribeBatchUnsupported(connection, true);
+  return connection;
+}
+
 void main() {
+  for (final batch in [true, false]) {
+    group('batch=$batch', () {
+      _p1(batch);
+      _p3(batch);
+    });
+  }
+  _p2();
+}
+
+void _p1(bool batch) {
   group('P1 — a disk-loaded row and a pending-reclaim row are distinguishable', () {
     late MockConnection mockConnection;
     late SubscriptionManager subscriptionManager;
 
     setUp(() {
-      mockConnection = MockConnection();
+      mockConnection = _connection(batch: batch);
       subscriptionManager = SubscriptionManager(mockConnection);
       subscriptionManager.cache.registerDecoder<String>(
         'covered',
@@ -126,14 +145,19 @@ void main() {
             'the distinction and is what the consumer test pins',
       );
 
-      mockConnection.simulateIncoming(
-        _createSubscribeApplied(
-          requestId: 0,
-          querySetId: 1,
-          rowsByTable: {
-            'covered': ['c1'],
-          },
-        ),
+      answerReconnectReplay(
+        mockConnection,
+        applied: {
+          1: queryRowsOf(
+            _createSubscribeApplied(
+              requestId: 0,
+              querySetId: 1,
+              rowsByTable: {
+                'covered': ['c1'],
+              },
+            ),
+          ),
+        },
       );
       await pumpEventQueue();
 
@@ -153,13 +177,15 @@ void main() {
       );
     });
   });
+}
 
+void _p2() {
   group('P2 — a connection bounce during the resubscribe window', () {
     late MockConnection mockConnection;
     late SubscriptionManager subscriptionManager;
 
     setUp(() {
-      mockConnection = MockConnection();
+      mockConnection = _connection(batch: false);
       subscriptionManager = SubscriptionManager(mockConnection);
       subscriptionManager.cache.registerDecoder<String>(
         'ta',
@@ -239,13 +265,15 @@ void main() {
       expect(ta.iter(), contains('a1'));
     });
   });
+}
 
+void _p3(bool batch) {
   group('P3 — ownership guards stay live during the resubscribe window', () {
     late MockConnection mockConnection;
     late SubscriptionManager subscriptionManager;
 
     setUp(() {
-      mockConnection = MockConnection();
+      mockConnection = _connection(batch: batch);
       subscriptionManager = SubscriptionManager(mockConnection);
       subscriptionManager.cache.registerDecoder<String>(
         'guarded',

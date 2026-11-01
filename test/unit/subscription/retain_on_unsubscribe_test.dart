@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
 
+import '../../helpers/reconnect_replay.dart';
 import '../../mocks/mock_connection.dart';
 
 const _timeout = Duration(seconds: 30);
@@ -494,14 +495,19 @@ void main() {
       await pumpEventQueue();
       await mockConnection.connect();
       await pumpEventQueue();
-      mockConnection.simulateIncoming(
-        _createSubscribeApplied(
-          requestId: 0,
-          querySetId: id,
-          rowsByTable: {
-            'chat': ['a2'],
-          },
-        ),
+      answerReconnectReplay(
+        mockConnection,
+        applied: {
+          id: queryRowsOf(
+            _createSubscribeApplied(
+              requestId: 0,
+              querySetId: id,
+              rowsByTable: {
+                'chat': ['a2'],
+              },
+            ),
+          ),
+        },
       );
       await pending.timeout(_timeout);
       await pumpEventQueue();

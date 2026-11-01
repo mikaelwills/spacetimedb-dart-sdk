@@ -5,6 +5,9 @@ import 'package:spacetimedb_sdk/codegen.dart';
 import 'package:spacetimedb_sdk/src/messages/message_decoder.dart';
 import 'package:spacetimedb_sdk/src/messages/server_messages.dart';
 
+import 'package:spacetimedb_sdk/src/messages/subscribe_batch.dart';
+
+import '../../helpers/reconnect_replay.dart';
 import '../../mocks/mock_connection.dart';
 
 const _timeout = Duration(seconds: 2);
@@ -72,6 +75,11 @@ Future<List<ServerMessage>> _decodeSlowerForLargerFrames(
 ) async {
   await Future<void>.delayed(Duration(milliseconds: bytes.length ~/ 8));
   return MessageDecoder.decodeAll(bytes);
+}
+
+Future<List<Object>> _decodeBatchesSlowly(Uint8List bytes) async {
+  await Future<void>.delayed(Duration(milliseconds: bytes.length ~/ 8));
+  return MessageDecoder.decodeAllInternal(bytes);
 }
 
 final _snapshotIds = List<int>.generate(40, (i) => 100 + i);
@@ -152,6 +160,44 @@ void main() {
       expect(connection.closeForReconnectReasons, hasLength(1));
       expect(notes.find(1), 1);
     });
+
+    test('a batch reply and a TransactionUpdate in one frame apply in that '
+        'order', () async {
+      manager.frameDecoder = MessageDecoder.decodeAllInternal;
+      final subscribed = manager.subscribe(['SELECT * FROM $_table']);
+      connection.simulateIncoming(_subscribeApplied(querySetId: 1, ids: [5]));
+      await subscribed.timeout(_timeout);
+
+      connection.clearSent();
+      connection.mockState = const Disconnected();
+      connection.mockState = const Connected();
+      await pumpEventQueue();
+      final batch = decodeSentSubscribeBatch(
+        sentWithTag(connection.sentMessages, subscribeBatchTag).single,
+      );
+      connection.simulateIncoming(
+        uncompressedFrame([
+          subscribeBatchAppliedBody(batch.requestId, [
+            (
+              querySetId: 1,
+              outcome: SubscribeSetApplied(
+                queryRowsOf(_subscribeApplied(querySetId: 1, ids: [5])),
+              ),
+            ),
+          ]),
+          _transactionUpdate(
+            querySetId: 1,
+            inserts: [6],
+            deletes: [5],
+          ).sublist(1),
+        ]),
+      );
+      await settle();
+
+      expect(notes.find(5), isNull);
+      expect(notes.find(6), 6);
+      expect(manager.subscriptionsReady.value, isTrue);
+    });
   });
 
   group('frames from a socket that has since been replaced', () {
@@ -195,6 +241,41 @@ void main() {
         expect(notes.find(7), isNull);
       },
     );
+
+    test('a batch reply from a replaced socket is dropped and leaves the '
+        'batch pending', () async {
+      await subscribeAndApply();
+      manager.frameDecoder = _decodeBatchesSlowly;
+      final applied = <SubscribeApplied>[];
+      manager.onSubscribeApplied.listen(applied.add);
+
+      connection.clearSent();
+      await reconnect();
+      final stale = decodeSentSubscribeBatch(
+        sentWithTag(connection.sentMessages, subscribeBatchTag).single,
+      );
+      connection.simulateIncoming(
+        subscribeBatchAppliedFrame(stale.requestId, [
+          (
+            querySetId: 1,
+            outcome: SubscribeSetApplied(
+              queryRowsOf(_subscribeApplied(querySetId: 1, ids: _snapshotIds)),
+            ),
+          ),
+        ]),
+      );
+      await reconnect();
+      await settle();
+
+      expect(notes.count(), 0);
+      expect(applied, isEmpty);
+      expect(connection.closeForReconnectReasons, isEmpty);
+      expect(connection.keepAliveWorkInFlight, isTrue);
+      expect(sentWithTag(connection.sentMessages, subscribeBatchTag), [
+        isNotEmpty,
+        isNotEmpty,
+      ]);
+    });
 
     test('a frame received after the reconnect routes normally', () async {
       await subscribeAndApply();
