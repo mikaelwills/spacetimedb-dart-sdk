@@ -59,6 +59,16 @@ void main() {
       expect(subscribeBatchUnsupported(connection), isFalse);
     });
 
+    test('a session busy 4000 with a batch in flight does not', () {
+      setSubscribeBatchInFlight(connection, true);
+      noteSocketClosed(
+        connection,
+        closeCode: 4000,
+        closeReason: 'session busy',
+      );
+      expect(subscribeBatchUnsupported(connection), isFalse);
+    });
+
     test('once set, the flag survives a later normal close', () {
       setSubscribeBatchInFlight(connection, true);
       noteSocketClosed(

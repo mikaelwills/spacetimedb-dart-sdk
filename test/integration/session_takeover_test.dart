@@ -18,6 +18,7 @@ import '../helpers/test_env.dart';
 const _timeout = Duration(seconds: 10);
 const _subscribeUrl = 'ws://localhost:3000/v1/database/notesdb/subscribe';
 const _sessionBusy = 4000;
+const _sessionBusyFloor = Duration(milliseconds: 500);
 
 class _RecordingSink implements WebSocketSink {
   _RecordingSink(this._inner, this.sent);
@@ -373,6 +374,30 @@ void main() {
     );
     expect(reader.notes.iter().any((n) => n.title == gapTitle), isTrue);
     expect(reader.states.whereType<FatalError>(), isEmpty);
+
+    Reconnecting? lastReconnectingBefore(Duration at) {
+      Reconnecting? found;
+      for (var i = 0; i < reader.states.length; i++) {
+        final state = reader.states[i];
+        if (reader.stateTimes[i] > at) break;
+        if (state is Reconnecting) found = state;
+      }
+      return found;
+    }
+
+    final refusedAt = takeover.closedAt!;
+    final beforeTakeover = lastReconnectingBefore(takeover.dialedAt);
+    expect(beforeTakeover?.attempt, 1);
+    final afterRefusalIndex = reader.states.indexWhere(
+      (state) => state is Reconnecting,
+      reader.stateTimes.indexWhere((at) => at >= refusedAt),
+    );
+    expect(afterRefusalIndex, isNot(-1));
+    final afterRefusal = reader.states[afterRefusalIndex] as Reconnecting;
+    expect(afterRefusal.attempt, beforeTakeover!.attempt);
+    expect(afterRefusal.nextDelay, greaterThanOrEqualTo(_sessionBusyFloor));
+    final retry = reader.channels[2];
+    expect(retry.dialedAt - refusedAt, greaterThanOrEqualTo(_sessionBusyFloor));
 
     final ids = {for (final channel in reader.channels) channel.sessionId};
     expect(ids, hasLength(1));

@@ -80,6 +80,10 @@ bool subscribeBatchUnsupported(SpacetimeDbConnection connection) =>
 
 const _internalErrorCloseCode = 1011;
 
+const _sessionBusyCloseCode = 4000;
+
+const _sessionBusyMinDelay = Duration(milliseconds: 500);
+
 final RegExp _unknownClientMessageTag = RegExp(
   r'unknown tag 0x[0-9a-fA-F]+ for sum type ClientMessage',
 );
@@ -159,6 +163,8 @@ class SpacetimeDbConnection {
   int _reconnectAttempts = 0;
   final math.Random _reconnectRandom = math.Random();
   final String _sessionId = _newSessionId();
+  int _attemptsAtDial = 0;
+  bool _socketReceivedFrame = false;
   bool _connectSentToken = false;
   Timer? _reconnectTimer;
   bool _shouldReconnect = false;
@@ -376,6 +382,8 @@ class SpacetimeDbConnection {
       SdkLogger.i('Already connected or connecting');
       return;
     }
+    _attemptsAtDial = _reconnectAttempts;
+    _socketReceivedFrame = false;
     _shouldReconnect = true;
     _updateState(const Connecting());
 
@@ -566,6 +574,7 @@ class SpacetimeDbConnection {
   void _setupMessageListener() {
     _channel!.stream.listen(
       (dynamic data) {
+        _socketReceivedFrame = true;
         _keepAlive?.notifyMessageReceived();
         _lastMessageReceived = DateTime.now();
 
@@ -597,6 +606,17 @@ class SpacetimeDbConnection {
         );
         SdkLogger.i('WebSocket closed');
         _keepAlive?.stop();
+
+        final sessionBusy =
+            config.autoReconnect &&
+            _shouldReconnect &&
+            _state is Connected &&
+            !_socketReceivedFrame &&
+            _channel?.closeCode == _sessionBusyCloseCode;
+        if (sessionBusy) {
+          _retrySessionBusy();
+          return;
+        }
 
         if (_state is Connecting) {
           _updateState(const Disconnected());
@@ -645,6 +665,26 @@ class SpacetimeDbConnection {
     );
 
     _updateState(Reconnecting(attempt: _reconnectAttempts, nextDelay: delay));
+    _scheduleReconnectTimer(delay);
+  }
+
+  void _retrySessionBusy() {
+    _reconnectAttempts = _attemptsAtDial;
+    _channel = null;
+    final attempt = _reconnectAttempts;
+    final backoff = _getReconnectDelay(math.max(attempt, 1));
+    final delay = backoff < _sessionBusyMinDelay
+        ? _sessionBusyMinDelay
+        : backoff;
+    SdkLogger.w(
+      'Session busy (close code $_sessionBusyCloseCode); retrying in '
+      '${delay.inMilliseconds}ms without counting an attempt',
+    );
+    _updateState(Reconnecting(attempt: attempt, nextDelay: delay));
+    _scheduleReconnectTimer(delay);
+  }
+
+  void _scheduleReconnectTimer(Duration delay) {
     _reconnectTimer = Timer(delay, () async {
       _updateState(const Disconnected());
       try {
