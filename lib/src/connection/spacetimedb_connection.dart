@@ -607,13 +607,7 @@ class SpacetimeDbConnection {
         SdkLogger.i('WebSocket closed');
         _keepAlive?.stop();
 
-        final sessionBusy =
-            config.autoReconnect &&
-            _shouldReconnect &&
-            _state is Connected &&
-            !_socketReceivedFrame &&
-            _channel?.closeCode == _sessionBusyCloseCode;
-        if (sessionBusy) {
+        if (_isSessionBusyRefusal) {
           _retrySessionBusy();
           return;
         }
@@ -668,11 +662,17 @@ class SpacetimeDbConnection {
     _scheduleReconnectTimer(delay);
   }
 
+  bool get _isSessionBusyRefusal =>
+      config.autoReconnect &&
+      _shouldReconnect &&
+      _state is Connected &&
+      !_socketReceivedFrame &&
+      _channel?.closeCode == _sessionBusyCloseCode;
+
   void _retrySessionBusy() {
     _reconnectAttempts = _attemptsAtDial;
     _channel = null;
-    final attempt = _reconnectAttempts;
-    final backoff = _getReconnectDelay(math.max(attempt, 1));
+    final backoff = _getReconnectDelay(math.max(_reconnectAttempts, 1));
     final delay = backoff < _sessionBusyMinDelay
         ? _sessionBusyMinDelay
         : backoff;
@@ -680,7 +680,7 @@ class SpacetimeDbConnection {
       'Session busy (close code $_sessionBusyCloseCode); retrying in '
       '${delay.inMilliseconds}ms without counting an attempt',
     );
-    _updateState(Reconnecting(attempt: attempt, nextDelay: delay));
+    _updateState(Reconnecting(attempt: _reconnectAttempts, nextDelay: delay));
     _scheduleReconnectTimer(delay);
   }
 
