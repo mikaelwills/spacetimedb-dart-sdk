@@ -291,6 +291,51 @@ void main() {
         ], isNot(contains('untouched-$stamp')));
       });
 
+      test('a set on a missing table fails alone; the valid sets reconcile '
+          'without waiting out the timeout', () async {
+        final reader = _Reader(protocol);
+        addTearDown(reader.dispose);
+        await reader.connect();
+        await Future.wait([
+          reader.manager.subscribe(['SELECT * FROM note']),
+          reader.manager.subscribe(['SELECT * FROM nonexistent_tbl']),
+          reader.manager.subscribe(['SELECT * FROM folder']),
+        ]).timeout(_timeout);
+        await _waitUntil(() => reader.errors.isNotEmpty);
+        reader.errors.clear();
+
+        final stamp = DateTime.now().microsecondsSinceEpoch;
+        final stopwatch = Stopwatch()..start();
+        await reader.forceReconnect();
+        await writer.reducers
+            .createFolder(path: '/batch-error/$stamp', name: 'f')
+            .timeout(_timeout);
+        await _waitUntil(() => reader.errors.isNotEmpty);
+        await _waitUntil(
+          () =>
+              reader.folders.iter().any((f) => f.path == '/batch-error/$stamp'),
+        );
+        stopwatch.stop();
+
+        expect(stopwatch.elapsed, lessThan(const Duration(seconds: 10)));
+        expect(reader.errors, hasLength(1));
+        expect(reader.errors.single.querySetId, 2);
+        expect(reader.errors.single.error, contains('no such table:'));
+        expect(
+          sentWithTag(reader.channels.last.sent, subscribeBatchTag),
+          hasLength(1),
+        );
+        await _waitUntil(
+          () => writer.folderTable.iter().any(
+            (f) => f.path == '/batch-error/$stamp',
+          ),
+        );
+        expect(_noteKeys(reader.notes), _noteKeys(writer.noteTable));
+        expect(_folderKeys(reader.folders), _folderKeys(writer.folderTable));
+        expect(reader.manager.subscriptionsReady.value, isFalse);
+        expect(reader.manager.consecutiveEvictionSkips, 0);
+      });
+
       test('a reconnect with no query sets sends no SubscribeBatch', () async {
         final reader = _Reader(protocol);
         addTearDown(reader.dispose);

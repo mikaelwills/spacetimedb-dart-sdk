@@ -83,10 +83,14 @@ class _Fixture {
     }
   }
 
-  Future<void> establish() async {
+  Future<void> establish({List<String> extraSet2Queries = const []}) async {
     await connection.connect();
     final futures = [
-      for (final name in _tables) manager.subscribe(['SELECT * FROM $name']),
+      for (final name in _tables)
+        manager.subscribe([
+          'SELECT * FROM $name',
+          if (name == 'tb') ...extraSet2Queries,
+        ]),
     ];
     for (var i = 0; i < _tables.length; i++) {
       connection.simulateIncoming(
@@ -331,6 +335,87 @@ void main() {
         f.dispose();
         async.flushMicrotasks();
       });
+    });
+  });
+
+  group('an Error outcome fails only its own set', () {
+    const missingTable =
+        'no such table: `nonexistent_tbl`. If the table exists, it may be '
+        'marked private., executing: `SELECT * FROM nonexistent_tbl`';
+
+    void replyWithError(_Fixture f, int requestId, String error) {
+      f.connection.simulateIncoming(
+        subscribeBatchAppliedFrame(requestId, [
+          (querySetId: 1, outcome: SubscribeSetApplied(_rows('ta', ['00']))),
+          (querySetId: 2, outcome: SubscribeSetError(error)),
+          (querySetId: 3, outcome: SubscribeSetApplied(_rows('tc', ['20']))),
+        ]),
+      );
+    }
+
+    test('the other sets apply and finalize; the errored set keeps its rows '
+        'and stays live', () async {
+      final f = _Fixture();
+      addTearDown(f.dispose);
+      await f.establish();
+      f.recordDeletes();
+
+      final batch = await f.bounce();
+      replyWithError(f, batch.requestId, missingTable);
+      await pumpEventQueue();
+
+      expect(f.errors, hasLength(1));
+      expect(f.errors.single.querySetId, 2);
+      expect(f.errors.single.error, missingTable);
+      expect(f.applied.map((a) => a.querySetId), [1, 3]);
+      expect(f.table('ta').iter(), ['00']);
+      expect(f.table('tc').iter(), ['20']);
+      expect(f.table('tb').iter(), unorderedEquals(['10', '11']));
+      expect(f.deletes.map((e) => e.row), unorderedEquals(['01', '21']));
+      expect(f.manager.subscriptionsReady.value, isFalse);
+      expect(f.manager.consecutiveEvictionSkips, 0);
+      expect(f.manager.subscriptionsByQuerySetId.keys, contains(2));
+
+      final next = await f.bounce();
+      expect(next.sets.map((s) => s.querySetId), contains(2));
+    });
+
+    test('an error the regex parses drops the bad query and resubscribes the '
+        'rest with one Subscribe', () async {
+      final f = _Fixture();
+      addTearDown(f.dispose);
+      await f.establish(extraSet2Queries: ['SELECT * FROM foo']);
+      f.recordDeletes();
+
+      final batch = await f.bounce();
+      f.connection.clearSent();
+      replyWithError(f, batch.requestId, '`foo` is not a valid table');
+      await pumpEventQueue();
+
+      final resent = sentWithTag(f.connection.sentMessages, subscribeTag);
+      expect(resent, hasLength(1));
+      expect(subscribeQuerySetId(resent.single), 2);
+      expect(f.manager.subscriptionsByQuerySetId[2], ['SELECT * FROM tb']);
+      expect(f.errors.single.querySetId, 2);
+      expect(f.table('ta').iter(), ['00']);
+      expect(f.table('tc').iter(), ['20']);
+      expect(f.table('tb').iter(), unorderedEquals(['10', '11']));
+      expect(f.deletes.map((e) => e.row), unorderedEquals(['01', '21']));
+    });
+
+    test('an error that leaves the set empty drops it', () async {
+      final f = _Fixture();
+      addTearDown(f.dispose);
+      await f.establish();
+
+      final batch = await f.bounce();
+      f.connection.clearSent();
+      replyWithError(f, batch.requestId, '`tb` is not a valid table');
+      await pumpEventQueue();
+
+      expect(sentWithTag(f.connection.sentMessages, subscribeTag), isEmpty);
+      expect(f.manager.subscriptionsByQuerySetId.keys, isNot(contains(2)));
+      expect(f.manager.subscriptionsReady.value, isTrue);
     });
   });
 }

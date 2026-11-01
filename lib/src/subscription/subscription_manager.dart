@@ -481,6 +481,8 @@ class SubscriptionManager {
 
   final Set<int> _appliedSetIds = {};
 
+  final Set<int> _batchErroredSetIds = {};
+
   int _consecutiveEvictionSkips = 0;
 
   _PendingBatch? _pendingBatch;
@@ -492,6 +494,7 @@ class SubscriptionManager {
       _subscriptionsReady.value = false;
 
       _appliedSetIds.clear();
+      _batchErroredSetIds.clear();
       var carriedPending = 0;
       for (final table in cache.allTables) {
         if (!table.hasPrimaryKey) continue;
@@ -544,13 +547,15 @@ class SubscriptionManager {
       }
 
       if (_disposed) return;
-      final everySetApplied = _subscriptionsByQuerySetId.keys.every(
-        _appliedSetIds.contains,
+      final liveSetIds = _subscriptionsByQuerySetId.keys.toSet();
+      final everySetApplied = liveSetIds.every(_appliedSetIds.contains);
+      final everySetSettled = liveSetIds.every(
+        (id) => _appliedSetIds.contains(id) || _batchErroredSetIds.contains(id),
       );
-      if (allResubscribed && _connection.isConnected && everySetApplied) {
-        _finalizeReconnectGeneration();
+      if (allResubscribed && _connection.isConnected && everySetSettled) {
+        _finalizeReconnectGeneration(liveSetIds.intersection(_appliedSetIds));
         _consecutiveEvictionSkips = 0;
-        _subscriptionsReady.value = true;
+        if (everySetApplied) _subscriptionsReady.value = true;
       } else {
         _consecutiveEvictionSkips++;
         SdkLogger.w(
@@ -684,17 +689,20 @@ class SubscriptionManager {
               _completeSubscribeWaiter(result.querySetId);
             });
       case SubscribeSetError(:final error):
-        SdkLogger.e(
-          'Subscription error in batch for querySetId '
-          '${result.querySetId}: $error',
+        _batchErroredSetIds.add(result.querySetId);
+        _applySubscriptionError(result.querySetId, error);
+        _subscriptionErrorController.add(
+          SubscriptionErrorMessage(
+            requestId: requestId,
+            querySetId: result.querySetId,
+            error: error,
+          ),
         );
-        _completeSubscribeWaiter(result.querySetId);
         return Future.value();
     }
   }
 
-  void _finalizeReconnectGeneration() {
-    final liveSetIds = _subscriptionsByQuerySetId.keys.toSet();
+  void _finalizeReconnectGeneration(Set<int> liveSetIds) {
     var totalPending = 0;
     var totalEvicted = 0;
     final context = _reconnectContext();
@@ -852,7 +860,7 @@ class SubscriptionManager {
         _handleUnsubscribeApplied(message);
         _unsubscribeAppliedController.add(message);
       case SubscriptionErrorMessage():
-        _handleSubscriptionError(message);
+        _applySubscriptionError(message.querySetId, message.error);
         _subscriptionErrorController.add(message);
       case ReducerResultMessage():
         _handleReducerResult(message);
@@ -862,22 +870,22 @@ class SubscriptionManager {
     }
   }
 
-  void _handleSubscriptionError(SubscriptionErrorMessage message) {
+  void _applySubscriptionError(int querySetId, String error) {
     final tableNameMatch = RegExp(r'`(\w+)` is not a valid table')
-        .firstMatch(message.error);
+        .firstMatch(error);
     if (tableNameMatch == null) {
-      SdkLogger.e('Subscription error: ${message.error}');
-      _completeSubscribeWaiter(message.querySetId);
+      SdkLogger.e('Subscription error: $error');
+      _completeSubscribeWaiter(querySetId);
       return;
     }
 
     final badTable = tableNameMatch.group(1)!;
-    final queries = _subscriptionsByQuerySetId[message.querySetId];
+    final queries = _subscriptionsByQuerySetId[querySetId];
     if (queries == null) {
       SdkLogger.e(
-        'Subscription error for unknown querySetId ${message.querySetId}: ${message.error}',
+        'Subscription error for unknown querySetId $querySetId: $error',
       );
-      _completeSubscribeWaiter(message.querySetId);
+      _completeSubscribeWaiter(querySetId);
       return;
     }
 
@@ -890,31 +898,29 @@ class SubscriptionManager {
     );
 
     if (badQuery.isEmpty) {
-      SdkLogger.e(
-        'Subscription error for unknown table "$badTable": ${message.error}',
-      );
-      _completeSubscribeWaiter(message.querySetId);
+      SdkLogger.e('Subscription error for unknown table "$badTable": $error');
+      _completeSubscribeWaiter(querySetId);
       return;
     }
 
     queries.remove(badQuery);
     SdkLogger.w(
-      'Subscription failed for table "$badTable" in querySetId ${message.querySetId}, removed query. ${queries.length} queries left in the set.',
+      'Subscription failed for table "$badTable" in querySetId $querySetId, removed query. ${queries.length} queries left in the set.',
     );
 
     final badTableCache = cache.getTableByName(badTable);
     badTableCache?.markSubscribeFailed(
-      SpacetimeDbSubscriptionException(message.error, tableName: badTable),
+      SpacetimeDbSubscriptionException(error, tableName: badTable),
     );
 
     if (queries.isEmpty) {
-      _subscriptionsByQuerySetId.remove(message.querySetId);
-      _dropQuerySetEverywhere(message.querySetId);
-      _completeSubscribeWaiter(message.querySetId);
+      _subscriptionsByQuerySetId.remove(querySetId);
+      _dropQuerySetEverywhere(querySetId);
+      _completeSubscribeWaiter(querySetId);
     } else {
       final resubscribe = SubscribeMessage(
         List.of(queries),
-        querySetId: message.querySetId,
+        querySetId: querySetId,
       );
       _connection.send(resubscribe.encode());
     }
