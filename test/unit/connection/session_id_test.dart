@@ -61,7 +61,10 @@ class _Harness {
 
   int get reconnectAttempts => qualities.last.reconnectAttempts;
 
-  Future<void> dispose() => connection.dispose();
+  void dispose(FakeAsync async) {
+    connection.dispose();
+    async.flushMicrotasks();
+  }
 }
 
 WebSocketChannel _fail() => throw Exception('simulated connect failure');
@@ -76,8 +79,7 @@ void main() {
 
         final id = harness.dials.single.queryParameters['session_id'];
         expect(id, matches(_hex32));
-        harness.dispose();
-        async.flushMicrotasks();
+        harness.dispose(async);
       });
     });
 
@@ -93,9 +95,8 @@ void main() {
           first.dials.single.queryParameters['session_id'],
           isNot(second.dials.single.queryParameters['session_id']),
         );
-        first.dispose();
-        second.dispose();
-        async.flushMicrotasks();
+        first.dispose(async);
+        second.dispose(async);
       });
     });
 
@@ -138,8 +139,7 @@ void main() {
 
         expect(harness.sessionIds, hasLength(1));
         expect(harness.sessionIds.single, matches(_hex32));
-        harness.dispose();
-        async.flushMicrotasks();
+        harness.dispose(async);
       });
     });
 
@@ -159,8 +159,7 @@ void main() {
           harness.dials.last.queryParameters['session_id'],
           harness.dials.first.queryParameters['session_id'],
         );
-        harness.dispose();
-        async.flushMicrotasks();
+        harness.dispose(async);
       });
     });
 
@@ -183,8 +182,7 @@ void main() {
         expect(harness.connection.state, isA<Connected>());
         expect(harness.sessionIds, hasLength(1));
         expect(harness.sessionIds.single, matches(_hex32));
-        harness.dispose();
-        async.flushMicrotasks();
+        harness.dispose(async);
       });
     });
 
@@ -199,8 +197,7 @@ void main() {
         final uri = harness.dials.single;
         expect(uri.query, isEmpty);
         expect(uri.queryParameters.containsKey('session_id'), isFalse);
-        harness.dispose();
-        async.flushMicrotasks();
+        harness.dispose(async);
       });
     });
   });
@@ -289,8 +286,7 @@ void main() {
         async.flushMicrotasks();
         expect(harness.lastReconnecting.attempt, 1);
         expect(harness.reconnectAttempts, 1);
-        harness.dispose();
-        async.flushMicrotasks();
+        harness.dispose(async);
       });
     });
 
@@ -327,8 +323,7 @@ void main() {
         async.flushMicrotasks();
         expect(harness.dials, hasLength(2));
         expect(harness.connection.state, isA<Connected>());
-        harness.dispose();
-        async.flushMicrotasks();
+        harness.dispose(async);
       });
     });
 
@@ -370,8 +365,7 @@ void main() {
         }
         expect(harness.connection.state, isA<Connected>());
         expect(harness.states.whereType<FatalError>(), isEmpty);
-        harness.dispose();
-        async.flushMicrotasks();
+        harness.dispose(async);
       });
     });
 
@@ -389,8 +383,7 @@ void main() {
         final dials = harness.dials.length;
         async.elapse(const Duration(seconds: 60));
         expect(harness.dials, hasLength(dials));
-        harness.dispose();
-        async.flushMicrotasks();
+        harness.dispose(async);
       });
     });
 
@@ -419,8 +412,7 @@ void main() {
         expect(failed.attempt, 1);
         expect(failed.nextDelay, delayFor(1, base: smallBase));
         expect(failed.nextDelay, lessThan(floor));
-        harness.dispose();
-        async.flushMicrotasks();
+        harness.dispose(async);
       });
     });
 
@@ -445,8 +437,7 @@ void main() {
         expect(harness.dials, hasLength(1));
         expect(harness.connection.state, isA<Disconnected>());
         expect(reconnectingSince(harness, before), isEmpty);
-        harness.dispose();
-        async.flushMicrotasks();
+        harness.dispose(async);
       });
     });
 
@@ -478,8 +469,7 @@ void main() {
           harness.states.whereType<Reconnecting>().map((s) => s.nextDelay),
           everyElement(lessThan(floor)),
         );
-        harness.dispose();
-        async.flushMicrotasks();
+        harness.dispose(async);
       });
     });
 
@@ -495,8 +485,7 @@ void main() {
           expect(harness.lastReconnecting.attempt, 1);
           expect(harness.lastReconnecting.nextDelay, delayFor(1));
           expect(harness.reconnectAttempts, 1);
-          harness.dispose();
-          async.flushMicrotasks();
+          harness.dispose(async);
         });
       });
     }
@@ -550,8 +539,7 @@ void main() {
         retryReady.complete();
         async.flushMicrotasks();
         expect(harness.connection.state, isA<Connected>());
-        harness.dispose();
-        async.flushMicrotasks();
+        harness.dispose(async);
       });
     });
   });

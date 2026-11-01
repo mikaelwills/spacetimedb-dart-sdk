@@ -17,7 +17,10 @@ import '../helpers/test_env.dart';
 
 const _timeout = Duration(seconds: 10);
 const _subscribeUrl = 'ws://localhost:3000/v1/database/notesdb/subscribe';
-const _sessionBusy = 4000;
+const _sessionBusyCloseCode = 4000;
+const _tokenLengthOffset = 50;
+const _tokenOffset = _tokenLengthOffset + 4;
+final _hex32 = RegExp(r'^[0-9a-f]{32}$');
 const _sessionBusyFloor = Duration(milliseconds: 500);
 
 class _RecordingSink implements WebSocketSink {
@@ -145,7 +148,7 @@ class _Holder {
       _channel = channel;
       return true;
     }
-    expect(channel.closeCode, _sessionBusy);
+    expect(channel.closeCode, _sessionBusyCloseCode);
     return false;
   }
 }
@@ -168,10 +171,10 @@ Future<String> _anonymousToken() async {
   expect(bytes[1], 0, reason: 'InitialConnection tag');
   final length = ByteData.sublistView(
     bytes,
-    50,
-    54,
+    _tokenLengthOffset,
+    _tokenOffset,
   ).getUint32(0, Endian.little);
-  return utf8.decode(bytes.sublist(54, 54 + length));
+  return utf8.decode(bytes.sublist(_tokenOffset, _tokenOffset + length));
 }
 
 class _Reader {
@@ -278,6 +281,12 @@ Set<String> _folderKeys(TableCache<Folder> folders) => {
   for (final folder in folders.iter()) '${folder.path}|${folder.name}',
 };
 
+void _expectOneSessionId(_Reader reader) {
+  final ids = {for (final channel in reader.channels) channel.sessionId};
+  expect(ids, hasLength(1));
+  expect(ids.single, matches(_hex32));
+}
+
 void main() {
   setUpAll(ensureTestEnvironment);
   tearDownAll(cleanupTestEnvironment);
@@ -354,7 +363,7 @@ void main() {
       reason: 'the takeover dial never closed',
     );
     final takeover = reader.channels[1];
-    expect(takeover.closeCode, _sessionBusy);
+    expect(takeover.closeCode, _sessionBusyCloseCode);
     expect(takeover.closeReason, 'session busy');
 
     await _waitUntil(
@@ -399,9 +408,7 @@ void main() {
     final retry = reader.channels[2];
     expect(retry.dialedAt - refusedAt, greaterThanOrEqualTo(_sessionBusyFloor));
 
-    final ids = {for (final channel in reader.channels) channel.sessionId};
-    expect(ids, hasLength(1));
-    expect(ids.single, matches(RegExp(r'^[0-9a-f]{32}$')));
+    _expectOneSessionId(reader);
   });
 
   test('no holder: a reconnect carrying session_id is accepted with no 4000 '
@@ -431,11 +438,9 @@ void main() {
     expect(reader.connection.state, isA<Connected>());
     expect(
       reader.channels.map((channel) => channel.closeCode),
-      isNot(contains(_sessionBusy)),
+      isNot(contains(_sessionBusyCloseCode)),
     );
-    final ids = {for (final channel in reader.channels) channel.sessionId};
-    expect(ids, hasLength(1));
-    expect(ids.single, matches(RegExp(r'^[0-9a-f]{32}$')));
+    _expectOneSessionId(reader);
     await expectCacheEqualsServer(reader);
   });
 }
