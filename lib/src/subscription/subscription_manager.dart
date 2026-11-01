@@ -604,6 +604,7 @@ class SubscriptionManager {
             '${entries.length} query sets) timed out during reconnect; '
             'retaining every set for the next reconnect',
           );
+          batch.querySetIds.forEach(_completeSubscribeWaiter);
           return false;
         },
       );

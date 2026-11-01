@@ -282,6 +282,35 @@ void main() {
       },
     );
 
+    test('a batch timeout completes a subscribe() that was waiting while '
+        'disconnected, as the per-set timeout does', () {
+      fakeAsync((async) {
+        final f = _Fixture();
+        f.establish();
+        async.flushMicrotasks();
+
+        f.connection.disconnect();
+        async.flushMicrotasks();
+        int? lateId;
+        f.manager
+            .subscribe(['SELECT * FROM tc WHERE v = 1'])
+            .then((id) => lateId = id);
+        f.connection.connect();
+        async.flushMicrotasks();
+        expect(f.connection.keepAliveWorkInFlight, isTrue);
+
+        async.elapse(const Duration(seconds: 31));
+
+        expect(lateId, 4);
+        expect(f.connection.keepAliveWorkInFlight, isFalse);
+        expect(f.manager.subscriptionsReady.value, isFalse);
+        expect(f.manager.consecutiveEvictionSkips, 1);
+
+        f.dispose();
+        async.flushMicrotasks();
+      });
+    });
+
     test('a disconnect while the batch is pending completes it at once, with '
         'no finalize', () {
       fakeAsync((async) {
