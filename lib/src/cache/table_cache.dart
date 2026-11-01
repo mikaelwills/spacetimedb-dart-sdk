@@ -473,17 +473,25 @@ class TableCache<T> {
   int finalizeReconnectGeneration({
     Set<dynamic>? protectedKeys,
     bool Function(Set<int> owners)? retainWhere,
+    bool Function(Set<int> owners)? carryWhere,
     EventContext? context,
   }) {
     if (_previousOwners.isEmpty) return 0;
     final evicted = <dynamic>[];
+    final carried = <dynamic, Set<int>>{};
     for (final entry in _previousOwners.entries) {
       final pk = entry.key;
+      if (carryWhere != null && carryWhere(entry.value)) {
+        carried[pk] = entry.value;
+        continue;
+      }
       if (protectedKeys != null && protectedKeys.contains(pk)) continue;
       if (retainWhere != null && retainWhere(entry.value)) continue;
       evicted.add(pk);
     }
-    _previousOwners.clear();
+    _previousOwners
+      ..clear()
+      ..addAll(carried);
     _evictEmittingDeletes(evicted, context);
     return evicted.length;
   }

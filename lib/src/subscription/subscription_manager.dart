@@ -692,8 +692,7 @@ class SubscriptionManager {
               _completeSubscribeWaiter(result.querySetId);
             });
       case SubscribeSetError(:final error):
-        _batchErroredSetIds.add(result.querySetId);
-        _applySubscriptionError(result.querySetId, error);
+        final resent = _applySubscriptionError(result.querySetId, error);
         _subscriptionErrorController.add(
           SubscriptionErrorMessage(
             requestId: requestId,
@@ -701,6 +700,8 @@ class SubscriptionManager {
             error: error,
           ),
         );
+        if (resent) return _awaitSubscribeApplied(result.querySetId);
+        _batchErroredSetIds.add(result.querySetId);
         return Future.value();
     }
   }
@@ -718,6 +719,7 @@ class SubscriptionManager {
           table.tableName,
         ),
         retainWhere: (owners) => !owners.any(liveSetIds.contains),
+        carryWhere: (owners) => owners.any(_batchErroredSetIds.contains),
         context: context,
       );
       totalEvicted += evicted;
@@ -873,13 +875,13 @@ class SubscriptionManager {
     }
   }
 
-  void _applySubscriptionError(int querySetId, String error) {
+  bool _applySubscriptionError(int querySetId, String error) {
     final tableNameMatch = RegExp(r'`(\w+)` is not a valid table')
         .firstMatch(error);
     if (tableNameMatch == null) {
       SdkLogger.e('Subscription error: $error');
       _completeSubscribeWaiter(querySetId);
-      return;
+      return false;
     }
 
     final badTable = tableNameMatch.group(1)!;
@@ -889,7 +891,7 @@ class SubscriptionManager {
         'Subscription error for unknown querySetId $querySetId: $error',
       );
       _completeSubscribeWaiter(querySetId);
-      return;
+      return false;
     }
 
     final badQuery = queries.firstWhere(
@@ -903,7 +905,7 @@ class SubscriptionManager {
     if (badQuery.isEmpty) {
       SdkLogger.e('Subscription error for unknown table "$badTable": $error');
       _completeSubscribeWaiter(querySetId);
-      return;
+      return false;
     }
 
     queries.remove(badQuery);
@@ -920,13 +922,14 @@ class SubscriptionManager {
       _subscriptionsByQuerySetId.remove(querySetId);
       _dropQuerySetEverywhere(querySetId);
       _completeSubscribeWaiter(querySetId);
-    } else {
-      final resubscribe = SubscribeMessage(
-        List.of(queries),
-        querySetId: querySetId,
-      );
-      _connection.send(resubscribe.encode());
+      return false;
     }
+    final resubscribe = SubscribeMessage(
+      List.of(queries),
+      querySetId: querySetId,
+    );
+    _connection.send(resubscribe.encode());
+    return true;
   }
 
   Future<void> _handleSubscribeApplied(SubscribeApplied message) async {
@@ -1483,7 +1486,10 @@ class SubscriptionManager {
   ) async {
     final message = SubscribeMessage(queries, querySetId: querySetId);
     _connection.send(message.encode());
+    await _awaitSubscribeApplied(querySetId);
+  }
 
+  Future<void> _awaitSubscribeApplied(int querySetId) async {
     final waiter = _subscribeWaiters.putIfAbsent(
       querySetId,
       Completer<void>.new,

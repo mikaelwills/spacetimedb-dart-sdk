@@ -416,6 +416,34 @@ void main() {
       expect(next.sets.map((s) => s.querySetId), contains(2));
     });
 
+    test('a row the errored set lost while offline is deleted once on the '
+        'next reconnect, not kept as an orphan', () async {
+      final f = _Fixture();
+      addTearDown(f.dispose);
+      await f.establish();
+      f.recordDeletes();
+
+      final first = await f.bounce();
+      replyWithError(f, first.requestId, missingTable);
+      await pumpEventQueue();
+      expect(f.table('tb').iter(), unorderedEquals(['10', '11']));
+
+      final second = await f.bounce();
+      f.connection.simulateIncoming(
+        subscribeBatchAppliedFrame(second.requestId, [
+          (querySetId: 1, outcome: SubscribeSetApplied(_rows('ta', ['00']))),
+          (querySetId: 2, outcome: SubscribeSetApplied(_rows('tb', ['10']))),
+          (querySetId: 3, outcome: SubscribeSetApplied(_rows('tc', ['20']))),
+        ]),
+      );
+      await pumpEventQueue();
+
+      expect(f.table('tb').iter(), ['10']);
+      expect(f.deletes.map((e) => e.row), unorderedEquals(['01', '21', '11']));
+      expect(f.manager.subscriptionsReady.value, isTrue);
+      expect(f.manager.consecutiveEvictionSkips, 0);
+    });
+
     test('an error the regex parses drops the bad query and resubscribes the '
         'rest with one Subscribe', () async {
       final f = _Fixture();
@@ -433,10 +461,25 @@ void main() {
       expect(subscribeQuerySetId(resent.single), 2);
       expect(f.manager.subscriptionsByQuerySetId[2], ['SELECT * FROM tb']);
       expect(f.errors.single.querySetId, 2);
+      expect(f.table('tb').iter(), unorderedEquals(['10', '11']));
+      expect(
+        f.deletes,
+        isEmpty,
+        reason: 'finalize waits for the resent set, as the per-set path does',
+      );
+      expect(f.manager.subscriptionsReady.value, isFalse);
+
+      f.connection.simulateIncoming(
+        perSetSubscribeAppliedFrame(2, _rows('tb', ['10'])),
+      );
+      await pumpEventQueue();
+
       expect(f.table('ta').iter(), ['00']);
       expect(f.table('tc').iter(), ['20']);
-      expect(f.table('tb').iter(), unorderedEquals(['10', '11']));
-      expect(f.deletes.map((e) => e.row), unorderedEquals(['01', '21']));
+      expect(f.table('tb').iter(), ['10']);
+      expect(f.deletes.map((e) => e.row), unorderedEquals(['01', '21', '11']));
+      expect(f.manager.subscriptionsReady.value, isTrue);
+      expect(f.manager.consecutiveEvictionSkips, 0);
     });
 
     test('an error that leaves the set empty drops it', () async {
