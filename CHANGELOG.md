@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- **`TokenProvider` (optional `tokenProvider` on `SpacetimeDbConnection` and generated `create`).** Before a reconnect, the SDK asks the provider for a new token when the current one is unreadable, has no `exp`, or is within 5% of its lifetime (at least 30 s) of expiry; after a 401/403 it asks once more and retries before `AuthError`. Not called for the first connect; no provider = behaviour unchanged.
+
 ### Fixed
 
 - **Retained rows no longer outlive a regrouped query set.** With `retainRowsOnUnsubscribe`, rows are now tagged per query instead of per query set, so a set that keeps a query but changes the rest still reconciles those rows on cold start and reconnect. Tag sidecars written by earlier versions are ignored once, and their rows are swept by the first covering snapshot.

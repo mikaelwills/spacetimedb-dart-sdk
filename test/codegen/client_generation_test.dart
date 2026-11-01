@@ -96,6 +96,18 @@ void main() {
       );
       print('   ✅ Two-phase API: create() factory + connect() instance method');
 
+      expect(
+        clientCode,
+        contains('TokenProvider? tokenProvider'),
+        reason: 'create() should take an optional token provider',
+      );
+      expect(
+        RegExp(r'SpacetimeDbConnection\([^;]*tokenProvider:')
+            .hasMatch(clientCode),
+        isTrue,
+        reason: 'create() should pass the token provider to the connection',
+      );
+
       // Step 5: Verify flow order in create() method
       print('\n🔄 Verifying create() method flow...');
       final createMethodStart = clientCode.indexOf('static Future<');

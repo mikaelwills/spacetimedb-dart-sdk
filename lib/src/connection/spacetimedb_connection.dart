@@ -5,6 +5,8 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
+import 'package:spacetimedb_sdk/src/auth/token_provider.dart';
+import 'package:spacetimedb_sdk/src/auth/token_refresh.dart';
 import 'package:spacetimedb_sdk/src/connection/connection_state.dart';
 import 'package:spacetimedb_sdk/src/exceptions.dart';
 import 'package:spacetimedb_sdk/src/connection/connection_quality.dart';
@@ -52,6 +54,11 @@ class SpacetimeDbConnection {
   final bool ssl;
   final ConnectionConfig config;
   final WebSocketFactory _socketFactory;
+  final TokenProvider? _tokenProvider;
+  bool _hasEverConnected = false;
+  bool _forceTokenRefresh = false;
+  bool _usedFreshToken = false;
+  int _connectAttempt = 0;
 
   int _reconnectAttempts = 0;
   Timer? _reconnectTimer;
@@ -107,6 +114,7 @@ class SpacetimeDbConnection {
     this.initialToken,
     this.ssl = false,
     this.config = const ConnectionConfig(),
+    this._tokenProvider,
     WebSocketFactory? socketFactory,
   }) : _currentToken = initialToken,
        _socketFactory = socketFactory ?? ws.connectWebSocket {
@@ -126,36 +134,13 @@ class SpacetimeDbConnection {
   }
 
   Future<void> connect() async {
-    if (!config.retryInitialConnect) {
-      return _connectOnce();
-    }
-    var attempt = 0;
-    while (true) {
-      attempt++;
-      try {
-        return await _connectOnce();
-      } on SpacetimeDbAuthException {
-        rethrow;
-      } catch (e) {
-        if (attempt >= config.maxReconnectAttempts) {
-          SdkLogger.e(
-            'Initial connect failed after $attempt attempt(s); giving up',
-          );
-          _updateState(
-            const FatalError(message: 'Max initial connect attempts reached'),
-          );
-          rethrow;
-        }
-        _reconnectAttempts = attempt - 1;
-        final delay = _getReconnectDelay();
-        SdkLogger.w(
-          'Initial connect attempt $attempt failed ($e); '
-          'retrying in ${delay.inSeconds}s',
-        );
-        _updateState(Reconnecting(attempt: attempt, nextDelay: delay));
-        await Future<void>.delayed(delay);
-        if (_state is FatalError) rethrow;
-      }
+    try {
+      return await _connectWithRetry();
+    } on SpacetimeDbAuthException {
+      if (!_canRetryWithFreshToken) rethrow;
+      SdkLogger.w('Token rejected; retrying once with a provided token');
+      _forceTokenRefresh = true;
+      return _connectWithRetry();
     }
   }
 
@@ -248,6 +233,43 @@ class SpacetimeDbConnection {
     await _errorController.close();
   }
 
+  bool get _canRetryWithFreshToken =>
+      _tokenProvider != null && _hasEverConnected && !_usedFreshToken;
+
+  Future<void> _connectWithRetry() async {
+    if (!config.retryInitialConnect) {
+      return _connectOnce();
+    }
+    var attempt = 0;
+    while (true) {
+      attempt++;
+      try {
+        return await _connectOnce();
+      } on SpacetimeDbAuthException {
+        rethrow;
+      } catch (e) {
+        if (attempt >= config.maxReconnectAttempts) {
+          SdkLogger.e(
+            'Initial connect failed after $attempt attempt(s); giving up',
+          );
+          _updateState(
+            const FatalError(message: 'Max initial connect attempts reached'),
+          );
+          rethrow;
+        }
+        _reconnectAttempts = attempt - 1;
+        final delay = _getReconnectDelay();
+        SdkLogger.w(
+          'Initial connect attempt $attempt failed ($e); '
+          'retrying in ${delay.inSeconds}s',
+        );
+        _updateState(Reconnecting(attempt: attempt, nextDelay: delay));
+        await Future<void>.delayed(delay);
+        if (_state is FatalError) rethrow;
+      }
+    }
+  }
+
   Future<void> _connectOnce() async {
     if (_state is! Disconnected && _state is! Reconnecting) {
       SdkLogger.i('Already connected or connecting');
@@ -255,6 +277,10 @@ class SpacetimeDbConnection {
     }
     _shouldReconnect = true;
     _updateState(const Connecting());
+
+    final attempt = ++_connectAttempt;
+    await _refreshTokenIfNeeded(attempt);
+    if (_state is! Connecting || attempt != _connectAttempt) return;
 
     try {
       final protocol = ssl ? 'wss' : 'ws';
@@ -300,6 +326,7 @@ class SpacetimeDbConnection {
         _setupKeepAlive();
       }
       _updateState(const Connected());
+      _hasEverConnected = true;
       _reconnectAttempts = 0;
       _updateQuality();
     } catch (e) {
@@ -307,8 +334,7 @@ class SpacetimeDbConnection {
       _updateState(const Disconnected());
       _channel = null;
 
-      final errorString = e.toString();
-      if (errorString.contains('401') || errorString.contains('Unauthorized')) {
+      if (_isAuthFailure(e.toString())) {
         throw SpacetimeDbAuthException(
           'Authentication failed (401). Token may be invalid or expired.',
         );
@@ -319,6 +345,44 @@ class SpacetimeDbConnection {
         lastKnownState: const Disconnected(),
       );
     }
+  }
+
+  bool _isAuthFailure(String error) {
+    if (error.contains('401') || error.contains('Unauthorized')) return true;
+    return _tokenProvider != null && error.contains('403');
+  }
+
+  Future<void> _refreshTokenIfNeeded(int attempt) async {
+    _usedFreshToken = false;
+    final provider = _tokenProvider;
+    if (provider == null || !_hasEverConnected) return;
+    if (!_forceTokenRefresh &&
+        !tokenNeedsRefresh(_currentToken, DateTime.now())) {
+      return;
+    }
+
+    final String fresh;
+    try {
+      fresh = await provider();
+    } catch (e) {
+      if (attempt != _connectAttempt) return;
+      _failTokenRefresh('$e');
+    }
+    if (attempt != _connectAttempt) return;
+    if (fresh.isEmpty) _failTokenRefresh('empty token');
+
+    updateToken(fresh);
+    _forceTokenRefresh = false;
+    _usedFreshToken = true;
+  }
+
+  Never _failTokenRefresh(String reason) {
+    SdkLogger.e('Token provider failed: $reason');
+    if (_state is Connecting) _updateState(const Disconnected());
+    throw SpacetimeDbConnectionException(
+      'Token provider failed: $reason',
+      lastKnownState: const Disconnected(),
+    );
   }
 
   Future<String?> _getWebSocketToken() async {

@@ -141,6 +141,7 @@ class SpacetimeDbClient {
     bool retainRowsOnUnsubscribe = false,
     bool ssl = false,
     ConnectionConfig config = const ConnectionConfig(),
+    TokenProvider? tokenProvider,
   }) async {
     final storage = authStorage ?? InMemoryTokenStore();
     final savedToken = await storage.loadToken();
@@ -150,6 +151,13 @@ class SpacetimeDbClient {
       initialToken: savedToken,
       ssl: ssl,
       config: config,
+      tokenProvider: tokenProvider == null
+          ? null
+          : () async {
+              final token = await tokenProvider();
+              if (token.isNotEmpty) await storage.saveToken(token);
+              return token;
+            },
     );
     final subscriptionManager = SubscriptionManager(
       connection,

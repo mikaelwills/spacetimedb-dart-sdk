@@ -335,6 +335,11 @@ final connection = SpacetimeDbConnection(
   initialToken: savedToken,
   ssl: ssl,
   config: config,
+  tokenProvider: tokenProvider == null ? null : () async {
+    final token = await tokenProvider();
+    if (token.isNotEmpty) await storage.saveToken(token);
+    return token;
+  },
 );
 final subscriptionManager = SubscriptionManager(connection, offlineStorage: offlineStorage, queuePolicy: queuePolicy, retainRowsOnUnsubscribe: retainRowsOnUnsubscribe);
 
@@ -420,6 +425,12 @@ return client;
               ..named = true
               ..defaultTo = const Code('const ConnectionConfig()')
               ..type = refer('ConnectionConfig'),
+          ),
+          Parameter(
+            (p) => p
+              ..name = 'tokenProvider'
+              ..named = true
+              ..type = refer('TokenProvider?'),
           ),
         ])
         ..body = Code(body),

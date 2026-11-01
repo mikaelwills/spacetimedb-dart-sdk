@@ -34,6 +34,7 @@ export 'src/auth/auth_token_store.dart';
 export 'src/auth/in_memory_token_store.dart';
 export 'src/auth/oidc_helper.dart';
 export 'src/auth/identity.dart';
+export 'src/auth/token_provider.dart';
 
 // Special types
 export 'src/types/schedule_at.dart';
