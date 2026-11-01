@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Reconnect replays every query set in one `SubscribeBatch`** (server 2.10.2+), so all sets are evaluated at one transaction offset; a per-set error fails only that set. A server that closes with 1011 `unknown tag ... for sum type ClientMessage` makes that connection fall back to per-set `Subscribe` from the next reconnect on.
 - **Reconnect delays are jittered.** Each delay is `baseReconnectDelay × 2^(attempt-1)`, capped at `maxReconnectDelay`, scaled by a random factor in [0.5, 1.5) and clamped to [base, max]. The first auto-reconnect now waits about `baseReconnectDelay` instead of twice it.
 - **A reconnect that returns a different identity ends in `FatalError`.** When the connect presented a token and the server's `InitialConnection` names a different identity, reconnecting stops and the old identity is kept. A connect with no token (after `clearToken()`) still accepts a new identity. To sign in or switch accounts, build a new client with `create(...)` and the new token; a `TokenProvider` must return a token for the same identity.
 
