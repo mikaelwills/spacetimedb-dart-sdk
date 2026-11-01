@@ -135,6 +135,14 @@ Duration reconnectDelay(
   return Duration(milliseconds: jitteredMs.toInt().clamp(baseMs, maxMs));
 }
 
+String _newSessionId() {
+  final random = math.Random.secure();
+  return [
+    for (var i = 0; i < 16; i++)
+      random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+  ].join();
+}
+
 class SpacetimeDbConnection {
   final String host;
   final String database;
@@ -150,6 +158,7 @@ class SpacetimeDbConnection {
 
   int _reconnectAttempts = 0;
   final math.Random _reconnectRandom = math.Random();
+  final String _sessionId = _newSessionId();
   bool _connectSentToken = false;
   Timer? _reconnectTimer;
   bool _shouldReconnect = false;
@@ -395,6 +404,9 @@ class SpacetimeDbConnection {
         }
       } else if (_currentToken != null) {
         headers['Authorization'] = 'Bearer $_currentToken';
+      }
+      if (config.autoReconnect) {
+        queryParams['session_id'] = _sessionId;
       }
       if (queryParams.isNotEmpty) {
         uri = uri.replace(queryParameters: queryParams);
