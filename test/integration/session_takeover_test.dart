@@ -403,4 +403,39 @@ void main() {
     expect(ids, hasLength(1));
     expect(ids.single, matches(RegExp(r'^[0-9a-f]{32}$')));
   });
+
+  test('no holder: a reconnect carrying session_id is accepted with no 4000 '
+      'and replays to server state', () async {
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    await createNote('no-holder-$stamp');
+
+    final reader = _Reader(await _anonymousToken());
+    addTearDown(reader.dispose);
+    await reader.connect();
+
+    final gapTitle = 'no-holder-gap-$stamp';
+    final reconnected = reader.connection.onStateChanged
+        .where((state) => state is Connected)
+        .first;
+    closeForReconnect(reader.connection, 'test: drop with no holder');
+    await reconnected.timeout(_timeout);
+    await writer.reducers
+        .createNote(title: gapTitle, content: 'gap')
+        .timeout(_timeout);
+    await _waitUntil(
+      () => writer.noteTable.iter().any((n) => n.title == gapTitle),
+    );
+    await _waitUntil(() => reader.notes.iter().any((n) => n.title == gapTitle));
+
+    expect(reader.channels, hasLength(2));
+    expect(reader.connection.state, isA<Connected>());
+    expect(
+      reader.channels.map((channel) => channel.closeCode),
+      isNot(contains(_sessionBusy)),
+    );
+    final ids = {for (final channel in reader.channels) channel.sessionId};
+    expect(ids, hasLength(1));
+    expect(ids.single, matches(RegExp(r'^[0-9a-f]{32}$')));
+    await expectCacheEqualsServer(reader);
+  });
 }
