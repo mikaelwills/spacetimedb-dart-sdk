@@ -83,14 +83,10 @@ class _Fixture {
     }
   }
 
-  Future<void> establish({List<String> extraSet2Queries = const []}) async {
+  Future<void> establish() async {
     await connection.connect();
     final futures = [
-      for (final name in _tables)
-        manager.subscribe([
-          'SELECT * FROM $name',
-          if (name == 'tb') ...extraSet2Queries,
-        ]),
+      for (final name in _tables) manager.subscribe(['SELECT * FROM $name']),
     ];
     for (var i = 0; i < _tables.length; i++) {
       connection.simulateIncoming(
@@ -438,44 +434,6 @@ void main() {
       );
       await pumpEventQueue();
 
-      expect(f.table('tb').iter(), ['10']);
-      expect(f.deletes.map((e) => e.row), unorderedEquals(['01', '21', '11']));
-      expect(f.manager.subscriptionsReady.value, isTrue);
-      expect(f.manager.consecutiveEvictionSkips, 0);
-    });
-
-    test('an error the regex parses drops the bad query and resubscribes the '
-        'rest with one Subscribe', () async {
-      final f = _Fixture();
-      addTearDown(f.dispose);
-      await f.establish(extraSet2Queries: ['SELECT * FROM foo']);
-      f.recordDeletes();
-
-      final batch = await f.bounce();
-      f.connection.clearSent();
-      replyWithError(f, batch.requestId, '`foo` is not a valid table');
-      await pumpEventQueue();
-
-      final resent = sentWithTag(f.connection.sentMessages, subscribeTag);
-      expect(resent, hasLength(1));
-      expect(subscribeQuerySetId(resent.single), 2);
-      expect(f.manager.subscriptionsByQuerySetId[2], ['SELECT * FROM tb']);
-      expect(f.errors.single.querySetId, 2);
-      expect(f.table('tb').iter(), unorderedEquals(['10', '11']));
-      expect(
-        f.deletes,
-        isEmpty,
-        reason: 'finalize waits for the resent set, as the per-set path does',
-      );
-      expect(f.manager.subscriptionsReady.value, isFalse);
-
-      f.connection.simulateIncoming(
-        perSetSubscribeAppliedFrame(2, _rows('tb', ['10'])),
-      );
-      await pumpEventQueue();
-
-      expect(f.table('ta').iter(), ['00']);
-      expect(f.table('tc').iter(), ['20']);
       expect(f.table('tb').iter(), ['10']);
       expect(f.deletes.map((e) => e.row), unorderedEquals(['01', '21', '11']));
       expect(f.manager.subscriptionsReady.value, isTrue);

@@ -644,14 +644,7 @@ class SubscriptionManager {
     final timedOut = _timedOutBatch;
     if (timedOut != null && matches(timedOut.requestId, timedOut.querySetIds)) {
       _timedOutBatch = null;
-      _applyBatchResults(reply).whenComplete(() {
-        if (_disposed) return;
-        if (!_reconnectInFlight &&
-            _connection.isConnected &&
-            _allQuerySetsApplied) {
-          _subscriptionsReady.value = true;
-        }
-      });
+      _applyBatchResults(reply).whenComplete(_markReadyIfEverySetApplied);
       return;
     }
 
@@ -670,29 +663,15 @@ class SubscriptionManager {
   Future<void> _applyBatchResult(int requestId, SubscribeSetResult result) {
     switch (result.outcome) {
       case SubscribeSetApplied(:final rows):
-        final applied = SubscribeApplied(
-          requestId: requestId,
-          querySetId: result.querySetId,
-          rows: rows,
+        return _applySubscribeApplied(
+          SubscribeApplied(
+            requestId: requestId,
+            querySetId: result.querySetId,
+            rows: rows,
+          ),
         );
-        return _handleSubscribeApplied(applied)
-            .then((_) {
-              if (_disposed) return;
-              _subscribeAppliedController.add(applied);
-              SdkLogger.i(
-                'Syncing pending mutations after SubscribeApplied...',
-              );
-              _mutationSyncer?.syncPendingMutations();
-            })
-            .catchError((Object e, StackTrace st) {
-              SdkLogger.e('SUBSCRIBE_APPLIED_FAILED: $e\n$st');
-            })
-            .whenComplete(() {
-              if (_disposed) return;
-              _completeSubscribeWaiter(result.querySetId);
-            });
       case SubscribeSetError(:final error):
-        final resent = _applySubscriptionError(result.querySetId, error);
+        _applySubscriptionError(result.querySetId, error);
         _subscriptionErrorController.add(
           SubscriptionErrorMessage(
             requestId: requestId,
@@ -700,9 +679,33 @@ class SubscriptionManager {
             error: error,
           ),
         );
-        if (resent) return _awaitSubscribeApplied(result.querySetId);
         _batchErroredSetIds.add(result.querySetId);
         return Future.value();
+    }
+  }
+
+  Future<void> _applySubscribeApplied(SubscribeApplied message) =>
+      _handleSubscribeApplied(message)
+          .then((_) {
+            if (_disposed) return;
+            _subscribeAppliedController.add(message);
+            SdkLogger.i('Syncing pending mutations after SubscribeApplied...');
+            _mutationSyncer?.syncPendingMutations();
+          })
+          .catchError((Object e, StackTrace st) {
+            SdkLogger.e('SUBSCRIBE_APPLIED_FAILED: $e\n$st');
+          })
+          .whenComplete(() {
+            if (_disposed) return;
+            _completeSubscribeWaiter(message.querySetId);
+          });
+
+  void _markReadyIfEverySetApplied() {
+    if (_disposed) return;
+    if (!_reconnectInFlight &&
+        _connection.isConnected &&
+        _allQuerySetsApplied) {
+      _subscriptionsReady.value = true;
     }
   }
 
@@ -835,27 +838,8 @@ class SubscriptionManager {
             .join();
         _initialConnectionController.add(message);
       case SubscribeApplied():
-        _handleSubscribeApplied(message)
-            .then((_) {
-              if (_disposed) return;
-              _subscribeAppliedController.add(message);
-              SdkLogger.i(
-                'Syncing pending mutations after SubscribeApplied...',
-              );
-              _mutationSyncer?.syncPendingMutations();
-            })
-            .catchError((Object e, StackTrace st) {
-              SdkLogger.e('SUBSCRIBE_APPLIED_FAILED: $e\n$st');
-            })
-            .whenComplete(() {
-              if (_disposed) return;
-              _completeSubscribeWaiter(message.querySetId);
-              if (!_reconnectInFlight &&
-                  _connection.isConnected &&
-                  _allQuerySetsApplied) {
-                _subscriptionsReady.value = true;
-              }
-            });
+        _applySubscribeApplied(message)
+            .whenComplete(_markReadyIfEverySetApplied);
       case TransactionUpdateMessage():
         _handleTransactionUpdate(message);
         _transactionUpdateController.add(message);
@@ -875,13 +859,13 @@ class SubscriptionManager {
     }
   }
 
-  bool _applySubscriptionError(int querySetId, String error) {
+  void _applySubscriptionError(int querySetId, String error) {
     final tableNameMatch = RegExp(r'`(\w+)` is not a valid table')
         .firstMatch(error);
     if (tableNameMatch == null) {
       SdkLogger.e('Subscription error: $error');
       _completeSubscribeWaiter(querySetId);
-      return false;
+      return;
     }
 
     final badTable = tableNameMatch.group(1)!;
@@ -891,7 +875,7 @@ class SubscriptionManager {
         'Subscription error for unknown querySetId $querySetId: $error',
       );
       _completeSubscribeWaiter(querySetId);
-      return false;
+      return;
     }
 
     final badQuery = queries.firstWhere(
@@ -905,7 +889,7 @@ class SubscriptionManager {
     if (badQuery.isEmpty) {
       SdkLogger.e('Subscription error for unknown table "$badTable": $error');
       _completeSubscribeWaiter(querySetId);
-      return false;
+      return;
     }
 
     queries.remove(badQuery);
@@ -922,14 +906,13 @@ class SubscriptionManager {
       _subscriptionsByQuerySetId.remove(querySetId);
       _dropQuerySetEverywhere(querySetId);
       _completeSubscribeWaiter(querySetId);
-      return false;
+    } else {
+      final resubscribe = SubscribeMessage(
+        List.of(queries),
+        querySetId: querySetId,
+      );
+      _connection.send(resubscribe.encode());
     }
-    final resubscribe = SubscribeMessage(
-      List.of(queries),
-      querySetId: querySetId,
-    );
-    _connection.send(resubscribe.encode());
-    return true;
   }
 
   Future<void> _handleSubscribeApplied(SubscribeApplied message) async {
@@ -1486,10 +1469,7 @@ class SubscriptionManager {
   ) async {
     final message = SubscribeMessage(queries, querySetId: querySetId);
     _connection.send(message.encode());
-    await _awaitSubscribeApplied(querySetId);
-  }
 
-  Future<void> _awaitSubscribeApplied(int querySetId) async {
     final waiter = _subscribeWaiters.putIfAbsent(
       querySetId,
       Completer<void>.new,

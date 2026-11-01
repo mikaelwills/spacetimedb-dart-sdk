@@ -78,6 +78,8 @@ void setSubscribeBatchInFlight(
 bool subscribeBatchUnsupported(SpacetimeDbConnection connection) =>
     _subscribeBatchesUnsupported[connection] ?? false;
 
+const _internalErrorCloseCode = 1011;
+
 final RegExp _unknownClientMessageTag = RegExp(
   r'unknown tag 0x[0-9a-fA-F]+ for sum type ClientMessage',
 );
@@ -90,7 +92,11 @@ void noteSocketClosed(
   String? closeReason,
 }) {
   final batchInFlight = _subscribeBatchesInFlight[connection] ?? false;
-  if (!batchInFlight || closeCode != 1011 || closeReason == null) return;
+  if (!batchInFlight ||
+      closeCode != _internalErrorCloseCode ||
+      closeReason == null) {
+    return;
+  }
   if (!_unknownClientMessageTag.hasMatch(closeReason)) return;
   _subscribeBatchesUnsupported[connection] = true;
 }
