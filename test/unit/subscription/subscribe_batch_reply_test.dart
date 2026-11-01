@@ -190,6 +190,13 @@ void main() {
       f.reply(batch.requestId, [1, 2]);
       await expectClosedOnceUnchanged(before);
     });
+
+    test('a duplicated set id standing in for a missing one', () async {
+      final batch = await f.bounce();
+      final before = f.allRows;
+      f.reply(batch.requestId, [1, 1, 2]);
+      await expectClosedOnceUnchanged(before);
+    });
   });
 
   group('a matching batch reply', () {

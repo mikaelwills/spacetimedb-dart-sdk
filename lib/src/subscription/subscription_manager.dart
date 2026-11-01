@@ -623,10 +623,12 @@ class SubscriptionManager {
   void _routeBatchApplied(SubscribeBatchApplied reply) {
     if (_disposed) return;
     final replyIds = [for (final result in reply.results) result.querySetId];
+    final replyIdSet = replyIds.toSet();
     bool matches(int requestId, Set<int> querySetIds) =>
         reply.requestId == requestId &&
         replyIds.length == querySetIds.length &&
-        querySetIds.containsAll(replyIds);
+        replyIdSet.length == querySetIds.length &&
+        querySetIds.containsAll(replyIdSet);
 
     final pending = _pendingBatch;
     if (pending != null &&
