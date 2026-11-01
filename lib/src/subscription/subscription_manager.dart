@@ -296,7 +296,11 @@ class SubscriptionManager {
         _subscriptionsByQuerySetId.remove(querySetId) ??
         _everSubscribedQueriesByQuerySetId[querySetId];
     final retainQueries = _retainRowsOnUnsubscribe ? queries : null;
-    _dropQuerySetEverywhere(querySetId, retainQueries: retainQueries);
+    _dropQuerySetEverywhere(
+      querySetId,
+      retainQueries: retainQueries,
+      serverSendsDroppedRows: sendDroppedRows,
+    );
     if (retainQueries != null) {
       _mutationSyncer?.persistTableSnapshots(
         onlyTables: _tablesFromQueries(retainQueries),
@@ -544,6 +548,7 @@ class SubscriptionManager {
     final liveSetIds = _subscriptionsByQuerySetId.keys.toSet();
     var totalPending = 0;
     var totalEvicted = 0;
+    final context = _reconnectContext();
     for (final table in cache.allTables) {
       if (!table.hasPrimaryKey) continue;
       final pendingBefore = table.pendingOwnerEntryCount;
@@ -553,6 +558,7 @@ class SubscriptionManager {
           table.tableName,
         ),
         retainWhere: (owners) => !owners.any(liveSetIds.contains),
+        context: context,
       );
       totalEvicted += evicted;
       if (evicted > 0) {
@@ -856,7 +862,14 @@ class SubscriptionManager {
     );
   }
 
-  void _dropQuerySetEverywhere(int querySetId, {List<String>? retainQueries}) {
+  void _dropQuerySetEverywhere(
+    int querySetId, {
+    List<String>? retainQueries,
+    bool serverSendsDroppedRows = false,
+  }) {
+    final deleteContext = _reconnectInFlight && !serverSendsDroppedRows
+        ? _reconnectContext()
+        : null;
     for (final table in cache.allTables) {
       if (!table.hasPrimaryKey) continue;
       table.dropQuerySet(
@@ -867,9 +880,15 @@ class SubscriptionManager {
         retainTags: retainQueries == null
             ? null
             : _tagsForQueriesOnTable(retainQueries, table.tableName),
+        deleteContext: deleteContext,
       );
     }
   }
+
+  EventContext _reconnectContext() => EventContext(
+    myConnectionId: _connectionId,
+    event: SubscribeAppliedEvent(),
+  );
 
   static final _fromRegex = RegExp(
     r'FROM\s+[`"]?(\w+)[`"]?',
@@ -902,7 +921,11 @@ class SubscriptionManager {
         _subscriptionsByQuerySetId.remove(querySetId) ??
         _everSubscribedQueriesByQuerySetId[querySetId];
     final retainQueries = _retainRowsOnUnsubscribe ? queries : null;
-    _dropQuerySetEverywhere(querySetId, retainQueries: retainQueries);
+    _dropQuerySetEverywhere(
+      querySetId,
+      retainQueries: retainQueries,
+      serverSendsDroppedRows: message.rows != null,
+    );
     if (retainQueries != null) {
       _mutationSyncer?.persistTableSnapshots(
         onlyTables: _tablesFromQueries(retainQueries),

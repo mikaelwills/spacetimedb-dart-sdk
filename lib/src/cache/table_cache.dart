@@ -308,6 +308,8 @@ class TableCache<T> {
       BsatnRowList.empty(),
       inserts,
       protectedKeys: protectedKeys,
+      reconcile: reconnectInFlight,
+      sameRow: _sameContent,
     );
 
     final snapshotKeys = changes.serverPresentKeys;
@@ -363,6 +365,8 @@ class TableCache<T> {
     }
 
     for (final pk in toEvict) {
+      final row = _rowsByPrimaryKey[pk];
+      if (reconnectInFlight && row != null) changes.deleted.add(row);
       _evictRow(pk);
     }
 
@@ -379,6 +383,7 @@ class TableCache<T> {
     int querySetId, {
     Set<dynamic>? protectedKeys,
     Set<int>? retainTags,
+    EventContext? deleteContext,
   }) {
     final toEvict = <dynamic>[];
     void evictOrRetain(dynamic pk) {
@@ -413,13 +418,7 @@ class TableCache<T> {
       }
     }
     _unsubscribeEvictionCount += toEvict.length;
-    for (final pk in toEvict) {
-      _evictRow(pk);
-    }
-    if (toEvict.isNotEmpty) {
-      _refreshRowsNotifier();
-      _notifyRowListeners(toEvict);
-    }
+    _evictEmittingDeletes(toEvict, deleteContext);
   }
 
   @internal
@@ -474,6 +473,7 @@ class TableCache<T> {
   int finalizeReconnectGeneration({
     Set<dynamic>? protectedKeys,
     bool Function(Set<int> owners)? retainWhere,
+    EventContext? context,
   }) {
     if (_previousOwners.isEmpty) return 0;
     final evicted = <dynamic>[];
@@ -484,13 +484,7 @@ class TableCache<T> {
       evicted.add(pk);
     }
     _previousOwners.clear();
-    for (final pk in evicted) {
-      _evictRow(pk);
-    }
-    if (evicted.isNotEmpty) {
-      _refreshRowsNotifier();
-      _notifyRowListeners(evicted);
-    }
+    _evictEmittingDeletes(evicted, context);
     return evicted.length;
   }
 
@@ -918,6 +912,32 @@ class TableCache<T> {
     return true;
   }
 
+  bool _sameContent(T a, T b) {
+    if (a == b) return true;
+    final aJson = decoder.toJson(a);
+    if (aJson == null) return false;
+    return _deepEquals(aJson, decoder.toJson(b));
+  }
+
+  static bool _deepEquals(Object? a, Object? b) {
+    if (a is Map && b is Map) {
+      if (a.length != b.length) return false;
+      for (final entry in a.entries) {
+        if (!b.containsKey(entry.key)) return false;
+        if (!_deepEquals(entry.value, b[entry.key])) return false;
+      }
+      return true;
+    }
+    if (a is List && b is List) {
+      if (a.length != b.length) return false;
+      for (var i = 0; i < a.length; i++) {
+        if (!_deepEquals(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    return a == b;
+  }
+
   void _refreshRowsNotifier() {
     rows.value = hasPrimaryKey
         ? List<T>.of(_rowsByPrimaryKey.values)
@@ -996,9 +1016,11 @@ class TableCache<T> {
     BsatnRowList inserts, {
     Set<dynamic>? protectedKeys,
     bool reconcile = false,
+    bool Function(T a, T b)? sameRow,
     void Function(dynamic primaryKey, Map<String, dynamic>? committedRowJson)?
     onProtectedKeyCommitted,
   }) {
+    final isSame = sameRow ?? (T a, T b) => a == b;
     final changes = _RowChanges<T>();
     final oldValues = <dynamic, T>{};
     final pendingDeletes = <(dynamic, T)>[];
@@ -1076,7 +1098,7 @@ class TableCache<T> {
           if (existing == null) {
             changes.inserted.add(row);
             changes.freshInsertedPrimaryKeys.add(primaryKey);
-          } else if (existing != row) {
+          } else if (!isSame(existing, row)) {
             changes.updated.add((existing, row));
           }
         } else {
@@ -1118,6 +1140,22 @@ class TableCache<T> {
     _rowOwners.remove(primaryKey);
     _previousOwners.remove(primaryKey);
     _retainedTags.remove(primaryKey);
+  }
+
+  void _evictEmittingDeletes(List<dynamic> keys, EventContext? context) {
+    if (keys.isEmpty) return;
+    final changes = _RowChanges<T>();
+    for (final pk in keys) {
+      final row = _rowsByPrimaryKey[pk];
+      if (context != null && row != null) changes.deleted.add(row);
+      _evictRow(pk);
+    }
+    if (context == null) {
+      _refreshRowsNotifier();
+    } else {
+      _emitChanges(changes, context);
+    }
+    _notifyRowListeners(keys);
   }
 }
 

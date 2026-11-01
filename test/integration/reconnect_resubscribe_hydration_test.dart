@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/protocol.dart';
 
+import '../generated/note.dart';
 import '../helpers/integration_test_helper.dart';
 import '../helpers/test_env.dart';
 
@@ -114,6 +115,85 @@ void main() {
       reason: 'the row broadcast after reconnect must reach A live',
     );
 
+    envA.subManager.dispose();
+    envB.subManager.dispose();
+    await envA.disconnect();
+    await envB.disconnect();
+  }, timeout: const Timeout(Duration(seconds: 30)));
+
+  test('reconnect emits only the changes made during the disconnect', () async {
+    final envA = await createTestEnv();
+    final envB = await createTestEnv();
+
+    await envA.connection.connect();
+    await envA.subManager.onInitialConnection.first.timeout(
+      const Duration(seconds: 5),
+    );
+    await envB.connection.connect();
+    await envB.subManager.onInitialConnection.first.timeout(
+      const Duration(seconds: 5),
+    );
+
+    await envA.subManager.subscribe(['SELECT * FROM note']);
+    await envB.subManager.subscribe(['SELECT * FROM note']);
+    final tableA = envA.noteTable;
+    final tableB = envB.noteTable;
+
+    for (final title in ['events-kept', 'events-updated', 'events-deleted']) {
+      await envB.reducers
+          .createNote(title: title, content: 'before')
+          .timeout(const Duration(seconds: 5));
+    }
+    await Future.delayed(const Duration(seconds: 1));
+    int idOf(String title) =>
+        tableB.iter().firstWhere((n) => n.title == title).id;
+    final keptId = idOf('events-kept');
+    final updatedId = idOf('events-updated');
+    final deletedId = idOf('events-deleted');
+    expect(tableA.find(deletedId), isNotNull);
+
+    await envA.connection.disconnect();
+    await waitForState<Disconnected>(envA.connection);
+
+    await envB.reducers
+        .updateNote(
+          noteId: updatedId,
+          title: 'events-updated',
+          content: 'after',
+        )
+        .timeout(const Duration(seconds: 5));
+    await envB.reducers
+        .createNote(title: 'events-inserted', content: 'offline')
+        .timeout(const Duration(seconds: 5));
+    await envB.reducers
+        .deleteNote(noteId: deletedId)
+        .timeout(const Duration(seconds: 5));
+
+    final inserts = <TableInsertEvent<Note>>[];
+    final updates = <TableUpdateEvent<Note>>[];
+    final deletes = <TableDeleteEvent<Note>>[];
+    final subs = [
+      tableA.onInsert.listen(inserts.add),
+      tableA.onUpdate.listen(updates.add),
+      tableA.onDelete.listen(deletes.add),
+    ];
+
+    await envA.connection.reconnect();
+    await waitForState<Connected>(envA.connection);
+    await Future.delayed(const Duration(seconds: 2));
+
+    expect(inserts.map((e) => e.row.title), ['events-inserted']);
+    expect(updates, hasLength(1));
+    expect(updates.single.oldRow.id, updatedId);
+    expect(updates.single.oldRow.content, 'before');
+    expect(updates.single.newRow.content, 'after');
+    expect(deletes.map((e) => e.row.id), [deletedId]);
+    expect(tableA.find(keptId), isNotNull);
+    expect(tableA.find(deletedId), isNull);
+
+    for (final sub in subs) {
+      await sub.cancel();
+    }
     envA.subManager.dispose();
     envB.subManager.dispose();
     await envA.disconnect();
