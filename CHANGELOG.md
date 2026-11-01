@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`TokenProvider` (optional `tokenProvider` on `SpacetimeDbConnection` and generated `create`).** Before a reconnect, the SDK asks the provider for a new token when the current one is unreadable, has no `exp`, or is within 5% of its lifetime (at least 30 s) of expiry; after a 401/403 it asks once more and retries before `AuthError`. Not called for the first connect; no provider = behaviour unchanged.
 
+### Changed
+
+- **Reconnect delays are jittered.** Each delay is `baseReconnectDelay × 2^(attempt-1)`, capped at `maxReconnectDelay`, scaled by a random factor in [0.5, 1.5) and clamped to [base, max]. The first auto-reconnect now waits about `baseReconnectDelay` instead of twice it.
+- **A reconnect that returns a different identity ends in `FatalError`.** When the connect presented a token and the server's `InitialConnection` names a different identity, reconnecting stops and the old identity is kept. A connect with no token (after `clearToken()`) still accepts a new identity. To sign in or switch accounts, build a new client with `create(...)` and the new token; a `TokenProvider` must return a token for the same identity.
+
 ### Fixed
 
 - **Retained rows no longer outlive a regrouped query set.** With `retainRowsOnUnsubscribe`, rows are now tagged per query instead of per query set, so a set that keeps a query but changes the rest still reconciles those rows on cold start and reconnect. Tag sidecars written by earlier versions are ignored once, and their rows are swept by the first covering snapshot.

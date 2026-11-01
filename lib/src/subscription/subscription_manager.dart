@@ -624,7 +624,7 @@ class SubscriptionManager {
     }
     try {
       for (final message in messages) {
-        if (_disposed) return;
+        if (_disposed || generation != _frameGeneration) return;
         SdkLogger.d('RX_MSG: ${message.runtimeType}');
         _routeMessage(message);
       }
@@ -633,11 +633,35 @@ class SubscriptionManager {
     }
   }
 
+  bool _isIdentityChange(Identity identity) {
+    final previous = _identity;
+    return previous != null &&
+        previous != identity &&
+        connectSentToken(_connection);
+  }
+
+  void _stopForIdentityChange(Identity identity) {
+    SdkLogger.e(
+      'RX_IDENTITY_CHANGED: reconnected as $identity, expected $_identity',
+    );
+    _frameGeneration++;
+    stopForIdentityChange(
+      _connection,
+      'Reconnected with a different identity; the token was revoked or '
+      'replaced',
+    );
+  }
+
   void _routeMessage(ServerMessage message) {
     if (_disposed) return;
     switch (message) {
       case InitialConnectionMessage():
-        _identity = Identity(message.identity);
+        final identity = Identity(message.identity);
+        if (_isIdentityChange(identity)) {
+          _stopForIdentityChange(identity);
+          return;
+        }
+        _identity = identity;
         _connectionId = message.connectionId;
         _address = message.connectionId
             .map((b) => b.toRadixString(16).padLeft(2, '0'))

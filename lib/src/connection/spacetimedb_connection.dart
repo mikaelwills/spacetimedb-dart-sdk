@@ -47,6 +47,46 @@ void setReconnectCloser(
   _reconnectClosers[connection] = closer;
 }
 
+final Expando<bool Function()> _connectSentTokenReaders = Expando();
+
+@internal
+bool connectSentToken(SpacetimeDbConnection connection) {
+  final readConnectSentToken = _connectSentTokenReaders[connection];
+  return readConnectSentToken != null && readConnectSentToken();
+}
+
+final Expando<void Function(String reason)> _identityChangeStoppers = Expando();
+
+@internal
+void stopForIdentityChange(SpacetimeDbConnection connection, String reason) {
+  _identityChangeStoppers[connection]?.call(reason);
+}
+
+final Expando<double Function()> _reconnectRandoms = Expando();
+
+@visibleForTesting
+void setReconnectRandom(
+  SpacetimeDbConnection connection,
+  double Function() random,
+) {
+  _reconnectRandoms[connection] = random;
+}
+
+@visibleForTesting
+Duration reconnectDelay(
+  int attempt,
+  double random, {
+  required Duration base,
+  required Duration max,
+}) {
+  final baseMs = base.inMilliseconds;
+  final maxMs = max.inMilliseconds;
+  final exponent = (attempt - 1).clamp(0, 30);
+  final cappedMs = math.min(baseMs * math.pow(2, exponent), maxMs);
+  final jitteredMs = cappedMs * (0.5 + random);
+  return Duration(milliseconds: jitteredMs.toInt().clamp(baseMs, maxMs));
+}
+
 class SpacetimeDbConnection {
   final String host;
   final String database;
@@ -61,6 +101,8 @@ class SpacetimeDbConnection {
   int _connectAttempt = 0;
 
   int _reconnectAttempts = 0;
+  final math.Random _reconnectRandom = math.Random();
+  bool _connectSentToken = false;
   Timer? _reconnectTimer;
   bool _shouldReconnect = false;
   int _nextRequestId = 1;
@@ -120,6 +162,8 @@ class SpacetimeDbConnection {
        _socketFactory = socketFactory ?? ws.connectWebSocket {
     _shouldReconnect = config.autoReconnect;
     setReconnectCloser(this, _closeForReconnect);
+    _connectSentTokenReaders[this] = () => _connectSentToken;
+    _identityChangeStoppers[this] = _stopForIdentityChange;
     scheduleMicrotask(() => _updateQuality());
   }
 
@@ -258,7 +302,7 @@ class SpacetimeDbConnection {
           rethrow;
         }
         _reconnectAttempts = attempt - 1;
-        final delay = _getReconnectDelay();
+        final delay = _getReconnectDelay(attempt);
         SdkLogger.w(
           'Initial connect attempt $attempt failed ($e); '
           'retrying in ${delay.inSeconds}s',
@@ -307,6 +351,9 @@ class SpacetimeDbConnection {
       if (queryParams.isNotEmpty) {
         uri = uri.replace(queryParameters: queryParams);
       }
+      _connectSentToken =
+          headers.containsKey('Authorization') ||
+          queryParams.containsKey('token');
 
       _channel = _socketFactory(
         uri,
@@ -492,7 +539,7 @@ class SpacetimeDbConnection {
           _updateState(
             Reconnecting(
               attempt: _reconnectAttempts,
-              nextDelay: _getReconnectDelay(),
+              nextDelay: _getReconnectDelay(_reconnectAttempts),
             ),
           );
         }
@@ -503,11 +550,14 @@ class SpacetimeDbConnection {
     );
   }
 
-  Duration _getReconnectDelay() {
-    final baseSeconds = config.baseReconnectDelay.inMilliseconds;
-    final delayMs = baseSeconds * math.pow(2, _reconnectAttempts);
-    final maxMs = config.maxReconnectDelay.inMilliseconds;
-    return Duration(milliseconds: delayMs.toInt().clamp(baseSeconds, maxMs));
+  Duration _getReconnectDelay(int attempt) {
+    final random = _reconnectRandoms[this] ?? _reconnectRandom.nextDouble;
+    return reconnectDelay(
+      attempt,
+      random(),
+      base: config.baseReconnectDelay,
+      max: config.maxReconnectDelay,
+    );
   }
 
   Future<void> _attemptReconnect() async {
@@ -524,7 +574,7 @@ class SpacetimeDbConnection {
 
     _reconnectAttempts++;
     _updateQuality();
-    final delay = _getReconnectDelay();
+    final delay = _getReconnectDelay(_reconnectAttempts);
     SdkLogger.i(
       'Reconnecting in ${delay.inSeconds}s (attempt $_reconnectAttempts/${config.maxReconnectAttempts})',
     );
@@ -578,6 +628,16 @@ class SpacetimeDbConnection {
       idleThreshold: config.pingInterval,
       pongTimeout: config.pongTimeout,
     );
+  }
+
+  void _stopForIdentityChange(String reason) {
+    SdkLogger.e('Stopping reconnect: $reason');
+    _shouldReconnect = false;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _keepAlive?.stop();
+    _updateState(FatalError(message: reason));
+    _channel?.sink.close();
   }
 
   void _closeForReconnect(String reason) {
