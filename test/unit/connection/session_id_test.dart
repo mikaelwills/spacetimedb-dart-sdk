@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:fake_async/fake_async.dart';
@@ -502,18 +503,25 @@ void main() {
 
     test('the keep-alive is stopped on a refused socket', () {
       fakeAsync((async) {
-        const keepAliveBase = Duration(seconds: 2);
+        const pingInterval = Duration(milliseconds: 600);
+        const pongTimeout = Duration(milliseconds: 50);
+        final retryReady = Completer<void>();
         final harness = pinnedHarness(
           [
             () =>
                 CloseCodeWebSocketChannel.sessionBusy(closeAfterFrames: false),
+            () => CloseCodeWebSocketChannel(
+              closeCode: 1000,
+              closeAfterFrames: false,
+              ready: retryReady.future,
+            ),
           ],
           config: const ConnectionConfig(
-            baseReconnectDelay: keepAliveBase,
+            baseReconnectDelay: smallBase,
             maxReconnectDelay: max,
             appLevelKeepAlive: true,
-            pingInterval: Duration(milliseconds: 100),
-            pongTimeout: Duration(milliseconds: 50),
+            pingInterval: pingInterval,
+            pongTimeout: pongTimeout,
           ),
         );
         harness.connection.connect();
@@ -521,16 +529,27 @@ void main() {
         final refused = harness.channels.single as CloseCodeWebSocketChannel;
         refused.close();
         async.flushMicrotasks();
-        expect(
-          harness.lastReconnecting.nextDelay,
-          delayFor(1, base: keepAliveBase),
-        );
+        expect(harness.lastReconnecting.nextDelay, floor);
         final sentAtClose = refused.sent.length;
 
-        async.elapse(const Duration(milliseconds: 1500));
+        async.elapse(floor);
         async.flushMicrotasks();
-        expect(harness.dials, hasLength(1));
+        expect(harness.dials, hasLength(2));
+        expect(harness.connection.state, isA<Connecting>());
+        final retry = harness.channels.last as CloseCodeWebSocketChannel;
+
+        async.elapse(pingInterval + pongTimeout);
+        async.flushMicrotasks();
+        expect(retry.sink.closeCalls, 0);
         expect(refused.sent, hasLength(sentAtClose));
+        expect(
+          harness.qualities.map((quality) => quality.lastPingSent),
+          everyElement(isNull),
+        );
+
+        retryReady.complete();
+        async.flushMicrotasks();
+        expect(harness.connection.state, isA<Connected>());
         harness.dispose();
         async.flushMicrotasks();
       });

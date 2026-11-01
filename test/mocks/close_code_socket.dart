@@ -41,8 +41,9 @@ class CloseCodeWebSocketChannel extends StreamChannelMixin<dynamic>
     this._closeReason,
     List<Uint8List> frames = const [],
     bool closeAfterFrames = true,
+    Future<void>? ready,
     this.protocol = 'v2.bsatn.spacetimedb',
-  }) {
+  }) : _ready = ready ?? Future<void>.value() {
     _sink = CloseCodeWebSocketSink(close);
     frames.forEach(_inbound.add);
     if (closeAfterFrames) unawaited(close());
@@ -62,6 +63,7 @@ class CloseCodeWebSocketChannel extends StreamChannelMixin<dynamic>
   late final CloseCodeWebSocketSink _sink;
   final int? _closeCode;
   final String? _closeReason;
+  final Future<void> _ready;
   bool _closed = false;
 
   @override
@@ -74,7 +76,7 @@ class CloseCodeWebSocketChannel extends StreamChannelMixin<dynamic>
   String? get closeReason => _closed ? _closeReason : null;
 
   @override
-  Future<void> get ready => Future<void>.value();
+  Future<void> get ready => _ready;
 
   @override
   Stream<dynamic> get stream => _inbound.stream;
