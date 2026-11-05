@@ -1,6 +1,6 @@
 use spacetimedb::{
-    procedure, reducer, table, view, AnonymousViewContext, ProcedureContext, Query,
-    ReducerContext, ScheduleAt, Table, SpacetimeType,
+    procedure, reducer, table, view, AnonymousViewContext, ConnectionId, Identity,
+    ProcedureContext, Query, ReducerContext, ScheduleAt, Table, SpacetimeType, ViewContext,
 };
 
 /// Status enum for testing sum types
@@ -270,6 +270,73 @@ pub fn first_note(ctx: &AnonymousViewContext) -> Option<Note> {
 #[view(accessor = notes_query_all, public)]
 pub fn notes_query_all(ctx: &AnonymousViewContext) -> impl Query<Note> {
     ctx.from.note().build()
+}
+
+#[table(accessor = owned_item, public)]
+pub struct OwnedItem {
+    #[primary_key]
+    #[auto_inc]
+    pub id: u64,
+    #[index(btree)]
+    pub owner: Identity,
+    pub label: String,
+}
+
+#[reducer]
+pub fn add_owned_item(ctx: &ReducerContext, label: String) {
+    ctx.db.owned_item().insert(OwnedItem { id: 0, owner: ctx.sender(), label });
+}
+
+#[view(accessor = my_owned_items, public)]
+pub fn my_owned_items(ctx: &ViewContext) -> Vec<OwnedItem> {
+    ctx.db.owned_item().owner().filter(&ctx.sender()).collect()
+}
+
+#[table(accessor = live_connection)]
+pub struct LiveConnection {
+    #[primary_key]
+    pub connection_id: ConnectionId,
+    #[index(btree)]
+    pub identity: Identity,
+}
+
+#[table(accessor = forget_on_disconnect)]
+pub struct ForgetOnDisconnect {
+    #[primary_key]
+    pub identity: Identity,
+}
+
+#[reducer]
+pub fn opt_into_forget_on_disconnect(ctx: &ReducerContext) {
+    if ctx.db.forget_on_disconnect().identity().find(ctx.sender()).is_some() {
+        return;
+    }
+    ctx.db.forget_on_disconnect().insert(ForgetOnDisconnect { identity: ctx.sender() });
+}
+
+#[reducer(client_connected)]
+pub fn record_connection(ctx: &ReducerContext) {
+    let Some(connection_id) = ctx.connection_id() else {
+        return;
+    };
+    ctx.db.live_connection().insert(LiveConnection { connection_id, identity: ctx.sender() });
+}
+
+#[reducer(client_disconnected)]
+pub fn forget_ended_connection(ctx: &ReducerContext) {
+    if let Some(connection_id) = ctx.connection_id() {
+        ctx.db.live_connection().connection_id().delete(&connection_id);
+    }
+    if ctx.db.live_connection().identity().filter(&ctx.sender()).next().is_some() {
+        return;
+    }
+    if ctx.db.forget_on_disconnect().identity().find(ctx.sender()).is_none() {
+        return;
+    }
+    let owned: Vec<u64> = ctx.db.owned_item().owner().filter(&ctx.sender()).map(|item| item.id).collect();
+    for id in owned {
+        ctx.db.owned_item().id().delete(id);
+    }
 }
 
 #[table(accessor = tagged_item, public)]

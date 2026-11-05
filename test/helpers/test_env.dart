@@ -3,6 +3,7 @@ import 'package:spacetimedb_sdk/codegen.dart';
 import '../generated/note.dart';
 import '../generated/folder.dart';
 import '../generated/entity.dart';
+import '../generated/owned_item.dart';
 import '../generated/reducer_args.dart';
 import '../generated/reducers.dart' as gen;
 
@@ -26,6 +27,9 @@ class TestEnv {
   TableCache<Entity> get entityTable =>
       subManager.cache.getTableByTypedName<Entity>('entity');
 
+  TableCache<OwnedItem> get myOwnedItemsTable =>
+      subManager.cache.getTableByTypedName<OwnedItem>('my_owned_items');
+
   Future<void> disconnect() async {
     await connection.disconnect();
   }
@@ -38,10 +42,12 @@ Future<TestEnv> createTestEnv({
   bool registerEntity = false,
   OfflineStorage? offlineStorage,
   OfflineQueuePolicy queuePolicy = const OfflineQueuePolicy(),
+  String? initialToken,
 }) async {
   final connection = SpacetimeDbConnection(
     host: 'localhost:3000',
     database: 'notesdb',
+    initialToken: initialToken,
   );
   final subManager = SubscriptionManager(
     connection,
@@ -59,6 +65,10 @@ Future<TestEnv> createTestEnv({
     subManager.cache.registerDecoder<Note>('all_notes', NoteDecoder());
     subManager.cache.registerDecoder<Note>('first_note', NoteDecoder());
     subManager.cache.registerDecoder<Note>('notes_query_all', NoteDecoder());
+    subManager.cache.registerDecoder<OwnedItem>(
+      'my_owned_items',
+      OwnedItemDecoder(),
+    );
   }
   if (registerEntity) {
     subManager.cache.registerDecoder<Entity>('entity', EntityDecoder());
@@ -79,6 +89,8 @@ Future<TestEnv> createTestEnv({
   subManager.reducerRegistry.register(deleteAllFoldersDef);
   subManager.reducerRegistry.register(bulkInsertEntitiesDef);
   subManager.reducerRegistry.register(mutateRandomEntitiesDef);
+  subManager.reducerRegistry.register(addOwnedItemDef);
+  subManager.reducerRegistry.register(optIntoForgetOnDisconnectDef);
 
   final reducers = gen.Reducers(subManager.reducers, subManager.reducerEmitter);
 

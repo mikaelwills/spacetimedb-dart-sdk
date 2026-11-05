@@ -15,8 +15,10 @@ void main() {
       );
       expect(
         schema.views.length,
-        equals(3),
-        reason: 'Test module has three views: all_notes, first_note, notes_query_all',
+        equals(4),
+        reason:
+            'Test module has four views: all_notes, first_note, '
+            'notes_query_all, my_owned_items',
       );
 
       final allNotesView = schema.views.firstWhere(
@@ -25,6 +27,12 @@ void main() {
       expect(allNotesView.name, equals('all_notes'));
       expect(allNotesView.isPublic, isTrue);
       expect(allNotesView.isAnonymous, isTrue);
+
+      final myOwnedItemsView = schema.views.firstWhere(
+        (v) => v.name == 'my_owned_items',
+      );
+      expect(myOwnedItemsView.isPublic, isTrue);
+      expect(myOwnedItemsView.isAnonymous, isFalse);
     });
 
     test('ViewGenerator correctly identifies view row type', () async {

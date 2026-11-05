@@ -10,8 +10,11 @@ import 'reducer_args.dart';
 import 'cadence_item.dart';
 import 'entity.dart';
 import 'folder.dart';
+import 'forget_on_disconnect.dart';
+import 'live_connection.dart';
 import 'note.dart';
 import 'optional_item.dart';
+import 'owned_item.dart';
 import 'scheduled_task.dart';
 import 'session_marker.dart';
 import 'single_field.dart';
@@ -85,6 +88,18 @@ class SpacetimeDbClient {
     return subscriptions.cache.getTableByTypedName<Folder>('folder');
   }
 
+  TableCache<ForgetOnDisconnect> get forgetOnDisconnect {
+    return subscriptions.cache.getTableByTypedName<ForgetOnDisconnect>(
+      'forget_on_disconnect',
+    );
+  }
+
+  TableCache<LiveConnection> get liveConnection {
+    return subscriptions.cache.getTableByTypedName<LiveConnection>(
+      'live_connection',
+    );
+  }
+
   TableCache<Note> get note {
     return subscriptions.cache.getTableByTypedName<Note>('note');
   }
@@ -93,6 +108,10 @@ class SpacetimeDbClient {
     return subscriptions.cache.getTableByTypedName<OptionalItem>(
       'optional_item',
     );
+  }
+
+  TableCache<OwnedItem> get ownedItem {
+    return subscriptions.cache.getTableByTypedName<OwnedItem>('owned_item');
   }
 
   TableCache<ScheduledTask> get scheduledTask {
@@ -126,6 +145,10 @@ class SpacetimeDbClient {
       return iterator.current;
     }
     return null;
+  }
+
+  TableCache<OwnedItem> get myOwnedItems {
+    return subscriptions.cache.getTableByTypedName<OwnedItem>('my_owned_items');
   }
 
   TableCache<Note> get notesQueryAll {
@@ -178,10 +201,22 @@ class SpacetimeDbClient {
       'folder',
       FolderDecoder(),
     );
+    subscriptionManager.cache.registerDecoder<ForgetOnDisconnect>(
+      'forget_on_disconnect',
+      ForgetOnDisconnectDecoder(),
+    );
+    subscriptionManager.cache.registerDecoder<LiveConnection>(
+      'live_connection',
+      LiveConnectionDecoder(),
+    );
     subscriptionManager.cache.registerDecoder<Note>('note', NoteDecoder());
     subscriptionManager.cache.registerDecoder<OptionalItem>(
       'optional_item',
       OptionalItemDecoder(),
+    );
+    subscriptionManager.cache.registerDecoder<OwnedItem>(
+      'owned_item',
+      OwnedItemDecoder(),
     );
     subscriptionManager.cache.registerDecoder<ScheduledTask>(
       'scheduled_task',
@@ -205,11 +240,16 @@ class SpacetimeDbClient {
       'first_note',
       NoteDecoder(),
     );
+    subscriptionManager.cache.registerDecoder<OwnedItem>(
+      'my_owned_items',
+      OwnedItemDecoder(),
+    );
     subscriptionManager.cache.registerDecoder<Note>(
       'notes_query_all',
       NoteDecoder(),
     );
 
+    subscriptionManager.reducerRegistry.register(addOwnedItemDef);
     subscriptionManager.reducerRegistry.register(bulkInsertEntitiesDef);
     subscriptionManager.reducerRegistry.register(createCadenceItemDef);
     subscriptionManager.reducerRegistry.register(createFolderDef);
@@ -227,6 +267,7 @@ class SpacetimeDbClient {
     subscriptionManager.reducerRegistry.register(moveToDef);
     subscriptionManager.reducerRegistry.register(mutateRandomEntitiesDef);
     subscriptionManager.reducerRegistry.register(noOpDef);
+    subscriptionManager.reducerRegistry.register(optIntoForgetOnDisconnectDef);
     subscriptionManager.reducerRegistry.register(reducerReturnsErrDef);
     subscriptionManager.reducerRegistry.register(reducerThatPanicsDef);
     subscriptionManager.reducerRegistry.register(updateAllNotesDef);

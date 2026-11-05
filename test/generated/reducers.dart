@@ -14,6 +14,28 @@ class Reducers {
 
   final ReducerEmitter _reducerEmitter;
 
+  /// Calls the `add_owned_item` reducer.
+  ///
+  /// Returns a [TransactionResult] on success. Throws
+  /// [SpacetimeDbReducerException] if the reducer returns `Failed` or
+  /// `InternalError`. The returned status is one of `Committed`,
+  /// `Pending` (queued to offline storage), or `Dropped` (skipped via
+  /// `dropIfOffline: true` while offline).
+  Future<TransactionResult> addOwnedItem({
+    required String label,
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    encoder.writeString(label);
+    return await _reducerCaller.call(
+      addOwnedItemDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
   /// Calls the `bulk_insert_entities` reducer.
   ///
   /// Returns a [TransactionResult] on success. Throws
@@ -415,6 +437,26 @@ class Reducers {
     );
   }
 
+  /// Calls the `opt_into_forget_on_disconnect` reducer.
+  ///
+  /// Returns a [TransactionResult] on success. Throws
+  /// [SpacetimeDbReducerException] if the reducer returns `Failed` or
+  /// `InternalError`. The returned status is one of `Committed`,
+  /// `Pending` (queued to offline storage), or `Dropped` (skipped via
+  /// `dropIfOffline: true` while offline).
+  Future<TransactionResult> optIntoForgetOnDisconnect({
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    return await _reducerCaller.call(
+      optIntoForgetOnDisconnectDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
   /// Calls the `reducer_returns_err` reducer.
   ///
   /// Returns a [TransactionResult] on success. Throws
@@ -527,6 +569,18 @@ class Reducers {
       optimisticChanges: optimisticChanges,
       dropIfOffline: dropIfOffline,
     );
+  }
+
+  StreamSubscription<void> onAddOwnedItem(
+    void Function(EventContext ctx, String label) callback,
+  ) {
+    return _reducerEmitter.on(addOwnedItemDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! AddOwnedItemArgs) return;
+      callback(ctx, args.label);
+    });
   }
 
   StreamSubscription<void> onBulkInsertEntities(
@@ -751,6 +805,20 @@ class Reducers {
       if (event is! ReducerEvent) return;
       final args = event.reducerArgs;
       if (args is! NoOpArgs) return;
+      callback(ctx);
+    });
+  }
+
+  StreamSubscription<void> onOptIntoForgetOnDisconnect(
+    void Function(EventContext ctx) callback,
+  ) {
+    return _reducerEmitter.on(optIntoForgetOnDisconnectDef).listen((
+      EventContext ctx,
+    ) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! OptIntoForgetOnDisconnectArgs) return;
       callback(ctx);
     });
   }

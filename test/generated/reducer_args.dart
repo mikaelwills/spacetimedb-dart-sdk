@@ -4,6 +4,22 @@ import 'package:spacetimedb_sdk/codegen.dart';
 
 import 'server_position.dart';
 
+class AddOwnedItemArgs {
+  AddOwnedItemArgs({required this.label});
+
+  final String label;
+}
+
+class AddOwnedItemArgsDecoder implements ReducerArgDecoder<AddOwnedItemArgs> {
+  const AddOwnedItemArgsDecoder();
+
+  @override
+  AddOwnedItemArgs decode(BsatnDecoder decoder) {
+    final label = decoder.readString();
+    return AddOwnedItemArgs(label: label);
+  }
+}
+
 class BulkInsertEntitiesArgs {
   BulkInsertEntitiesArgs({required this.count});
 
@@ -357,6 +373,20 @@ class NoOpArgsDecoder implements ReducerArgDecoder<NoOpArgs> {
   }
 }
 
+class OptIntoForgetOnDisconnectArgs {
+  OptIntoForgetOnDisconnectArgs();
+}
+
+class OptIntoForgetOnDisconnectArgsDecoder
+    implements ReducerArgDecoder<OptIntoForgetOnDisconnectArgs> {
+  const OptIntoForgetOnDisconnectArgsDecoder();
+
+  @override
+  OptIntoForgetOnDisconnectArgs decode(BsatnDecoder decoder) {
+    return OptIntoForgetOnDisconnectArgs();
+  }
+}
+
 class ReducerReturnsErrArgs {
   ReducerReturnsErrArgs({required this.message});
 
@@ -451,6 +481,10 @@ class UpdateNoteGuardedArgsDecoder
   }
 }
 
+const addOwnedItemDef = ReducerDef<AddOwnedItemArgs>(
+  'add_owned_item',
+  AddOwnedItemArgsDecoder(),
+);
 const bulkInsertEntitiesDef = ReducerDef<BulkInsertEntitiesArgs>(
   'bulk_insert_entities',
   BulkInsertEntitiesArgsDecoder(),
@@ -513,6 +547,10 @@ const mutateRandomEntitiesDef = ReducerDef<MutateRandomEntitiesArgs>(
   MutateRandomEntitiesArgsDecoder(),
 );
 const noOpDef = ReducerDef<NoOpArgs>('no_op', NoOpArgsDecoder());
+const optIntoForgetOnDisconnectDef = ReducerDef<OptIntoForgetOnDisconnectArgs>(
+  'opt_into_forget_on_disconnect',
+  OptIntoForgetOnDisconnectArgsDecoder(),
+);
 const reducerReturnsErrDef = ReducerDef<ReducerReturnsErrArgs>(
   'reducer_returns_err',
   ReducerReturnsErrArgsDecoder(),
