@@ -462,9 +462,12 @@ class SpacetimeDbConnection {
     }
   }
 
+  static final _httpStatus = RegExp(r'HTTP status code: (\d+)$');
+
   bool _isAuthFailure(String error) {
-    if (error.contains('401') || error.contains('Unauthorized')) return true;
-    return _tokenProvider != null && error.contains('403');
+    final status = int.tryParse(_httpStatus.firstMatch(error)?.group(1) ?? '');
+    if (status == 401 || error.contains('Unauthorized')) return true;
+    return _tokenProvider != null && status == 403;
   }
 
   Future<void> _refreshTokenIfNeeded(int attempt) async {

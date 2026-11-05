@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/spacetimedb_sdk.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../mocks/silent_socket.dart';
 
@@ -112,6 +115,52 @@ void main() {
 
       expect(factoryCalls, equals(3));
       expect(connection.state, isA<FatalError>());
+    });
+
+    test('enabled: a refused dial on local port 54013 is retried', () async {
+      var calls = 0;
+      final connection = SpacetimeDbConnection(
+        host: 'localhost:3000',
+        database: 'notesdb',
+        config: const ConnectionConfig(
+          autoReconnect: false,
+          baseReconnectDelay: Duration(milliseconds: 10),
+          maxReconnectDelay: Duration(milliseconds: 10),
+          maxReconnectAttempts: 3,
+          retryInitialConnect: true,
+        ),
+        socketFactory:
+            (
+              uri,
+              protocols,
+              headers, {
+              connectTimeout = const Duration(seconds: 10),
+              pingInterval,
+            }) {
+              calls++;
+              throw WebSocketChannelException.from(
+                SocketException(
+                  'Connection refused',
+                  osError: const OSError('Connection refused', 61),
+                  address: InternetAddress('127.0.0.1'),
+                  port: 54013,
+                ),
+              );
+            },
+      );
+      addTearDown(connection.dispose);
+
+      await expectLater(
+        connection.connect(),
+        throwsA(
+          allOf(
+            isA<SpacetimeDbConnectionException>(),
+            isNot(isA<SpacetimeDbAuthException>()),
+          ),
+        ),
+      );
+
+      expect(calls, equals(3));
     });
 
     test('enabled: an auth failure is NOT retried', () async {

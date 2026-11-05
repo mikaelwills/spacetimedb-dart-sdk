@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:spacetimedb_sdk/spacetimedb_sdk.dart';
 import 'package:test/test.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../helpers/test_jwt.dart';
 import '../../mocks/silent_socket.dart';
@@ -95,6 +97,24 @@ Exception _upgradeFailure(int status) => Exception(
   "WebSocketException: Connection to 'http://localhost:3000' was not "
   'upgraded to websocket, HTTP status code: $status',
 );
+
+WebSocketChannelException _refused(int localPort) =>
+    WebSocketChannelException.from(
+      SocketException(
+        'Connection refused',
+        osError: const OSError('Connection refused', 61),
+        address: InternetAddress('127.0.0.1'),
+        port: localPort,
+      ),
+    );
+
+WebSocketChannelException _notUpgraded(String uri, int status) =>
+    WebSocketChannelException.from(
+      WebSocketException(
+        "Connection to '$uri' was not upgraded to websocket",
+        status,
+      ),
+    );
 
 void main() {
   final now = DateTime.now();
@@ -328,6 +348,60 @@ void main() {
       await harness.waitFor(() => harness.connection.state is AuthError);
 
       expect(harness.authHeaders, hasLength(2));
+    });
+
+    test(
+      'without a provider a refused dial on local port 54013 is retried',
+      () async {
+        final harness = _Harness(initialToken: farFromExpiry);
+        addTearDown(harness.connection.dispose);
+        await harness.connection.connect();
+        harness.failWith = (call) => call <= 3 ? _refused(54013) : null;
+
+        await harness.dropSocket();
+        await harness.waitForConnects(2);
+
+        expect(harness.states.whereType<AuthError>(), isEmpty);
+        expect(harness.authHeaders, hasLength(4));
+      },
+    );
+
+    test('with a provider a refused dial on local port 64030 does not force a '
+        'refresh', () async {
+      final provider = _CountingProvider([() => provided]);
+      final harness = _Harness(
+        initialToken: farFromExpiry,
+        tokenProvider: provider.call,
+      );
+      addTearDown(harness.connection.dispose);
+      await harness.connection.connect();
+      harness.failWith = (call) => call == 2 ? _refused(64030) : null;
+
+      await harness.dropSocket();
+      await harness.waitForConnects(2);
+
+      expect(harness.states.whereType<AuthError>(), isEmpty);
+      expect(provider.calls, 0);
+      expect(harness.authHeaders.last, 'Bearer $farFromExpiry');
+    });
+
+    test('a 500 whose URI holds 401 in session_id is retried', () async {
+      final harness = _Harness(initialToken: farFromExpiry);
+      addTearDown(harness.connection.dispose);
+      await harness.connection.connect();
+      harness.failWith = (call) => call == 2
+          ? _notUpgraded(
+              'http://localhost:3000/v1/database/notesdb/subscribe'
+              '?session_id=ab401cd#',
+              500,
+            )
+          : null;
+
+      await harness.dropSocket();
+      await harness.waitForConnects(2);
+
+      expect(harness.states.whereType<AuthError>(), isEmpty);
+      expect(harness.authHeaders, hasLength(3));
     });
 
     test('without a provider a 403 on reconnect is retried', () async {
