@@ -463,6 +463,8 @@ class SubscriptionManager {
         if (hasConnectedBefore) {
           _mutationSyncer?.resetRetryAttempts();
           _onReconnected();
+        } else {
+          _sendSetsSubscribedBeforeConnect();
         }
         hasConnectedBefore = true;
       } else if (state is Disconnected ||
@@ -475,6 +477,23 @@ class SubscriptionManager {
         _completeAllSubscribeWaiters();
       }
     });
+  }
+
+  final Set<int> _querySetIdsDroppedBeforeFirstConnect = {};
+
+  void _sendSetsSubscribedBeforeConnect() {
+    final dropped = _querySetIdsDroppedBeforeFirstConnect.toList();
+    _querySetIdsDroppedBeforeFirstConnect.clear();
+    for (final querySetId in dropped) {
+      final queries = _subscriptionsByQuerySetId[querySetId];
+      if (queries == null) continue;
+      SdkLogger.i(
+        'Sending query set $querySetId subscribed before the first connect',
+      );
+      _connection.send(
+        SubscribeMessage(queries, querySetId: querySetId).encode(),
+      );
+    }
   }
 
   bool _reconnectInFlight = false;
@@ -490,6 +509,7 @@ class SubscriptionManager {
   _TimedOutBatch? _timedOutBatch;
 
   Future<void> _onReconnected() async {
+    _querySetIdsDroppedBeforeFirstConnect.clear();
     if (_subscriptionsByQuerySetId.isNotEmpty) {
       _subscriptionsReady.value = false;
 
@@ -1468,6 +1488,9 @@ class SubscriptionManager {
     List<String> queries,
   ) async {
     final message = SubscribeMessage(queries, querySetId: querySetId);
+    if (!_connection.isConnected) {
+      _querySetIdsDroppedBeforeFirstConnect.add(querySetId);
+    }
     _connection.send(message.encode());
 
     final waiter = _subscribeWaiters.putIfAbsent(
