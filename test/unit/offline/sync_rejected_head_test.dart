@@ -6,6 +6,8 @@ import 'package:spacetimedb_sdk/codegen.dart';
 import '../../mocks/mock_connection.dart';
 
 const _abortedRequestId = 'r-aborted';
+const _secondAbortedRequestId = 'r-aborted-2';
+const _abortedRequestIds = {_abortedRequestId, _secondAbortedRequestId};
 
 class _MapDecoder extends RowDecoder<Map<String, dynamic>> {
   @override
@@ -96,7 +98,7 @@ class _Harness {
       cache: cache,
       send: (reducerName, args, {requestId}) async {
         sentRequestIds.add(requestId!);
-        if (requestId == _abortedRequestId) {
+        if (_abortedRequestIds.contains(requestId)) {
           throw SpacetimeDbReducerException(
             reducerName: reducerName,
             message: 'Not found',
@@ -204,6 +206,28 @@ void main() {
       pending.map((m) => m.requestId),
       equals([_abortedRequestId, 'r2', 'r3']),
     );
+    h.syncer.cancelRetry();
+  });
+
+  test('an edit waiting on one held insert sends as soon as that insert '
+      'gains an owner, even while another insert is still held', () async {
+    final h = _Harness();
+    await h.storage.enqueueMutation(_insertMutation(_abortedRequestId, 'p1'));
+    await h.storage.enqueueMutation(
+      _insertMutation(_secondAbortedRequestId, 'p2'),
+    );
+    await h.storage.enqueueMutation(_updateMutation('r3', 'p1'));
+    await h.syncer.syncPendingMutations().timeout(const Duration(seconds: 5));
+    expect(h.sentRequestIds, isNot(contains('r3')));
+
+    h.cache.getTableByName('message')!.insertServerOwnedRow({
+      'id': 'p1',
+      'text': 'hi',
+    });
+    h.syncer.notifyOwnershipGained('message', 'p1');
+    await pumpEventQueue();
+
+    expect(h.sentRequestIds, contains('r3'));
     h.syncer.cancelRetry();
   });
 

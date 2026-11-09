@@ -6,20 +6,26 @@ class AwaitedRows {
   AwaitedRows(this._cache);
 
   final ClientCache _cache;
-  final _RowKeys _awaitedInserts = _RowKeys();
+  final Map<String, _RowKeys> _awaitedByRequest = {};
   final _RowKeys _heldThisPass = _RowKeys();
   bool _holdingRowsUnknown = false;
 
-  bool get isEmpty => _awaitedInserts.isEmpty;
-
   void clear() {
-    _awaitedInserts.clear();
+    _awaitedByRequest.clear();
     _heldThisPass.clear();
     _holdingRowsUnknown = false;
   }
 
-  bool remove(String tableName, dynamic primaryKey) {
-    return _awaitedInserts.remove(tableName, primaryKey);
+  bool releaseOwnedRow(String tableName, dynamic primaryKey) {
+    final fullyOwned = <String>[];
+    for (final MapEntry(key: requestId, value: keys)
+        in _awaitedByRequest.entries) {
+      if (keys.remove(tableName, primaryKey) && keys.isEmpty) {
+        fullyOwned.add(requestId);
+      }
+    }
+    fullyOwned.forEach(_awaitedByRequest.remove);
+    return fullyOwned.isNotEmpty;
   }
 
   bool holdIfBlocked(PendingMutation mutation) {
@@ -43,17 +49,20 @@ class AwaitedRows {
       if (primaryKey == null || table.ownedKeys(primaryKey).isNotEmpty) {
         continue;
       }
-      _awaitedInserts.add(_rowKey(change.tableName, primaryKey));
+      _awaitedByRequest
+          .putIfAbsent(mutation.requestId, _RowKeys.new)
+          .add(_rowKey(change.tableName, primaryKey));
     }
   }
 
   bool get _isHoldingAnything =>
       _holdingRowsUnknown ||
-      _awaitedInserts.isNotEmpty ||
+      _awaitedByRequest.isNotEmpty ||
       _heldThisPass.isNotEmpty;
 
   bool _isHeld(_RowKey key) {
-    return _awaitedInserts.contains(key) || _heldThisPass.contains(key);
+    return _heldThisPass.contains(key) ||
+        _awaitedByRequest.values.any((keys) => keys.contains(key));
   }
 
   List<OptimisticChange> _changesOf(PendingMutation mutation) {

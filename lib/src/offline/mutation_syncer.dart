@@ -140,8 +140,7 @@ class MutationSyncer implements MutationHandler {
 
   void notifyOwnershipGained(String tableName, dynamic primaryKey) {
     if (_disposed) return;
-    if (!_awaitedRows.remove(tableName, primaryKey)) return;
-    if (!_awaitedRows.isEmpty) return;
+    if (!_awaitedRows.releaseOwnedRow(tableName, primaryKey)) return;
     SdkLogger.d(
       'Awaited insert pk=$primaryKey on "$tableName" gained a server '
       'owner; replaying the mutations waiting on it',
