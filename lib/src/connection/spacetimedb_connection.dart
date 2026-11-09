@@ -277,15 +277,11 @@ class SpacetimeDbConnection {
       SdkLogger.i('Cannot send: not connected');
       return;
     }
-    final shouldBatch =
-        _negotiatedProtocol == NegotiatedWsProtocol.v3 &&
-        config.outboundBatching == OutboundBatchingPolicy.opportunistic;
-    if (!shouldBatch) {
-      _channel!.sink.add(data);
+    if (!_socketReceivedFrame) {
+      _outboundQueue.add(Uint8List.fromList(data));
       return;
     }
-    _outboundQueue.add(Uint8List.fromList(data));
-    _scheduleOutboundFlush();
+    _write(data);
   }
 
   void setKeepAliveWorkInFlight(bool inFlight) {
@@ -577,7 +573,10 @@ class SpacetimeDbConnection {
   void _setupMessageListener() {
     _channel!.stream.listen(
       (dynamic data) {
-        _socketReceivedFrame = true;
+        if (!_socketReceivedFrame) {
+          _socketReceivedFrame = true;
+          _releaseHeldOutbound();
+        }
         _keepAlive?.notifyMessageReceived();
         _lastMessageReceived = DateTime.now();
 
@@ -609,6 +608,7 @@ class SpacetimeDbConnection {
         );
         SdkLogger.i('WebSocket closed');
         _keepAlive?.stop();
+        _dropHeldOutbound();
 
         if (_isSessionBusyRefusal) {
           _retrySessionBusy();
@@ -712,7 +712,7 @@ class SpacetimeDbConnection {
           const pingQuery = 'SELECT * FROM __spacetime_dart_sdk_keepalive__';
 
           final message = OneOffQueryMessage(queryString: pingQuery);
-          send(message.encode());
+          if (isConnected) _write(message.encode());
           _lastPingSent = DateTime.now();
           final sinceLastRx = _lastMessageReceived != null
               ? DateTime.now().difference(_lastMessageReceived!).inMilliseconds
@@ -752,6 +752,39 @@ class SpacetimeDbConnection {
     SdkLogger.w('Closing socket for reconnect: $reason');
     _keepAlive?.stop();
     _channel?.sink.close();
+  }
+
+  void _write(Uint8List data) {
+    if (!_shouldBatch || !_socketReceivedFrame) {
+      _channel!.sink.add(data);
+      return;
+    }
+    _outboundQueue.add(Uint8List.fromList(data));
+    _scheduleOutboundFlush();
+  }
+
+  bool get _shouldBatch =>
+      _negotiatedProtocol == NegotiatedWsProtocol.v3 &&
+      config.outboundBatching == OutboundBatchingPolicy.opportunistic;
+
+  void _releaseHeldOutbound() {
+    if (_outboundQueue.isEmpty) return;
+    if (_shouldBatch) {
+      _scheduleOutboundFlush();
+      return;
+    }
+    final held = List.of(_outboundQueue);
+    _outboundQueue.clear();
+    held.forEach(_channel!.sink.add);
+  }
+
+  void _dropHeldOutbound() {
+    if (_outboundQueue.isEmpty) return;
+    SdkLogger.w(
+      'Dropping ${_outboundQueue.length} outbound message(s) queued for a '
+      'socket that closed',
+    );
+    _outboundQueue.clear();
   }
 
   void _scheduleOutboundFlush() {

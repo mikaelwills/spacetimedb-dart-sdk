@@ -2,12 +2,13 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:fake_async/fake_async.dart';
-import 'package:spacetimedb_sdk/spacetimedb_sdk.dart';
+import 'package:spacetimedb_sdk/codegen.dart';
 import 'package:spacetimedb_sdk/src/connection/spacetimedb_connection.dart'
     show closeForReconnect, reconnectDelay, setReconnectRandom;
 import 'package:test/test.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../../helpers/reconnect_replay.dart';
 import '../../mocks/close_code_socket.dart';
 import '../../mocks/silent_socket.dart';
 
@@ -539,6 +540,113 @@ void main() {
         retryReady.complete();
         async.flushMicrotasks();
         expect(harness.connection.state, isA<Connected>());
+        harness.dispose(async);
+      });
+    });
+  });
+
+  group('nothing is written on a socket before its first frame', () {
+    const delay = Duration(milliseconds: 20);
+    const config = ConnectionConfig(
+      baseReconnectDelay: delay,
+      maxReconnectDelay: delay,
+    );
+    final payload = Uint8List.fromList([9, 9, 9]);
+
+    void deliverInitialConnection(SilentWebSocketChannel channel) {
+      final body = BsatnEncoder()
+        ..writeU8(0)
+        ..writeU8(0)
+        ..writeBytes(Uint8List(32))
+        ..writeBytes(Uint8List(16))
+        ..writeString('token');
+      channel.deliver(body.toBytes());
+    }
+
+    for (final protocol in [kV2WsProtocol, kV3WsProtocol]) {
+      test('a send on $protocol waits for the first frame', () {
+        fakeAsync((async) {
+          final harness = _Harness(
+            config: config,
+            script: [() => SilentWebSocketChannel(protocol: protocol)],
+          );
+          harness.connection.connect();
+          async.flushMicrotasks();
+          expect(harness.connection.state, isA<Connected>());
+          final channel = harness.channels.single as SilentWebSocketChannel;
+
+          harness.connection.send(payload);
+          async.flushMicrotasks();
+          expect(channel.sent, isEmpty);
+
+          deliverInitialConnection(channel);
+          async.flushMicrotasks();
+          expect(channel.sent, hasLength(1));
+          harness.dispose(async);
+        });
+      });
+    }
+
+    test('a reconnect sends its replay only after the first frame', () {
+      fakeAsync((async) {
+        final harness = _Harness(config: config);
+        final manager = SubscriptionManager(harness.connection);
+        harness.connection.connect();
+        async.flushMicrotasks();
+        deliverInitialConnection(
+          harness.channels.single as SilentWebSocketChannel,
+        );
+        async.flushMicrotasks();
+        manager.subscribe(['SELECT * FROM note']).ignore();
+        async.flushMicrotasks();
+
+        harness.channels.single.sink.close();
+        async.flushMicrotasks();
+        async.elapse(delay);
+        async.flushMicrotasks();
+        expect(harness.dials, hasLength(2));
+        expect(harness.connection.state, isA<Connected>());
+        final retry = harness.channels.last as SilentWebSocketChannel;
+        expect(retry.sent, isEmpty);
+
+        deliverInitialConnection(retry);
+        async.flushMicrotasks();
+        final batches = sentWithTag([
+          for (final frame in retry.sent)
+            if (frame is Uint8List) frame,
+        ], subscribeBatchTag);
+        expect(batches, hasLength(1));
+        manager.dispose();
+        harness.dispose(async);
+      });
+    });
+
+    test('a send held on a socket refused with 4000 is dropped', () {
+      fakeAsync((async) {
+        final harness = _Harness(
+          config: config,
+          script: [
+            () =>
+                CloseCodeWebSocketChannel.sessionBusy(closeAfterFrames: false),
+          ],
+        );
+        harness.connection.connect();
+        async.flushMicrotasks();
+        final refused = harness.channels.single as CloseCodeWebSocketChannel;
+        harness.connection.send(payload);
+        async.flushMicrotasks();
+        refused.close();
+        async.flushMicrotasks();
+        expect(harness.lastReconnecting.nextDelay, isNotNull);
+
+        async.elapse(harness.lastReconnecting.nextDelay!);
+        async.flushMicrotasks();
+        expect(harness.dials, hasLength(2));
+        final retry = harness.channels.last as SilentWebSocketChannel;
+        deliverInitialConnection(retry);
+        async.flushMicrotasks();
+        expect(refused.sent, isEmpty);
+        expect(retry.sent, isEmpty);
         harness.dispose(async);
       });
     });

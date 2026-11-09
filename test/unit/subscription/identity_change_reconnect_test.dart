@@ -169,6 +169,8 @@ void main() {
     await subscribed.timeout(_timeout);
 
     await harness.dropAndAwaitReconnect();
+    harness.sockets.last.deliver(_frame([_initialConnectionBody(_identityA)]));
+    await pumpEventQueue();
     final batch = decodeSentSubscribeBatch(
       sentWithTag([
         for (final frame in harness.sockets.last.sent)
