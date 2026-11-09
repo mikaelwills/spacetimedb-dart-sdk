@@ -465,7 +465,7 @@ class MutationSyncer implements MutationHandler {
       SdkLogger.d('Syncing ${pending.length} pending mutations');
 
       for (final mutation in pending) {
-        if (_awaitedRows.blocks(mutation)) continue;
+        if (_awaitedRows.holdIfBlocked(mutation)) continue;
         final step = await _processMutation(mutation, cycleFailures);
         if (step == _SyncStep.stop) return;
         if (step == _SyncStep.pauseQueue) break;

@@ -24,32 +24,53 @@ class _MapDecoder extends RowDecoder<Map<String, dynamic>> {
   Map<String, dynamic>? fromJson(Map<String, dynamic> json) => json;
 }
 
-PendingMutation _insertMutation(String requestId, String id) {
+PendingMutation _mutation(
+  String requestId,
+  String reducerName, [
+  List<OptimisticChange>? changes,
+]) {
   return PendingMutation(
     requestId: requestId,
-    reducerName: 'create_message',
+    reducerName: reducerName,
     encodedArgs: Uint8List(0),
     createdAt: DateTime.now(),
-    optimisticChanges: [
-      OptimisticChange.insert('message', {'id': id, 'text': 'hi'}),
-    ],
+    optimisticChanges: changes,
   );
 }
 
-PendingMutation _updateMutation(String requestId, String id) {
-  return PendingMutation(
-    requestId: requestId,
-    reducerName: 'merge_message',
-    encodedArgs: Uint8List(0),
-    createdAt: DateTime.now(),
-    optimisticChanges: [
-      OptimisticChange.update(
-        'message',
-        {'id': id, 'text': 'old'},
-        {'id': id, 'text': 'new'},
-      ),
-    ],
+OptimisticChange _textChange(String id, String from, String to) {
+  return OptimisticChange.update(
+    'message',
+    {'id': id, 'text': from},
+    {'id': id, 'text': to},
   );
+}
+
+PendingMutation _insertMutation(String requestId, String id) {
+  return _mutation(requestId, 'create_message', [
+    OptimisticChange.insert('message', {'id': id, 'text': 'hi'}),
+  ]);
+}
+
+PendingMutation _updateMutation(String requestId, String id) {
+  return _mutation(requestId, 'merge_message', [
+    _textChange(id, 'old', 'new'),
+  ]);
+}
+
+PendingMutation _twoRowUpdateMutation(
+  String requestId, {
+  required String firstId,
+  required String secondId,
+}) {
+  return _mutation(requestId, 'swap_messages', [
+    _textChange(firstId, 'a', 'b'),
+    _textChange(secondId, 'b', 'a'),
+  ]);
+}
+
+PendingMutation _keylessMutation(String requestId) {
+  return _mutation(requestId, 'move_message');
 }
 
 TransactionResult _committed(String reducerName) {
@@ -131,4 +152,70 @@ void main() {
     h.syncer.cancelRetry();
   });
 
+  test('a mutation sharing a row with a waiting mutation waits behind it, '
+      'so the server never sees them out of order', () async {
+    final h = _Harness();
+    await h.storage.enqueueMutation(_insertMutation(_abortedRequestId, 'p1'));
+    await h.storage.enqueueMutation(
+      _twoRowUpdateMutation('r2', firstId: 'p1', secondId: 'p2'),
+    );
+    await h.storage.enqueueMutation(_updateMutation('r3', 'p2'));
+
+    await h.syncer.syncPendingMutations().timeout(const Duration(seconds: 5));
+
+    expect(h.sentRequestIds, equals([_abortedRequestId]));
+    final pending = await h.storage.getPendingMutations();
+    expect(
+      pending.map((m) => m.requestId),
+      equals([_abortedRequestId, 'r2', 'r3']),
+    );
+    h.syncer.cancelRetry();
+  });
+
+  test('a mutation with no optimistic rows waits behind a held insert, '
+      'since nothing shows it is unrelated', () async {
+    final h = _Harness();
+    await h.storage.enqueueMutation(_insertMutation(_abortedRequestId, 'p1'));
+    await h.storage.enqueueMutation(_keylessMutation('r2'));
+
+    await h.syncer.syncPendingMutations().timeout(const Duration(seconds: 5));
+
+    expect(h.sentRequestIds, equals([_abortedRequestId]));
+    final pending = await h.storage.getPendingMutations();
+    expect(
+      pending.map((m) => m.requestId),
+      equals([_abortedRequestId, 'r2']),
+    );
+    h.syncer.cancelRetry();
+  });
+
+  test('once a keyless mutation waits, every mutation behind it waits too',
+      () async {
+    final h = _Harness();
+    await h.storage.enqueueMutation(_insertMutation(_abortedRequestId, 'p1'));
+    await h.storage.enqueueMutation(_keylessMutation('r2'));
+    await h.storage.enqueueMutation(_updateMutation('r3', 'p3'));
+
+    await h.syncer.syncPendingMutations().timeout(const Duration(seconds: 5));
+
+    expect(h.sentRequestIds, equals([_abortedRequestId]));
+    final pending = await h.storage.getPendingMutations();
+    expect(
+      pending.map((m) => m.requestId),
+      equals([_abortedRequestId, 'r2', 'r3']),
+    );
+    h.syncer.cancelRetry();
+  });
+
+  test('a keyless mutation still sends when nothing is held', () async {
+    final h = _Harness();
+    await h.storage.enqueueMutation(_insertMutation('r1', 'p1'));
+    await h.storage.enqueueMutation(_keylessMutation('r2'));
+
+    await h.syncer.syncPendingMutations().timeout(const Duration(seconds: 5));
+
+    expect(h.sentRequestIds, equals(['r1', 'r2']));
+    expect(await h.storage.getPendingMutations(), isEmpty);
+    h.syncer.cancelRetry();
+  });
 }
