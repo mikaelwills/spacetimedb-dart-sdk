@@ -55,9 +55,7 @@ PendingMutation _insertMutation(String requestId, String id) {
 }
 
 PendingMutation _updateMutation(String requestId, String id) {
-  return _mutation(requestId, 'merge_message', [
-    _textChange(id, 'old', 'new'),
-  ]);
+  return _mutation(requestId, 'merge_message', [_textChange(id, 'old', 'new')]);
 }
 
 PendingMutation _twoRowUpdateMutation(
@@ -147,10 +145,7 @@ void main() {
 
     expect(h.sentRequestIds, equals([_abortedRequestId]));
     final pending = await h.storage.getPendingMutations();
-    expect(
-      pending.map((m) => m.requestId),
-      equals([_abortedRequestId, 'r2']),
-    );
+    expect(pending.map((m) => m.requestId), equals([_abortedRequestId, 'r2']));
     h.syncer.cancelRetry();
   });
 
@@ -184,30 +179,29 @@ void main() {
 
     expect(h.sentRequestIds, equals([_abortedRequestId]));
     final pending = await h.storage.getPendingMutations();
-    expect(
-      pending.map((m) => m.requestId),
-      equals([_abortedRequestId, 'r2']),
-    );
+    expect(pending.map((m) => m.requestId), equals([_abortedRequestId, 'r2']));
     h.syncer.cancelRetry();
   });
 
-  test('once a keyless mutation waits, every mutation behind it waits too',
-      () async {
-    final h = _Harness();
-    await h.storage.enqueueMutation(_insertMutation(_abortedRequestId, 'p1'));
-    await h.storage.enqueueMutation(_keylessMutation('r2'));
-    await h.storage.enqueueMutation(_updateMutation('r3', 'p3'));
+  test(
+    'once a keyless mutation waits, every mutation behind it waits too',
+    () async {
+      final h = _Harness();
+      await h.storage.enqueueMutation(_insertMutation(_abortedRequestId, 'p1'));
+      await h.storage.enqueueMutation(_keylessMutation('r2'));
+      await h.storage.enqueueMutation(_updateMutation('r3', 'p3'));
 
-    await h.syncer.syncPendingMutations().timeout(const Duration(seconds: 5));
+      await h.syncer.syncPendingMutations().timeout(const Duration(seconds: 5));
 
-    expect(h.sentRequestIds, equals([_abortedRequestId]));
-    final pending = await h.storage.getPendingMutations();
-    expect(
-      pending.map((m) => m.requestId),
-      equals([_abortedRequestId, 'r2', 'r3']),
-    );
-    h.syncer.cancelRetry();
-  });
+      expect(h.sentRequestIds, equals([_abortedRequestId]));
+      final pending = await h.storage.getPendingMutations();
+      expect(
+        pending.map((m) => m.requestId),
+        equals([_abortedRequestId, 'r2', 'r3']),
+      );
+      h.syncer.cancelRetry();
+    },
+  );
 
   test('an edit waiting on one held insert sends as soon as that insert '
       'gains an owner, even while another insert is still held', () async {

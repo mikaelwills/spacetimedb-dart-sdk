@@ -116,9 +116,9 @@ class _RowKeys {
   void clear() => _keysByTable.clear();
 
   void add(_RowKey key) {
-    _keysByTable.putIfAbsent(key.tableName, () => <dynamic>{}).add(
-      key.primaryKey,
-    );
+    _keysByTable
+        .putIfAbsent(key.tableName, () => <dynamic>{})
+        .add(key.primaryKey);
   }
 
   bool contains(_RowKey key) {
