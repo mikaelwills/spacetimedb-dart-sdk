@@ -10,6 +10,7 @@ import 'package:spacetimedb_sdk/src/connection/connection_state.dart';
 import 'package:spacetimedb_sdk/src/exceptions.dart';
 import 'package:spacetimedb_sdk/src/reducers/transaction_result.dart';
 import 'package:spacetimedb_sdk/src/reducers/mutation_handler.dart';
+import 'package:spacetimedb_sdk/src/offline/awaited_rows.dart';
 import 'package:spacetimedb_sdk/src/offline/offline_queue_policy.dart';
 import 'package:spacetimedb_sdk/src/offline/offline_storage.dart';
 import 'package:spacetimedb_sdk/src/offline/optimistic_state_manager.dart';
@@ -50,7 +51,7 @@ class MutationSyncer implements MutationHandler {
   final Map<String, int> _abortRecheckCount = {};
   static const int _maxAbortRecheck = 3;
 
-  final Map<String, Set<dynamic>> _awaitedOwnershipKeys = {};
+  late final AwaitedRows _awaitedRows = AwaitedRows(_cache);
 
   static const Duration snapshotFlushWindow = Duration(seconds: 2);
   final Set<String> _dirtySnapshotTables = {};
@@ -139,13 +140,11 @@ class MutationSyncer implements MutationHandler {
 
   void notifyOwnershipGained(String tableName, dynamic primaryKey) {
     if (_disposed) return;
-    final awaited = _awaitedOwnershipKeys[tableName];
-    if (awaited == null || !awaited.remove(primaryKey)) return;
-    if (awaited.isEmpty) _awaitedOwnershipKeys.remove(tableName);
-    if (_awaitedOwnershipKeys.isNotEmpty) return;
+    if (!_awaitedRows.remove(tableName, primaryKey)) return;
+    if (!_awaitedRows.isEmpty) return;
     SdkLogger.d(
       'Awaited insert pk=$primaryKey on "$tableName" gained a server '
-      'owner; resuming the paused sync queue',
+      'owner; replaying the mutations waiting on it',
     );
     syncPendingMutations();
   }
@@ -436,7 +435,7 @@ class MutationSyncer implements MutationHandler {
 
     SdkLogger.d('syncPendingMutations: starting');
     _isSyncing = true;
-    _awaitedOwnershipKeys.clear();
+    _awaitedRows.clear();
     final cycleFailures = <MutationSyncResult>[];
 
     try {
@@ -466,6 +465,7 @@ class MutationSyncer implements MutationHandler {
       SdkLogger.d('Syncing ${pending.length} pending mutations');
 
       for (final mutation in pending) {
+        if (_awaitedRows.blocks(mutation)) continue;
         final step = await _processMutation(mutation, cycleFailures);
         if (step == _SyncStep.stop) return;
         if (step == _SyncStep.pauseQueue) break;
@@ -483,25 +483,6 @@ class MutationSyncer implements MutationHandler {
     }
 
     await _finalizeSyncCycle(cycleFailures);
-  }
-
-  void _stashAwaitedInsertKeys(PendingMutation mutation) {
-    _awaitedOwnershipKeys.clear();
-    final changes = mutation.optimisticChanges;
-    if (changes == null) return;
-    for (final change in changes) {
-      if (change.type != OptimisticChangeType.insert) continue;
-      final table = _cache.getTableByName(change.tableName);
-      if (table == null || !table.decoder.supportsJsonSerialization) continue;
-      final row = table.decoder.fromJson(change.newRowJson!);
-      if (row == null) continue;
-      final pk = table.decoder.getPrimaryKey(row);
-      if (pk == null) continue;
-      if (table.ownedKeys(pk).isNotEmpty) continue;
-      _awaitedOwnershipKeys
-          .putIfAbsent(change.tableName, () => <dynamic>{})
-          .add(pk);
-    }
   }
 
   bool _isPureInsert(PendingMutation mutation) {
@@ -816,8 +797,8 @@ class MutationSyncer implements MutationHandler {
           're-check after resubscribe hydrates ownership '
           '(${rechecks + 1}/$_maxAbortRecheck).',
         );
-        _stashAwaitedInsertKeys(mutation);
-        return _SyncStep.pauseQueue;
+        _awaitedRows.trackUnownedInserts(mutation);
+        return _SyncStep.next;
       }
       SdkLogger.w(
         'Reducer ${mutation.reducerName} aborted on replay '
@@ -878,7 +859,7 @@ class MutationSyncer implements MutationHandler {
           'Timeout syncing ${mutation.reducerName}: $e. Effect not '
           'present; keeping in queue for retry.',
         );
-        _stashAwaitedInsertKeys(mutation);
+        _awaitedRows.trackUnownedInserts(mutation);
         return _SyncStep.pauseQueue;
       case _TimeoutOutcome.undetectable:
         SdkLogger.w(
@@ -886,7 +867,7 @@ class MutationSyncer implements MutationHandler {
           'be verified; keeping in queue for retry (at-least-once — the '
           'server may or may not have executed it).',
         );
-        _stashAwaitedInsertKeys(mutation);
+        _awaitedRows.trackUnownedInserts(mutation);
         return _SyncStep.pauseQueue;
     }
   }
