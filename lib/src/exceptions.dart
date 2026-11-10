@@ -24,6 +24,19 @@ class SpacetimeDbReducerException extends SpacetimeDbException {
   String toString() => 'SpacetimeDbReducerException($reducerName): $message';
 }
 
+class SpacetimeDbProcedureException extends SpacetimeDbException {
+  final String procedureName;
+
+  SpacetimeDbProcedureException({
+    required this.procedureName,
+    required String message,
+  }) : super(message);
+
+  @override
+  String toString() =>
+      'SpacetimeDbProcedureException($procedureName): $message';
+}
+
 class SpacetimeDbConnectionException extends SpacetimeDbException {
   final ConnectionState? lastKnownState;
 

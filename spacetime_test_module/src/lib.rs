@@ -251,6 +251,19 @@ pub fn divide_by_zero(_ctx: &mut ProcedureContext, numerator: u32) -> u32 {
     numerator / divisor
 }
 
+#[procedure]
+pub fn echo_status(_ctx: &mut ProcedureContext, status: NoteStatus) -> NoteStatus {
+    status
+}
+
+#[procedure]
+pub fn maybe_greeting(_ctx: &mut ProcedureContext, name: Option<String>) -> Option<String> {
+    name.map(|n| format!("hello {n}"))
+}
+
+#[procedure]
+pub fn return_nothing(_ctx: &mut ProcedureContext) {}
+
 /// View to get all notes
 /// Uses the btree-indexed timestamp column to iterate all rows
 #[view(accessor = all_notes, public)]

@@ -31,6 +31,16 @@ class SchemaNormalizer {
         element.type = _rewrite(element.type, element.name);
       }
     }
+
+    for (final procedure in schema.procedures) {
+      for (final element in procedure.params.elements) {
+        element.type = _rewrite(element.type, element.name);
+      }
+      procedure.returnType = _rewrite(
+        procedure.returnType,
+        '${procedure.name}_return',
+      );
+    }
   }
 
   AlgebraicType _rewrite(AlgebraicType type, String? hint) => switch (type) {

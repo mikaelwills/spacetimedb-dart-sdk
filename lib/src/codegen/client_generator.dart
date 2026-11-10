@@ -22,6 +22,10 @@ class ClientGenerator {
       imports.add(Directive.import('reducer_args.dart'));
     }
 
+    if (schema.procedures.isNotEmpty) {
+      imports.add(Directive.import('procedures.dart'));
+    }
+
     for (final table in schema.tables) {
       imports.add(Directive.import('${table.name}.dart'));
     }
@@ -77,6 +81,18 @@ class ClientGenerator {
             ..modifier = FieldModifier.final$,
         ),
       ]);
+
+      if (schema.procedures.isNotEmpty) {
+        b.fields.add(
+          Field(
+            (f) => f
+              ..name = 'procedures'
+              ..type = refer('Procedures')
+              ..late = true
+              ..modifier = FieldModifier.final$,
+          ),
+        );
+      }
 
       b.methods.add(
         Method(
@@ -289,8 +305,9 @@ return cache.iter().first;
               ..toThis = true,
           ),
         ])
-        ..body = const Code(
-          'reducers = Reducers(subscriptions.reducers, subscriptions.reducerEmitter);',
+        ..body = Code(
+          'reducers = Reducers(subscriptions.reducers, subscriptions.reducerEmitter);'
+          '${schema.procedures.isNotEmpty ? 'procedures = Procedures(subscriptions.procedures);' : ''}',
         ),
     );
   }

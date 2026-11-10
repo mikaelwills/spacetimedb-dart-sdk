@@ -7,6 +7,7 @@ import 'package:spacetimedb_sdk/codegen.dart';
 
 import 'reducers.dart';
 import 'reducer_args.dart';
+import 'procedures.dart';
 import 'cadence_item.dart';
 import 'entity.dart';
 import 'folder.dart';
@@ -28,6 +29,7 @@ class SpacetimeDbClient {
     required this.subscriptions,
   }) {
     reducers = Reducers(subscriptions.reducers, subscriptions.reducerEmitter);
+    procedures = Procedures(subscriptions.procedures);
   }
 
   final SpacetimeDbConnection connection;
@@ -39,6 +41,8 @@ class SpacetimeDbClient {
   final bool _ssl;
 
   late final Reducers reducers;
+
+  late final Procedures procedures;
 
   ReducerEmitter get reducerEmitter {
     return subscriptions.reducerEmitter;

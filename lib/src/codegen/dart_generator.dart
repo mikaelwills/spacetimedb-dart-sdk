@@ -1,4 +1,5 @@
 import 'package:spacetimedb_sdk/src/codegen/client_generator.dart';
+import 'package:spacetimedb_sdk/src/codegen/procedure_generator.dart';
 import 'package:spacetimedb_sdk/src/codegen/reducer_generator.dart';
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
 import 'package:spacetimedb_sdk/src/codegen/table_generator.dart';
@@ -82,6 +83,21 @@ class DartGenerator {
         GeneratedFile(
           filename: 'reducer_args.dart',
           content: generator.generateArgDecoders(),
+        ),
+      );
+    }
+
+    if (schema.procedures.isNotEmpty) {
+      final generator = ProcedureGenerator(
+        schema.procedures,
+        typeSpace: schema.typeSpace,
+        typeDefs: schema.types,
+        tables: schema.tables,
+      );
+      files.add(
+        GeneratedFile(
+          filename: 'procedures.dart',
+          content: generator.generate(),
         ),
       );
     }

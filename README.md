@@ -263,6 +263,22 @@ client.reducers.onCreateUser((ctx, name, email) {
 
 Generated `client.reducers.on<Reducer>(...)` listeners fire **only on the client that initiated the call**. The v2 wire protocol deliberately does not broadcast reducer-call metadata (caller identity, args, reducer name) to non-callers. To react to writes from any client, listen to the table's row streams (`client.<table>.onInsert` / `onUpdate` / `onDelete`); the row data carries the full delta and is what most code wants anyway. If you genuinely need to know which connection performed a write, model it as explicit data: a `created_by` column or a separate audit-log table the reducer writes.
 
+## Procedures
+
+Each client-callable procedure gets a typed method on `client.procedures` that returns its decoded result. Procedures are not queued offline: a call made while disconnected fails at once.
+
+```dart
+final sum = await client.procedures.addNumbers(a: 2, b: 40); // 42
+
+try {
+  await client.procedures.fetchWeather(city: 'London', timeout: const Duration(seconds: 30));
+} on SpacetimeDbProcedureException catch (e) {
+  print('${e.procedureName} failed: ${e.message}');
+}
+```
+
+A procedure returning `()` gives `Future<void>`. Without `timeout`, a call waits until its result arrives or the connection drops.
+
 ## Subscriptions
 
 Multiple queries batch into a single subscription set, delivered atomically. Each call to `subscribe()` creates one subscription set with a client-assigned `QuerySetId`.
@@ -313,6 +329,7 @@ try {
 The subtypes let you narrow when you care:
 
 - `SpacetimeDbReducerException`: the server rejected a reducer (`Failed` from an explicit `Err(...)` return, or `InternalError` from a host-side fault like a panic). Inspect `e.result.status` to tell them apart.
+- `SpacetimeDbProcedureException`: a procedure failed on the server (`e.message` is the server's message) or its return value could not be decoded.
 - `SpacetimeDbConnectionException`: transport failure (socket, WebSocket, handshake).
 - `SpacetimeDbAuthException`: auth-related connection failure (extends `SpacetimeDbConnectionException`).
 - `SpacetimeDbTimeoutException`: an SDK-imposed timeout fired.

@@ -242,6 +242,7 @@ class SchemaExtractor {
       'types': <dynamic>[],
       'misc_exports': <dynamic>[],
       'views': <dynamic>[],
+      'procedures': <dynamic>[],
     };
 
     for (final rawSection in sections) {
@@ -272,6 +273,10 @@ class SchemaExtractor {
           result['misc_exports'] = sectionValue is List ? sectionValue : [];
         case 'Views':
           result['views'] = sectionValue is List ? sectionValue : [];
+        case 'Procedures':
+          result['procedures'] = sectionValue is List
+              ? _clientCallable(sectionValue)
+              : [];
       }
     }
 
@@ -279,21 +284,21 @@ class SchemaExtractor {
   }
 
   /// Filter reducers to only client-callable ones and normalize field names
+  static List<Map> _clientCallable(List<dynamic> functions) {
+    return functions.whereType<Map>().where((f) {
+      final vis = f['visibility'];
+      return vis is Map && vis.containsKey('ClientCallable');
+    }).toList();
+  }
+
   static List<dynamic> _filterClientCallableReducers(List<dynamic> reducers) {
-    return reducers
-        .whereType<Map>()
-        .where((r) {
-          final vis = r['visibility'];
-          return vis is Map && vis.containsKey('ClientCallable');
-        })
-        .map((r) {
-          return <String, dynamic>{
-            'name': r['source_name'] ?? r['name'] ?? '',
-            'params': r['params'] ?? {},
-            'lifecycle': {},
-          };
-        })
-        .toList();
+    return _clientCallable(reducers).map((r) {
+      return <String, dynamic>{
+        'name': r['source_name'] ?? r['name'] ?? '',
+        'params': r['params'] ?? {},
+        'lifecycle': {},
+      };
+    }).toList();
   }
 
   /// Convert V10 type definitions to the format expected by TypeDef.fromJson

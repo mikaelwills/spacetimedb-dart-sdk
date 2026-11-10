@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Typed procedure calls.** Codegen emits a `Procedures` class with one method per client-callable procedure on the generated client's `procedures` field. Each call returns a `Future` of the decoded return type, matched by request id. It fails with `SpacetimeDbProcedureException` (the server's message), with `SpacetimeDbConnectionException` when not connected or the connection drops, and with `SpacetimeDbTimeoutException` when the optional `timeout` passes. `SpacetimeDbProcedureException` is a new `SpacetimeDbException` subtype, so an exhaustive `switch` over it needs a new case.
+
 - **`TokenProvider` (optional `tokenProvider` on `SpacetimeDbConnection` and generated `create`).** Before a reconnect, the SDK asks the provider for a new token when the current one is unreadable, has no `exp`, or is within 5% of its lifetime (at least 30 s) of expiry; after a 401/403 it asks once more and retries before `AuthError`. Not called for the first connect; no provider = behaviour unchanged.
 
 ### Changed

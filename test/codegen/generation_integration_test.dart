@@ -295,20 +295,27 @@ dependencies:
           )
           .length;
 
-      // Should have: tables + sum_types + product_types + reducers +
-      // reducer_args + client
+      const systemFiles = [
+        'reducers.dart',
+        'reducer_args.dart',
+        'procedures.dart',
+        'client.dart',
+      ];
       final expectedFiles =
-          schema.tables.length + sumTypeCount + productTypeCount + 3;
+          schema.tables.length +
+          sumTypeCount +
+          productTypeCount +
+          systemFiles.length;
       expect(
         files.length,
         equals(expectedFiles),
         reason:
             'Expected ${schema.tables.length} tables + $sumTypeCount sum types '
-            '+ $productTypeCount product types + 3 system files',
+            '+ $productTypeCount product types + ${systemFiles.length} system files',
       );
 
-      // Verify filenames
       final filenames = files.map((f) => f.filename).toList();
+      expect(filenames, containsAll(systemFiles));
       expect(filenames, contains('reducers.dart'));
       expect(filenames, contains('reducer_args.dart'));
       expect(filenames, contains('client.dart'));

@@ -10,6 +10,7 @@ String classify(SpacetimeDbException e) => switch (e) {
   SpacetimeDbAuthException() => 'auth',
   SpacetimeDbConnectionException() => 'connection',
   SpacetimeDbReducerException() => 'reducer',
+  SpacetimeDbProcedureException() => 'procedure',
   SpacetimeDbTimeoutException() => 'timeout',
   SpacetimeDbSchemaException() => 'schema',
   SpacetimeDbProtocolException() => 'protocol',
@@ -35,6 +36,10 @@ void main() {
             timestamp: DateTime.now(),
           ),
         ): 'reducer',
+        SpacetimeDbProcedureException(
+          procedureName: 'divide_by_zero',
+          message: 'attempt to divide by zero',
+        ): 'procedure',
         SpacetimeDbTimeoutException(
           'timed out',
           elapsed: const Duration(seconds: 1),

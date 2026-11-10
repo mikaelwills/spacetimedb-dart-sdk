@@ -5,6 +5,7 @@ import 'type_models.dart';
 import 'table_models.dart';
 import 'reducer_models.dart';
 import 'view_models.dart';
+import 'procedure_models.dart';
 
 class DatabaseSchema {
   final String databaseName;
@@ -13,6 +14,7 @@ class DatabaseSchema {
   final List<ReducerSchema> reducers;
   final List<TypeDef> types;
   final List<ViewSchema> views;
+  final List<ProcedureSchema> procedures;
 
   DatabaseSchema({
     required this.databaseName,
@@ -21,6 +23,7 @@ class DatabaseSchema {
     required this.reducers,
     required this.types,
     required this.views,
+    this.procedures = const [],
   });
 
   factory DatabaseSchema.fromJson(String dbName, Map<String, dynamic> json) {
@@ -46,6 +49,24 @@ class DatabaseSchema {
     }
     views.sort((a, b) => a.name.compareTo(b.name));
 
+    final procedures = <ProcedureSchema>[];
+    final proceduresJson = json['procedures'];
+    if (proceduresJson is List && proceduresJson.isNotEmpty) {
+      procedures.addAll(
+        proceduresJson.whereType<Map<String, dynamic>>().map(
+          ProcedureSchema.fromJson,
+        ),
+      );
+    } else if (miscExportsJson is List) {
+      for (final item in miscExportsJson) {
+        if (item is Map<String, dynamic> &&
+            item['Procedure'] is Map<String, dynamic>) {
+          procedures.add(ProcedureSchema.fromJson(item['Procedure']));
+        }
+      }
+    }
+    procedures.sort((a, b) => a.name.compareTo(b.name));
+
     return DatabaseSchema(
       databaseName: dbName,
       typeSpace: TypeSpace.fromJson(json['typespace'] ?? {}),
@@ -60,6 +81,7 @@ class DatabaseSchema {
           ? typesJson.map((t) => TypeDef.fromJson(t)).toList()
           : [],
       views: views,
+      procedures: procedures,
     );
   }
 }

@@ -13,6 +13,7 @@ import '../messages/shared_types.dart';
 import '../messages/client_messages.dart';
 import '../messages/subscribe_batch.dart';
 import '../messages/update_status.dart';
+import '../procedures/procedure_caller.dart';
 import '../reducers/reducer_caller.dart';
 import '../reducers/reducer_registry.dart';
 import '../reducers/reducer_emitter.dart';
@@ -51,6 +52,7 @@ class SubscriptionManager {
   final SpacetimeDbConnection _connection;
   final ClientCache cache = ClientCache();
   late final ReducerCaller reducers;
+  late final ProcedureCaller procedures = ProcedureCaller(_connection);
   final ReducerRegistry reducerRegistry = ReducerRegistry();
   final ReducerEmitter reducerEmitter = ReducerEmitter();
 
@@ -402,6 +404,7 @@ class SubscriptionManager {
     _subscriptionErrorController.close();
     _reducerResultController.close();
     _procedureResultController.close();
+    procedures.dispose();
     reducerEmitter.dispose();
     _subscriptionsReady.dispose();
     await _mutationSyncer?.dispose();
@@ -473,6 +476,7 @@ class SubscriptionManager {
         _subscriptionsReady.value = false;
         _mutationSyncer?.cancelRetry();
         reducers.failAllPendingRequests(state.displayName);
+        procedures.failAllPending(state.displayName);
         _mutationSyncer?.flushPendingSnapshots();
         _completeAllSubscribeWaiters();
       }
@@ -875,6 +879,7 @@ class SubscriptionManager {
         _handleReducerResult(message);
         _reducerResultController.add(message);
       case ProcedureResultMessage():
+        procedures.handleResult(message);
         _procedureResultController.add(message);
     }
   }

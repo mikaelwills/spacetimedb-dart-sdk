@@ -15,5 +15,7 @@ export 'models/table_models.dart';
 // Reducers
 export 'models/reducer_models.dart';
 
+export 'models/procedure_models.dart';
+
 // Views
 export 'models/view_models.dart';

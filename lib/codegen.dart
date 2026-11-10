@@ -21,6 +21,8 @@ export 'src/reducers/reducer_registry.dart';
 export 'src/reducers/reducer_emitter.dart';
 export 'src/reducers/mutation_handler.dart';
 
+export 'src/procedures/procedure_caller.dart';
+
 // Offline internals needed by generated client
 export 'src/offline/mutation_syncer.dart';
 export 'src/offline/pending_mutation.dart';
