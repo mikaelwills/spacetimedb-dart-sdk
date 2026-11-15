@@ -1,6 +1,7 @@
 import 'package:code_builder/code_builder.dart' hide TypeDef;
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
 import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
+import 'package:spacetimedb_sdk/src/codegen/dart_identifiers.dart';
 
 class ProcedureGenerator {
   final List<ProcedureSchema> procedures;
@@ -97,7 +98,7 @@ class ProcedureGenerator {
 
     final body = StringBuffer()..writeln('final encoder = BsatnEncoder();');
     for (final param in procedure.params.elements) {
-      final paramName = toCamelCase(param.name ?? 'unknown');
+      final paramName = reducerParamDartName(param);
       body.writeln(
         '${param.type.encodeExpression(paramName, typeSpace: typeSpace, typeDefs: typeDefs, tables: tables)};',
       );
@@ -108,7 +109,7 @@ class ProcedureGenerator {
 
     return Method((m) {
       m
-        ..name = toCamelCase(procedure.name)
+        ..name = toSafeMemberName(toCamelCase(procedure.name))
         ..returns = refer('Future<$returnType>')
         ..docs.addAll([
           '/// Calls the `${procedure.name}` procedure and returns its result.',
@@ -122,7 +123,7 @@ class ProcedureGenerator {
         m.optionalParameters.add(
           Parameter(
             (p) => p
-              ..name = toCamelCase(param.name ?? 'unknown')
+              ..name = reducerParamDartName(param)
               ..named = true
               ..required = true
               ..type = refer(

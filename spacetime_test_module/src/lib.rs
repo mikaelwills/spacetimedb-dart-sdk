@@ -504,6 +504,22 @@ pub fn create_single_field(ctx: &ReducerContext, id: u32) {
     ctx.db.single_field().insert(SingleField { id });
 }
 
+#[table(accessor = stage, public)]
+pub struct Stage {
+    #[primary_key]
+    pub id: u32,
+    pub class: String,
+}
+
+#[reducer]
+pub fn rename_stage(ctx: &ReducerContext, stage_id: u32, new: String) {
+    let Some(mut stage) = ctx.db.stage().id().find(stage_id) else {
+        return;
+    };
+    stage.class = new;
+    ctx.db.stage().id().update(stage);
+}
+
 /// Initialize with some test data
 #[reducer(init)]
 pub fn init(ctx: &ReducerContext) {

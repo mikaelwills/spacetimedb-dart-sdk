@@ -2,6 +2,7 @@ import 'package:code_builder/code_builder.dart' hide TypeDef;
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
 import 'package:spacetimedb_sdk/src/codegen/view_generator.dart';
 import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
+import 'package:spacetimedb_sdk/src/codegen/dart_identifiers.dart';
 
 class ClientGenerator {
   final DatabaseSchema schema;
@@ -198,7 +199,7 @@ class ClientGenerator {
 
   void _addTableGetters(ClassBuilder b) {
     for (final table in schema.tables) {
-      final tableName = toCamelCase(table.name);
+      final tableName = toSafeMemberName(toCamelCase(table.name));
       final className = toPascalCase(table.name);
       b.methods.add(
         Method(
@@ -219,7 +220,7 @@ class ClientGenerator {
       final rowType = _viewGenerator.getViewRowType(view);
       if (rowType == null) continue;
 
-      final viewName = toCamelCase(view.name);
+      final viewName = toSafeMemberName(toCamelCase(view.name));
       final pattern = _viewGenerator.getViewReturnPattern(view);
 
       switch (pattern) {

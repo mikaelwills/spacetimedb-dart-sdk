@@ -1,6 +1,7 @@
 import 'package:code_builder/code_builder.dart' hide TypeDef;
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
 import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
+import 'package:spacetimedb_sdk/src/codegen/dart_identifiers.dart';
 
 class ReducerGenerator {
   final List<ReducerSchema> reducers;
@@ -119,12 +120,12 @@ class ReducerGenerator {
   }
 
   Method _buildReducerMethod(ReducerSchema reducer) {
-    final methodName = toCamelCase(reducer.name);
+    final methodName = toSafeMemberName(toCamelCase(reducer.name));
 
     final encoderStatements = StringBuffer();
     encoderStatements.writeln('final encoder = BsatnEncoder();');
     for (final param in reducer.params.elements) {
-      final paramName = toCamelCase(param.name ?? 'unknown');
+      final paramName = reducerParamDartName(param);
       encoderStatements.writeln(
         '${param.type.encodeExpression(paramName, typeSpace: typeSpace, typeDefs: typeDefs, tables: tables)};',
       );
@@ -150,7 +151,7 @@ class ReducerGenerator {
         ]);
 
       for (final param in reducer.params.elements) {
-        final paramName = toCamelCase(param.name ?? 'unknown');
+        final paramName = reducerParamDartName(param);
         final dartType = param.type.toDartTypeName(
           typeSpace: typeSpace,
           typeDefs: typeDefs,
@@ -193,7 +194,7 @@ class ReducerGenerator {
 
     final callbackParams = StringBuffer('EventContext ctx');
     for (final param in reducer.params.elements) {
-      final paramName = toCamelCase(param.name ?? 'unknown');
+      final paramName = reducerParamDartName(param);
       final dartType = param.type.toDartTypeName(
         typeSpace: typeSpace,
         typeDefs: typeDefs,
@@ -214,7 +215,7 @@ class ReducerGenerator {
 
     final callbackArgs = StringBuffer('callback(ctx');
     for (final param in reducer.params.elements) {
-      final paramName = toCamelCase(param.name ?? 'unknown');
+      final paramName = reducerParamDartName(param);
       callbackArgs.write(', args.$paramName');
     }
     callbackArgs.write(');');
@@ -243,7 +244,7 @@ class ReducerGenerator {
       b.name = className;
 
       for (final param in reducer.params.elements) {
-        final paramName = toCamelCase(param.name ?? 'unknown');
+        final paramName = reducerParamDartName(param);
         final dartType = param.type.toDartTypeName(
           typeSpace: typeSpace,
           typeDefs: typeDefs,
@@ -265,7 +266,7 @@ class ReducerGenerator {
         b.constructors.add(
           Constructor((c) {
             for (final param in reducer.params.elements) {
-              final paramName = toCamelCase(param.name ?? 'unknown');
+              final paramName = reducerParamDartName(param);
               c.optionalParameters.add(
                 Parameter(
                   (p) => p
@@ -288,14 +289,14 @@ class ReducerGenerator {
 
     final decodeBody = StringBuffer();
     for (final param in reducer.params.elements) {
-      final paramName = toCamelCase(param.name ?? 'unknown');
+      final paramName = reducerParamDartName(param);
       decodeBody.writeln(
         'final $paramName = ${param.type.decodeExpression(typeSpace: typeSpace, typeDefs: typeDefs, tables: tables)};',
       );
     }
     decodeBody.writeln('return $argsClassName(');
     for (final param in reducer.params.elements) {
-      final paramName = toCamelCase(param.name ?? 'unknown');
+      final paramName = reducerParamDartName(param);
       decodeBody.writeln('$paramName: $paramName,');
     }
     decodeBody.writeln(');');

@@ -1,34 +1,35 @@
 import 'package:code_builder/code_builder.dart' hide TypeDef;
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
 import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
+import 'package:spacetimedb_sdk/src/codegen/dart_identifiers.dart';
+import 'package:spacetimedb_sdk/src/codegen/generators/product_json_expressions.dart';
 
 class ProductClassBuilder {
   final TypeSpace typeSpace;
   final List<TypeDef> typeDefs;
   final List<TableSchema> tables;
+  final ProductJsonExpressions _json;
 
   ProductClassBuilder({
     required this.typeSpace,
     required this.typeDefs,
     this.tables = const [],
-  });
+  }) : _json = ProductJsonExpressions(
+         typeSpace: typeSpace,
+         typeDefs: typeDefs,
+         tables: tables,
+       );
 
   Class buildDataClass(String className, ProductType productType) {
     return Class((b) {
       b.name = className;
 
       for (final element in productType.elements) {
-        final fieldName = toCamelCase(element.name ?? 'unknown');
-        final dartType = element.type.toDartTypeName(
-          typeSpace: typeSpace,
-          typeDefs: typeDefs,
-          tables: tables,
-        );
         b.fields.add(
           Field(
             (f) => f
-              ..name = fieldName
-              ..type = refer(dartType)
+              ..name = _fieldName(element)
+              ..type = refer(_dartTypeOf(element.type))
               ..modifier = FieldModifier.final$,
           ),
         );
@@ -37,11 +38,10 @@ class ProductClassBuilder {
       b.constructors.add(
         Constructor((c) {
           for (final element in productType.elements) {
-            final fieldName = toCamelCase(element.name ?? 'unknown');
             c.optionalParameters.add(
               Parameter(
                 (p) => p
-                  ..name = fieldName
+                  ..name = _fieldName(element)
                   ..named = true
                   ..required = true
                   ..toThis = true,
@@ -62,10 +62,23 @@ class ProductClassBuilder {
     });
   }
 
+  String _fieldName(ProductElement element) =>
+      toSafeMemberName(_jsonKey(element));
+
+  String _jsonKey(ProductElement element) =>
+      toCamelCase(element.name ?? 'unknown');
+
+  String _dartTypeOf(AlgebraicType type) => type.toDartTypeName(
+    typeSpace: typeSpace,
+    typeDefs: typeDefs,
+    tables: tables,
+  );
+
+  List<String> _fieldNames(ProductType productType) =>
+      productType.elements.map(_fieldName).toList();
+
   Method _buildEquals(String className, ProductType productType) {
-    final fields = productType.elements
-        .map((e) => toCamelCase(e.name ?? 'unknown'))
-        .toList();
+    final fields = _fieldNames(productType);
     final comparisons = fields.map((f) => '$f == other.$f').join(' && ');
     final body = comparisons.isEmpty
         ? 'return identical(this, other) || other is $className;'
@@ -88,10 +101,7 @@ class ProductClassBuilder {
   }
 
   Method _buildHashCode(ProductType productType) {
-    final fields = productType.elements
-        .map((e) => toCamelCase(e.name ?? 'unknown'))
-        .toList();
-    final hashArgs = fields.join(', ');
+    final hashArgs = _fieldNames(productType).join(', ');
 
     return Method(
       (m) => m
@@ -104,10 +114,7 @@ class ProductClassBuilder {
   }
 
   Method _buildToString(String className, ProductType productType) {
-    final fields = productType.elements
-        .map((e) => toCamelCase(e.name ?? 'unknown'))
-        .toList();
-    final parts = fields.map((f) => '$f: \$$f').join(', ');
+    final parts = _fieldNames(productType).map((f) => '$f: \$$f').join(', ');
 
     return Method(
       (m) => m
@@ -123,12 +130,8 @@ class ProductClassBuilder {
     final args = StringBuffer();
 
     for (final element in productType.elements) {
-      final fieldName = toCamelCase(element.name ?? 'unknown');
-      final dartType = element.type.toDartTypeName(
-        typeSpace: typeSpace,
-        typeDefs: typeDefs,
-        tables: tables,
-      );
+      final fieldName = _fieldName(element);
+      final dartType = _dartTypeOf(element.type);
       final nullableType = dartType.endsWith('?') ? dartType : '$dartType?';
       params.add(
         Parameter(
@@ -153,9 +156,8 @@ class ProductClassBuilder {
   Method _buildEncodeBsatn(ProductType productType) {
     final body = StringBuffer();
     for (final element in productType.elements) {
-      final fieldName = toCamelCase(element.name ?? 'unknown');
       final expr = element.type.encodeExpression(
-        fieldName,
+        _fieldName(element),
         typeSpace: typeSpace,
         typeDefs: typeDefs,
         tables: tables,
@@ -181,13 +183,12 @@ class ProductClassBuilder {
   Method _buildDecodeBsatn(String className, ProductType productType) {
     final args = StringBuffer();
     for (final element in productType.elements) {
-      final fieldName = toCamelCase(element.name ?? 'unknown');
       final expr = element.type.decodeExpression(
         typeSpace: typeSpace,
         typeDefs: typeDefs,
         tables: tables,
       );
-      args.writeln('$fieldName: $expr,');
+      args.writeln('${_fieldName(element)}: $expr,');
     }
 
     return Method(
@@ -209,9 +210,8 @@ class ProductClassBuilder {
   Method _buildToJson(ProductType productType) {
     final entries = StringBuffer();
     for (final element in productType.elements) {
-      final fieldName = toCamelCase(element.name ?? 'unknown');
-      final jsonValue = _getToJsonExpression(fieldName, element.type);
-      entries.writeln("'$fieldName': $jsonValue,");
+      final jsonValue = _json.toJsonValue(_fieldName(element), element.type);
+      entries.writeln("'${_jsonKey(element)}': $jsonValue,");
     }
 
     return Method(
@@ -225,9 +225,8 @@ class ProductClassBuilder {
   Constructor _buildFromJson(String className, ProductType productType) {
     final args = StringBuffer();
     for (final element in productType.elements) {
-      final fieldName = toCamelCase(element.name ?? 'unknown');
-      final fromJsonExpr = _getFromJsonExpression(fieldName, element.type);
-      args.writeln('$fieldName: $fromJsonExpr,');
+      final fromJsonExpr = _json.fromJsonValue(_jsonKey(element), element.type);
+      args.writeln('${_fieldName(element)}: $fromJsonExpr,');
     }
 
     return Constructor(
@@ -243,123 +242,5 @@ class ProductClassBuilder {
         )
         ..body = Code('return $className($args);'),
     );
-  }
-
-  String _getToJsonExpression(String fieldName, AlgebraicType type) =>
-      switch (type) {
-        IdentityType() => '$fieldName.toJson()',
-        ConnectionIdType() => '$fieldName.toJson()',
-        UuidType() => '$fieldName.toJson()',
-        TimestampType() => '$fieldName.toInt()',
-        TimeDurationType() => '$fieldName.toInt()',
-        ScheduleAtType() => '$fieldName.toJson()',
-        PrimitiveType(kind: PrimitiveKind.u64 || PrimitiveKind.i64) =>
-          '$fieldName.toInt()',
-        RefType() => '$fieldName.toJson()',
-        ArrayType(element: final inner) => _getArrayToJsonExpression(
-          fieldName,
-          inner,
-        ),
-        OptionType(element: final inner) => _getOptionToJsonExpression(
-          fieldName,
-          inner,
-        ),
-        _ => fieldName,
-      };
-
-  String _getOptionToJsonExpression(String fieldName, AlgebraicType inner) =>
-      switch (inner) {
-        IdentityType() => '$fieldName?.toJson()',
-        ConnectionIdType() => '$fieldName?.toJson()',
-        UuidType() => '$fieldName?.toJson()',
-        TimestampType() => '$fieldName?.toInt()',
-        PrimitiveType(kind: PrimitiveKind.u64 || PrimitiveKind.i64) =>
-          '$fieldName?.toInt()',
-        RefType() => '$fieldName?.toJson()',
-        _ => fieldName,
-      };
-
-  String _getArrayToJsonExpression(String fieldName, AlgebraicType inner) =>
-      switch (inner) {
-        RefType() => '$fieldName.map((e) => e.toJson()).toList()',
-        PrimitiveType(kind: PrimitiveKind.u64 || PrimitiveKind.i64) =>
-          '$fieldName.map((e) => e.toInt()).toList()',
-        _ => fieldName,
-      };
-
-  String _getFromJsonExpression(String fieldName, AlgebraicType type) {
-    final dartType = type.toDartTypeName(
-      typeSpace: typeSpace,
-      typeDefs: typeDefs,
-      tables: tables,
-    );
-
-    return switch (type) {
-      IdentityType() => "Identity.fromJson(json['$fieldName'] ?? '')",
-      ConnectionIdType() =>
-        "ConnectionId.fromJson(json['$fieldName'] as String)",
-      UuidType() => "Uuid.fromJson(json['$fieldName'] as String)",
-      TimestampType() => "Int64(json['$fieldName'] ?? 0)",
-      TimeDurationType() => "Int64(json['$fieldName'] ?? 0)",
-      ScheduleAtType() =>
-        "ScheduleAt.fromJson(Map<String, dynamic>.from(json['$fieldName'] ?? {}))",
-      PrimitiveType(kind: PrimitiveKind.u64 || PrimitiveKind.i64) =>
-        "Int64(json['$fieldName'] ?? 0)",
-      RefType() =>
-        "$dartType.fromJson(Map<String, dynamic>.from(json['$fieldName'] ?? {}))",
-      ArrayType(element: final inner) => _getArrayFromJsonExpression(
-        fieldName,
-        inner,
-      ),
-      OptionType(element: final inner) => _getOptionFromJsonExpression(
-        fieldName,
-        inner,
-      ),
-      PrimitiveType(kind: PrimitiveKind.string) => "json['$fieldName'] ?? ''",
-      PrimitiveType(kind: PrimitiveKind.bool_) => "json['$fieldName'] ?? false",
-      PrimitiveType(kind: PrimitiveKind.f32 || PrimitiveKind.f64) =>
-        "(json['$fieldName'] ?? 0.0).toDouble()",
-      PrimitiveType() when type.isInt => "json['$fieldName'] ?? 0",
-      _ => "json['$fieldName']",
-    };
-  }
-
-  String _getOptionFromJsonExpression(String fieldName, AlgebraicType inner) {
-    final innerDartType = inner.toDartTypeName(
-      typeSpace: typeSpace,
-      typeDefs: typeDefs,
-      tables: tables,
-    );
-    return switch (inner) {
-      IdentityType() =>
-        "json['$fieldName'] == null ? null : Identity.fromJson(json['$fieldName'])",
-      ConnectionIdType() =>
-        "json['$fieldName'] == null ? null : ConnectionId.fromJson(json['$fieldName'] as String)",
-      UuidType() =>
-        "json['$fieldName'] == null ? null : Uuid.fromJson(json['$fieldName'] as String)",
-      TimestampType() =>
-        "json['$fieldName'] == null ? null : Int64(json['$fieldName'])",
-      PrimitiveType(kind: PrimitiveKind.u64 || PrimitiveKind.i64) =>
-        "json['$fieldName'] == null ? null : Int64(json['$fieldName'])",
-      RefType() =>
-        "json['$fieldName'] == null ? null : $innerDartType.fromJson(Map<String, dynamic>.from(json['$fieldName']))",
-      _ => "json['$fieldName']",
-    };
-  }
-
-  String _getArrayFromJsonExpression(String fieldName, AlgebraicType inner) {
-    final innerDartType = inner.toDartTypeName(
-      typeSpace: typeSpace,
-      typeDefs: typeDefs,
-      tables: tables,
-    );
-
-    return switch (inner) {
-      RefType() =>
-        "(json['$fieldName'] ?? []).cast<Map<String, dynamic>>().map((e) => $innerDartType.fromJson(e)).toList()",
-      PrimitiveType(kind: PrimitiveKind.u64 || PrimitiveKind.i64) =>
-        "(json['$fieldName'] ?? []).cast<int>().map((e) => Int64(e)).toList()",
-      _ => "List<$innerDartType>.from(json['$fieldName'] ?? [])",
-    };
   }
 }

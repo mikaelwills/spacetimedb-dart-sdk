@@ -499,6 +499,30 @@ class Reducers {
     );
   }
 
+  /// Calls the `rename_stage` reducer.
+  ///
+  /// Returns a [TransactionResult] on success. Throws
+  /// [SpacetimeDbReducerException] if the reducer returns `Failed` or
+  /// `InternalError`. The returned status is one of `Committed`,
+  /// `Pending` (queued to offline storage), or `Dropped` (skipped via
+  /// `dropIfOffline: true` while offline).
+  Future<TransactionResult> renameStage({
+    required int stageId,
+    required String new_,
+    List<OptimisticChange>? optimisticChanges,
+    bool dropIfOffline = false,
+  }) async {
+    final encoder = BsatnEncoder();
+    encoder.writeU32(stageId);
+    encoder.writeString(new_);
+    return await _reducerCaller.call(
+      renameStageDef.name,
+      encoder.toBytes(),
+      optimisticChanges: optimisticChanges,
+      dropIfOffline: dropIfOffline,
+    );
+  }
+
   /// Calls the `update_all_notes` reducer.
   ///
   /// Returns a [TransactionResult] on success. Throws
@@ -844,6 +868,18 @@ class Reducers {
       final args = event.reducerArgs;
       if (args is! ReducerThatPanicsArgs) return;
       callback(ctx);
+    });
+  }
+
+  StreamSubscription<void> onRenameStage(
+    void Function(EventContext ctx, int stageId, String new_) callback,
+  ) {
+    return _reducerEmitter.on(renameStageDef).listen((EventContext ctx) {
+      final event = ctx.event;
+      if (event is! ReducerEvent) return;
+      final args = event.reducerArgs;
+      if (args is! RenameStageArgs) return;
+      callback(ctx, args.stageId, args.new_);
     });
   }
 

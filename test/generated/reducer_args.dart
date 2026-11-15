@@ -418,6 +418,25 @@ class ReducerThatPanicsArgsDecoder
   }
 }
 
+class RenameStageArgs {
+  RenameStageArgs({required this.stageId, required this.new_});
+
+  final int stageId;
+
+  final String new_;
+}
+
+class RenameStageArgsDecoder implements ReducerArgDecoder<RenameStageArgs> {
+  const RenameStageArgsDecoder();
+
+  @override
+  RenameStageArgs decode(BsatnDecoder decoder) {
+    final stageId = decoder.readU32();
+    final new_ = decoder.readString();
+    return RenameStageArgs(stageId: stageId, new_: new_);
+  }
+}
+
 class UpdateAllNotesArgs {
   UpdateAllNotesArgs({required this.newContent});
 
@@ -558,6 +577,10 @@ const reducerReturnsErrDef = ReducerDef<ReducerReturnsErrArgs>(
 const reducerThatPanicsDef = ReducerDef<ReducerThatPanicsArgs>(
   'reducer_that_panics',
   ReducerThatPanicsArgsDecoder(),
+);
+const renameStageDef = ReducerDef<RenameStageArgs>(
+  'rename_stage',
+  RenameStageArgsDecoder(),
 );
 const updateAllNotesDef = ReducerDef<UpdateAllNotesArgs>(
   'update_all_notes',

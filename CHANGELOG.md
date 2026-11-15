@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- **Codegen escapes Dart reserved words.** A table column, reducer or procedure parameter, table or reducer name named after a Dart reserved word (for example `new` or `class`), or a name that clashes with a member the generator writes (`toJson`, `hashCode`, `copyWith` and the like), is emitted with a trailing `_` (`new_`, `class_`). The wire format and JSON keys are unchanged. Names that were already safe generate exactly as before.
+
 ## 2.6.0 - 2026-11-12
 
 ### Added

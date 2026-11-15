@@ -1,7 +1,10 @@
 import 'package:code_builder/code_builder.dart' hide TypeDef;
 
 import '../../codegen/codegen_emitter.dart';
+import '../../codegen/dart_identifiers.dart';
 import '../models/type_models.dart';
+
+const _unnamedFieldName = 'field';
 
 enum VariantType { unit, tupleSingle, tupleMultiple, struct }
 
@@ -412,11 +415,12 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
       final fromJsonArgs = StringBuffer();
 
       for (final element in elements) {
-        final fieldName = element.name ?? 'field';
+        final jsonKey = element.name ?? _unnamedFieldName;
+        final fieldName = toSafeMemberName(jsonKey);
         final dartType = element.type.toDartTypeName();
         final toJsonValue = _getToJsonValue(fieldName, element.type);
         final fromJsonValue = _getFromJsonValue(
-          fieldName,
+          jsonKey,
           element.type,
           dartType,
         );
@@ -441,7 +445,7 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
         );
         decodeArgs.writeln('$fieldName: ${element.type.decodeExpression()},');
         encodeBody.writeln('${element.type.encodeExpression(fieldName)};');
-        toJsonEntries.writeln("'$fieldName': $toJsonValue,");
+        toJsonEntries.writeln("'$jsonKey': $toJsonValue,");
         fromJsonArgs.writeln('$fieldName: $fromJsonValue,');
       }
 
@@ -512,7 +516,9 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
         ),
       );
 
-      final structFields = elements.map((e) => e.name ?? 'field').toList();
+      final structFields = elements
+          .map((e) => toSafeMemberName(e.name ?? _unnamedFieldName))
+          .toList();
       _addEqualityMethods(b, className, structFields);
     });
   }
@@ -659,17 +665,17 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
       };
 
   String _getFromJsonValue(
-    String fieldName,
+    String jsonKey,
     AlgebraicType type,
     String dartType,
   ) => switch (type) {
     PrimitiveType(kind: PrimitiveKind.u64 || PrimitiveKind.i64) =>
-      "Int64(json['$fieldName'] ?? 0)",
-    PrimitiveType(kind: PrimitiveKind.string) => "json['$fieldName'] ?? ''",
-    PrimitiveType(kind: PrimitiveKind.bool_) => "json['$fieldName'] ?? false",
+      "Int64(json['$jsonKey'] ?? 0)",
+    PrimitiveType(kind: PrimitiveKind.string) => "json['$jsonKey'] ?? ''",
+    PrimitiveType(kind: PrimitiveKind.bool_) => "json['$jsonKey'] ?? false",
     PrimitiveType(kind: PrimitiveKind.f32 || PrimitiveKind.f64) =>
-      "(json['$fieldName'] ?? 0.0).toDouble()",
-    PrimitiveType() when type.isInt => "json['$fieldName'] ?? 0",
-    _ => "json['$fieldName']",
+      "(json['$jsonKey'] ?? 0.0).toDouble()",
+    PrimitiveType() when type.isInt => "json['$jsonKey'] ?? 0",
+    _ => "json['$jsonKey']",
   };
 }

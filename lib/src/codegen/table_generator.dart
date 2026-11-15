@@ -1,6 +1,7 @@
 import 'package:code_builder/code_builder.dart';
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
 import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
+import 'package:spacetimedb_sdk/src/codegen/dart_identifiers.dart';
 import 'package:spacetimedb_sdk/src/codegen/generators/product_class_builder.dart';
 
 class TableGenerator {
@@ -69,7 +70,9 @@ class TableGenerator {
         final pkIndex = table.primaryKey.first;
         if (pkIndex < productType.elements.length) {
           final pkElement = productType.elements[pkIndex];
-          final pkFieldName = toCamelCase(pkElement.name ?? 'unknown');
+          final pkFieldName = toSafeMemberName(
+            toCamelCase(pkElement.name ?? 'unknown'),
+          );
           final pkDartType = pkElement.type.toDartTypeName(
             typeSpace: schema.typeSpace,
             typeDefs: schema.types,

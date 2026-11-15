@@ -19,6 +19,7 @@ import 'owned_item.dart';
 import 'scheduled_task.dart';
 import 'session_marker.dart';
 import 'single_field.dart';
+import 'stage.dart';
 import 'tagged_item.dart';
 
 class SpacetimeDbClient {
@@ -134,6 +135,10 @@ class SpacetimeDbClient {
     return subscriptions.cache.getTableByTypedName<SingleField>('single_field');
   }
 
+  TableCache<Stage> get stage {
+    return subscriptions.cache.getTableByTypedName<Stage>('stage');
+  }
+
   TableCache<TaggedItem> get taggedItem {
     return subscriptions.cache.getTableByTypedName<TaggedItem>('tagged_item');
   }
@@ -234,6 +239,7 @@ class SpacetimeDbClient {
       'single_field',
       SingleFieldDecoder(),
     );
+    subscriptionManager.cache.registerDecoder<Stage>('stage', StageDecoder());
     subscriptionManager.cache.registerDecoder<TaggedItem>(
       'tagged_item',
       TaggedItemDecoder(),
@@ -274,6 +280,7 @@ class SpacetimeDbClient {
     subscriptionManager.reducerRegistry.register(optIntoForgetOnDisconnectDef);
     subscriptionManager.reducerRegistry.register(reducerReturnsErrDef);
     subscriptionManager.reducerRegistry.register(reducerThatPanicsDef);
+    subscriptionManager.reducerRegistry.register(renameStageDef);
     subscriptionManager.reducerRegistry.register(updateAllNotesDef);
     subscriptionManager.reducerRegistry.register(updateNoteDef);
     subscriptionManager.reducerRegistry.register(updateNoteGuardedDef);
