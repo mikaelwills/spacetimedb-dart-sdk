@@ -116,8 +116,12 @@ DatabaseSchema _primitivePayloadSumSchema() {
 String _generatedFile(List<GeneratedFile> files, String filename) =>
     files.firstWhere((f) => f.filename == filename).content;
 
-Iterable<String> _importedPaths(String source) =>
-    _importPattern.allMatches(source).map((match) => match.group(1)!);
+const _sdkImportPath = 'package:spacetimedb_sdk/codegen.dart';
+
+Iterable<String> _importedPaths(String source) => _importPattern
+    .allMatches(source)
+    .map((match) => match.group(1))
+    .whereType<String>();
 
 final _importPattern = RegExp("import '([^']+)';");
 
@@ -197,10 +201,7 @@ void main() {
         'event_timing.dart',
       );
 
-      expect(_importedPaths(timing), [
-        'package:spacetimedb_sdk/codegen.dart',
-        'timed_span.dart',
-      ]);
+      expect(_importedPaths(timing), [_sdkImportPath, 'timed_span.dart']);
     });
 
     test('a sum of primitive payloads imports only the SDK', () {
@@ -209,7 +210,7 @@ void main() {
         'event_timing.dart',
       );
 
-      expect(_importedPaths(timing), ['package:spacetimedb_sdk/codegen.dart']);
+      expect(_importedPaths(timing), [_sdkImportPath]);
     });
   });
 }
