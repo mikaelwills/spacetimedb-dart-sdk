@@ -6,6 +6,8 @@ enum ViewReturnType { array, option, single, query, unknown }
 const kQueryViewReturnTag = '__query__';
 const kFallbackTypeNamePrefix = 'Type';
 
+typedef ViewRowName = ({String className, String? fileName});
+
 class ViewGenerator {
   final DatabaseSchema schema;
 
@@ -24,16 +26,23 @@ class ViewGenerator {
         _ => ViewReturnType.unknown,
       };
 
-  String? getViewRowType(ViewSchema view) {
+  String? getViewRowType(ViewSchema view) => _viewRowName(view)?.className;
+
+  String? getViewRowFileName(ViewSchema view) => _viewRowName(view)?.fileName;
+
+  Set<String> getViewRowFileNames() =>
+      schema.views.map(getViewRowFileName).whereType<String>().toSet();
+
+  ViewRowName? _viewRowName(ViewSchema view) {
     final pattern = getViewReturnPattern(view);
     final rt = view.returnType;
     if (rt == null) return null;
 
     return switch (pattern) {
-      .array => _rowTypeFromAlgebraic(rt is ArrayType ? rt.element : null),
-      .option => _rowTypeFromOption(rt),
-      .query => _rowTypeFromQuery(rt),
-      .single => _rowTypeFromAlgebraic(rt),
+      .array => _rowNameFromArray(rt),
+      .option => _rowNameFromOption(rt),
+      .query => _rowNameFromQuery(rt),
+      .single => _rowNameFromAlgebraic(rt),
       .unknown => null,
     };
   }
@@ -55,7 +64,7 @@ class ViewGenerator {
     };
   }
 
-  String? _rowTypeFromAlgebraic(AlgebraicType? type) {
+  ViewRowName? _rowNameFromAlgebraic(AlgebraicType? type) {
     if (type is! RefType) return null;
     final entry = schema.typeSpace.types[type.index];
     if (entry.product == null) return null;
@@ -64,26 +73,34 @@ class ViewGenerator {
       schema.types,
       schema.tables,
     );
-    if (resolved == null) return '$kFallbackTypeNamePrefix${type.index}';
-    return resolved.className;
+    if (resolved == null) {
+      return (
+        className: '$kFallbackTypeNamePrefix${type.index}',
+        fileName: null,
+      );
+    }
+    return (className: resolved.className, fileName: resolved.fileName);
   }
 
-  String? _rowTypeFromOption(AlgebraicType rt) {
+  ViewRowName? _rowNameFromArray(AlgebraicType rt) =>
+      _rowNameFromAlgebraic(rt is ArrayType ? rt.element : null);
+
+  ViewRowName? _rowNameFromOption(AlgebraicType rt) {
     if (rt is OptionType) {
-      return _rowTypeFromAlgebraic(rt.element);
+      return _rowNameFromAlgebraic(rt.element);
     }
     if (rt is! IrSumType) return null;
     for (final variant in rt.variants) {
       if (variant.name == 'some') {
-        return _rowTypeFromAlgebraic(variant.type);
+        return _rowNameFromAlgebraic(variant.type);
       }
     }
     return null;
   }
 
-  String? _rowTypeFromQuery(AlgebraicType rt) {
+  ViewRowName? _rowNameFromQuery(AlgebraicType rt) {
     if (rt is! IrProductType || rt.elements.isEmpty) return null;
-    return _rowTypeFromAlgebraic(rt.elements[0].type);
+    return _rowNameFromAlgebraic(rt.elements[0].type);
   }
 
   int? _refFromOption(AlgebraicType rt) {
