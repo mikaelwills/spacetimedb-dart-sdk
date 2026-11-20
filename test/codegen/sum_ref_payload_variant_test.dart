@@ -116,10 +116,10 @@ DatabaseSchema _primitivePayloadSumSchema() {
 String _generatedFile(List<GeneratedFile> files, String filename) =>
     files.firstWhere((f) => f.filename == filename).content;
 
-Iterable<String> _importLines(String source) => source
-    .split('\n')
-    .map((line) => line.trim())
-    .where((line) => line.startsWith('import '));
+Iterable<String> _importedPaths(String source) =>
+    _importPattern.allMatches(source).map((match) => match.group(1)!);
+
+final _importPattern = RegExp("import '([^']+)';");
 
 void main() {
   group('sum variant with a named product payload', () {
@@ -197,9 +197,9 @@ void main() {
         'event_timing.dart',
       );
 
-      expect(_importLines(timing), [
-        "import 'package:spacetimedb_sdk/codegen.dart';",
-        "import 'timed_span.dart';",
+      expect(_importedPaths(timing), [
+        'package:spacetimedb_sdk/codegen.dart',
+        'timed_span.dart',
       ]);
     });
 
@@ -209,9 +209,7 @@ void main() {
         'event_timing.dart',
       );
 
-      expect(_importLines(timing), [
-        "import 'package:spacetimedb_sdk/codegen.dart';",
-      ]);
+      expect(_importedPaths(timing), ['package:spacetimedb_sdk/codegen.dart']);
     });
   });
 }
