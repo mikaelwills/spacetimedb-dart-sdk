@@ -8,10 +8,7 @@ Map<String, dynamic> _field(String name, Map<String, dynamic> type) => {
   'algebraic_type': type,
 };
 
-Map<String, dynamic> _view(
-  String name,
-  List<Map<String, dynamic>> params,
-) => {
+Map<String, dynamic> _view(String name, List<Map<String, dynamic>> params) => {
   'name': name,
   'index': 0,
   'is_public': true,
@@ -50,9 +47,12 @@ DatabaseSchema _schema(List<Map<String, dynamic>> views) =>
 final _whitespace = RegExp(r'\s+');
 const _myRowsGetter = 'TableCache<CalendarOccurrenceRow>getmyRows';
 
-String _clientSource(DatabaseSchema schema) => DartGenerator(
-  schema,
-).generateAll().map((f) => f.content).join().replaceAll(_whitespace, '');
+String _clientSource(DatabaseSchema schema) =>
+    DartGenerator(schema)
+        .generateAll()
+        .map((f) => f.content)
+        .join()
+        .replaceAll(_whitespace, '');
 
 void main() {
   test('a two-parameter view generates a method with two typed parameters', () {
@@ -67,16 +67,16 @@ void main() {
 
     expect(
       source,
-      contains('ViewCall<CalendarOccurrenceRow>calendarRange(Stringfrom,Stringto,)'),
+      contains(
+        'ViewCall<CalendarOccurrenceRow>calendarRange(Stringfrom,Stringto,)',
+      ),
     );
     expect(source, contains("viewName:'calendar_range'"));
     expect(source, contains('arguments:[from,to]'));
   });
 
   test('a view row type that is not a table is named from the schema', () {
-    final source = _clientSource(
-      _schema([_view('my_rows', [])]),
-    );
+    final source = _clientSource(_schema([_view('my_rows', [])]));
 
     expect(source, contains(_myRowsGetter));
     expect(source, isNot(contains('Type0')));
@@ -91,7 +91,10 @@ void main() {
       viewCallSql('my_calendar_attachments', ['evt-1']),
       '''SELECT * FROM "my_calendar_attachments"('evt-1')''',
     );
-    expect(viewCallSql('flagged', [true, 7]), 'SELECT * FROM "flagged"(TRUE, 7)');
+    expect(
+      viewCallSql('flagged', [true, 7]),
+      'SELECT * FROM "flagged"(TRUE, 7)',
+    );
   });
 
   test('a no-parameter view generates the unchanged getter', () {

@@ -227,7 +227,8 @@ class ClientGenerator {
       if (view.params.elements.isNotEmpty) {
         if (pattern != ViewReturnType.unknown) {
           b.methods.add(
-            ParameterisedViewMethodBuilder(schema).build(view, viewName, rowType),
+            ParameterisedViewMethodBuilder(schema)
+                .build(view, viewName, rowType),
           );
         }
         continue;
