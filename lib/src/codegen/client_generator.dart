@@ -1,5 +1,6 @@
 import 'package:code_builder/code_builder.dart' hide TypeDef;
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
+import 'package:spacetimedb_sdk/src/codegen/parameterised_view_method_builder.dart';
 import 'package:spacetimedb_sdk/src/codegen/view_generator.dart';
 import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
 import 'package:spacetimedb_sdk/src/codegen/dart_identifiers.dart';
@@ -222,6 +223,15 @@ class ClientGenerator {
 
       final viewName = toSafeMemberName(toCamelCase(view.name));
       final pattern = _viewGenerator.getViewReturnPattern(view);
+
+      if (view.params.elements.isNotEmpty) {
+        if (pattern != ViewReturnType.unknown) {
+          b.methods.add(
+            ParameterisedViewMethodBuilder(schema).build(view, viewName, rowType),
+          );
+        }
+        continue;
+      }
 
       switch (pattern) {
         case .array:

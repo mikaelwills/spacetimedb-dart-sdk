@@ -4,6 +4,7 @@ import 'package:spacetimedb_sdk/src/codegen/models.dart';
 enum ViewReturnType { array, option, single, query, unknown }
 
 const kQueryViewReturnTag = '__query__';
+const kFallbackTypeNamePrefix = 'Type';
 
 class ViewGenerator {
   final DatabaseSchema schema;
@@ -58,14 +59,13 @@ class ViewGenerator {
     if (type is! RefType) return null;
     final entry = schema.typeSpace.types[type.index];
     if (entry.product == null) return null;
-    if (!schema.tables.any((t) => t.productTypeRef == type.index)) {
-      return 'Type${type.index}';
-    }
-    return resolveRefTypeName(
+    final resolved = resolveRefTypeName(
       type.index,
       schema.types,
       schema.tables,
-    )?.className;
+    );
+    if (resolved == null) return '$kFallbackTypeNamePrefix${type.index}';
+    return resolved.className;
   }
 
   String? _rowTypeFromOption(AlgebraicType rt) {

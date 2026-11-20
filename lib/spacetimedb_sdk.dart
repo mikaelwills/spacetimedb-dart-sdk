@@ -15,6 +15,7 @@ export 'src/connection/websocket_protocols.dart'
 
 // Cache
 export 'src/cache/table_cache.dart';
+export 'src/subscription/view_call.dart' show ViewCall;
 
 // Utilities
 export 'src/utils/value_listenable_extensions.dart';
