@@ -1,4 +1,3 @@
-import 'package:spacetimedb_sdk/src/codegen/ir/algebraic_type.dart';
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
 
 Set<String> refImportFiles(

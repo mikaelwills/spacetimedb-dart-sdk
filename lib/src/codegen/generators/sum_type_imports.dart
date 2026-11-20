@@ -1,5 +1,4 @@
 import 'package:code_builder/code_builder.dart' hide TypeDef;
-import 'package:spacetimedb_sdk/src/codegen/ir/algebraic_type.dart';
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
 
 import 'ref_import_files.dart';
