@@ -179,9 +179,9 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
       fieldType = variant.parsedType;
     }
 
-    final dartType = fieldType.toDartTypeName();
-    final decodeExpr = fieldType.decodeExpression();
-    final encodeExpr = fieldType.encodeExpression('value');
+    final dartType = _dartTypeOf(fieldType);
+    final decodeExpr = _decodeOf(fieldType);
+    final encodeExpr = _encodeOf(fieldType, 'value');
     final toJsonValue = _getToJsonValue('value', fieldType);
     final fromJsonValue = _getFromJsonValue('value', fieldType, dartType);
 
@@ -293,7 +293,7 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
       for (var i = 0; i < elements.length; i++) {
         final element = elements[i];
         final fieldName = 'field$i';
-        final dartType = element.type.toDartTypeName();
+        final dartType = _dartTypeOf(element.type);
         final toJsonValue = _getToJsonValue(fieldName, element.type);
         final fromJsonValue = _getFromJsonValue(
           fieldName,
@@ -317,8 +317,8 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
               ..toThis = true,
           ),
         );
-        decodeArgs.writeln('${element.type.decodeExpression()},');
-        encodeBody.writeln('${element.type.encodeExpression(fieldName)};');
+        decodeArgs.writeln('${_decodeOf(element.type)},');
+        encodeBody.writeln('${_encodeOf(element.type, fieldName)};');
         toJsonEntries.writeln("'$fieldName': $toJsonValue,");
         fromJsonArgs.writeln('$fromJsonValue,');
       }
@@ -417,7 +417,7 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
       for (final element in elements) {
         final jsonKey = element.name ?? _unnamedFieldName;
         final fieldName = toSafeMemberName(jsonKey);
-        final dartType = element.type.toDartTypeName();
+        final dartType = _dartTypeOf(element.type);
         final toJsonValue = _getToJsonValue(fieldName, element.type);
         final fromJsonValue = _getFromJsonValue(
           jsonKey,
@@ -443,8 +443,8 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
               ..toThis = true,
           ),
         );
-        decodeArgs.writeln('$fieldName: ${element.type.decodeExpression()},');
-        encodeBody.writeln('${element.type.encodeExpression(fieldName)};');
+        decodeArgs.writeln('$fieldName: ${_decodeOf(element.type)},');
+        encodeBody.writeln('${_encodeOf(element.type, fieldName)};');
         toJsonEntries.writeln("'$jsonKey': $toJsonValue,");
         fromJsonArgs.writeln('$fieldName: $fromJsonValue,');
       }
@@ -625,9 +625,7 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
   VariantType _getVariantType(SumVariant variant) {
     final type = variant.algebraicType;
 
-    if (type.product == null &&
-        type.sum == null &&
-        variant.parsedType.isPrimitive) {
+    if (type.product == null && type.sum == null) {
       return VariantType.tupleSingle;
     }
 
@@ -657,10 +655,20 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
     return input[0].toUpperCase() + input.substring(1);
   }
 
+  String _dartTypeOf(AlgebraicType type) =>
+      type.toDartTypeName(typeSpace: typeSpace, typeDefs: typeDefs);
+
+  String _decodeOf(AlgebraicType type) =>
+      type.decodeExpression(typeSpace: typeSpace, typeDefs: typeDefs);
+
+  String _encodeOf(AlgebraicType type, String valueName) => type
+      .encodeExpression(valueName, typeSpace: typeSpace, typeDefs: typeDefs);
+
   String _getToJsonValue(String fieldName, AlgebraicType type) =>
       switch (type) {
         PrimitiveType(kind: PrimitiveKind.u64 || PrimitiveKind.i64) =>
           '$fieldName.toInt()',
+        RefType() => '$fieldName.toJson()',
         _ => fieldName,
       };
 
@@ -669,6 +677,8 @@ $fromJsonCases        final type => throw Exception('Unknown $enumName variant: 
     AlgebraicType type,
     String dartType,
   ) => switch (type) {
+    RefType() =>
+      "$dartType.fromJson(Map<String, dynamic>.from(json['$jsonKey'] ?? {}))",
     PrimitiveType(kind: PrimitiveKind.u64 || PrimitiveKind.i64) =>
       "Int64(json['$jsonKey'] ?? 0)",
     PrimitiveType(kind: PrimitiveKind.string) => "json['$jsonKey'] ?? ''",
