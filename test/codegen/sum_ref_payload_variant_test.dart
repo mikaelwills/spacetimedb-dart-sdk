@@ -116,10 +116,10 @@ DatabaseSchema _primitivePayloadSumSchema() {
 String _generatedFile(List<GeneratedFile> files, String filename) =>
     files.firstWhere((f) => f.filename == filename).content;
 
-Iterable<String> _importLines(String source) =>
-    _importPattern.allMatches(source).map((match) => match.group(0)!);
-
-final _importPattern = RegExp(r"^import '[^']+';$", multiLine: true);
+Iterable<String> _importLines(String source) => source
+    .split('\n')
+    .map((line) => line.trim())
+    .where((line) => line.startsWith('import '));
 
 void main() {
   group('sum variant with a named product payload', () {
