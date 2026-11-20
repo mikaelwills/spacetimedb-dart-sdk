@@ -40,9 +40,11 @@ class ProductTypeGenerator {
     final lib = Library(
       (b) => b
         ..directives.addAll(imports)
-        ..body.add(dataClass),
+        ..body.addAll([dataClass, ...extraClasses(className)]),
     );
 
     return emitLibrary(lib, header: kGeneratedHeader);
   }
+
+  Iterable<Class> extraClasses(String className) => const [];
 }

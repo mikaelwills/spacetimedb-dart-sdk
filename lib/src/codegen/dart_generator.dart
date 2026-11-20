@@ -1,12 +1,14 @@
 import 'package:spacetimedb_sdk/src/codegen/client_generator.dart';
+import 'package:spacetimedb_sdk/src/codegen/generators/view_row_type_generator.dart';
 import 'package:spacetimedb_sdk/src/codegen/procedure_generator.dart';
 import 'package:spacetimedb_sdk/src/codegen/reducer_generator.dart';
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
 import 'package:spacetimedb_sdk/src/codegen/table_generator.dart';
-import 'package:spacetimedb_sdk/src/codegen/generators/sum_type_generator.dart';
 import 'package:spacetimedb_sdk/src/codegen/generators/product_type_generator.dart';
+import 'package:spacetimedb_sdk/src/codegen/generators/sum_type_generator.dart';
 import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
 import 'package:spacetimedb_sdk/src/codegen/schema_normalizer.dart';
+import 'package:spacetimedb_sdk/src/codegen/view_generator.dart';
 import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 
 import 'dart:io';
@@ -16,6 +18,9 @@ class DartGenerator {
   DartGenerator(this.schema) {
     SchemaNormalizer.normalize(schema);
   }
+
+  late final Set<String> _viewRowFileNames = ViewGenerator(schema)
+      .getViewRowFileNames();
 
   List<GeneratedFile> generateAll() {
     final files = <GeneratedFile>[];
@@ -41,12 +46,10 @@ class DartGenerator {
           ),
         );
       } else if (type.isProduct && !tableTypeRefs.contains(typeDef.typeRef)) {
-        final generator = ProductTypeGenerator(
-          typeName: typeDef.name,
-          productType: type.product!,
-          typeSpace: schema.typeSpace,
-          typeDefs: schema.types,
-          tables: schema.tables,
+        final generator = _productGenerator(
+          typeDef.name,
+          type.product!,
+          fileName: '$fileName.dart',
         );
 
         files.add(
@@ -111,6 +114,29 @@ class DartGenerator {
     );
 
     return files;
+  }
+
+  ProductTypeGenerator _productGenerator(
+    String typeName,
+    ProductType productType, {
+    required String fileName,
+  }) {
+    if (_viewRowFileNames.contains(fileName)) {
+      return ViewRowTypeGenerator(
+        typeName: typeName,
+        productType: productType,
+        typeSpace: schema.typeSpace,
+        typeDefs: schema.types,
+        tables: schema.tables,
+      );
+    }
+    return ProductTypeGenerator(
+      typeName: typeName,
+      productType: productType,
+      typeSpace: schema.typeSpace,
+      typeDefs: schema.types,
+      tables: schema.tables,
+    );
   }
 
   Future<void> writeToDirectory(String outputPath) async {
