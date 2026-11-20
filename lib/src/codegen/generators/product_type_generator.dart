@@ -2,6 +2,7 @@ import 'package:code_builder/code_builder.dart' hide TypeDef;
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
 import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
 import 'package:spacetimedb_sdk/src/codegen/generators/product_class_builder.dart';
+import 'package:spacetimedb_sdk/src/codegen/generators/ref_import_files.dart';
 
 class ProductTypeGenerator {
   final String typeName;
@@ -20,12 +21,12 @@ class ProductTypeGenerator {
 
   String generate() {
     final className = toTypeClassName(typeName);
-    final refFiles =
-        productType.elements
-            .map((e) => e.type.refImportFile(typeDefs, tables))
-            .whereType<String>()
-            .toSet()
-          ..remove('${toSnakeCase(typeName)}.dart');
+    final refFiles = refImportFiles(
+      productType.elements.map((element) => element.type),
+      ownFileName: '${toSnakeCase(typeName)}.dart',
+      typeDefs: typeDefs,
+      tables: tables,
+    );
     final imports = <Directive>[
       Directive.import('package:spacetimedb_sdk/codegen.dart'),
       ...refFiles.map(Directive.import),

@@ -2,6 +2,7 @@ import 'package:code_builder/code_builder.dart';
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
 import 'package:spacetimedb_sdk/src/codegen/codegen_emitter.dart';
 import 'package:spacetimedb_sdk/src/codegen/generators/product_class_builder.dart';
+import 'package:spacetimedb_sdk/src/codegen/generators/ref_import_files.dart';
 import 'package:spacetimedb_sdk/src/codegen/generators/row_decoder_builder.dart';
 
 class TableGenerator {
@@ -21,12 +22,12 @@ class TableGenerator {
 
     imports.add(Directive.import('package:spacetimedb_sdk/codegen.dart'));
 
-    final refFiles =
-        productType.elements
-            .map((e) => e.type.refImportFile(schema.types, schema.tables))
-            .whereType<String>()
-            .toSet()
-          ..remove('${table.name}.dart');
+    final refFiles = refImportFiles(
+      productType.elements.map((element) => element.type),
+      ownFileName: '${table.name}.dart',
+      typeDefs: schema.types,
+      tables: schema.tables,
+    );
     imports.addAll(refFiles.map(Directive.import));
 
     final dataClass = ProductClassBuilder(

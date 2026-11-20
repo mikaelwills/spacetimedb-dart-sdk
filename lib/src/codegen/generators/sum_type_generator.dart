@@ -2,7 +2,9 @@ import 'package:code_builder/code_builder.dart' hide TypeDef;
 
 import '../../codegen/codegen_emitter.dart';
 import '../../codegen/dart_identifiers.dart';
+import '../models/table_models.dart';
 import '../models/type_models.dart';
+import 'sum_type_imports.dart';
 
 const _unnamedFieldName = 'field';
 
@@ -13,12 +15,14 @@ class SumTypeGenerator {
   final SumType sumType;
   final TypeSpace typeSpace;
   final List<TypeDef> typeDefs;
+  final List<TableSchema> tables;
 
   SumTypeGenerator({
     required this.enumName,
     required this.sumType,
     required this.typeSpace,
     required this.typeDefs,
+    this.tables = const [],
   });
 
   String generate() {
@@ -29,14 +33,19 @@ class SumTypeGenerator {
 
     final lib = Library(
       (b) => b
-        ..directives.add(
-          Directive.import('package:spacetimedb_sdk/codegen.dart'),
-        )
+        ..directives.addAll(_buildImports())
         ..body.addAll([_buildSealedClass(), ...variantClasses]),
     );
 
     return emitLibrary(lib, header: kGeneratedHeader);
   }
+
+  List<Directive> _buildImports() => sumTypeImports(
+    sumType: sumType,
+    ownFileName: '${toSnakeCase(enumName)}.dart',
+    typeDefs: typeDefs,
+    tables: tables,
+  );
 
   Code _buildSealedClass() {
     final switchCases = StringBuffer();

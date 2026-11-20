@@ -37,6 +37,7 @@ class DartGenerator {
           sumType: type.sum!,
           typeSpace: schema.typeSpace,
           typeDefs: schema.types,
+          tables: schema.tables,
         );
 
         files.add(

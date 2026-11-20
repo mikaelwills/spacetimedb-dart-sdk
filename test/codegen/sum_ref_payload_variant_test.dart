@@ -57,8 +57,69 @@ DatabaseSchema _timingSchema() {
   });
 }
 
+const _sumIndex = 0;
+const _spanIndex = 1;
+
+DatabaseSchema _twoVariantsSharingPayloadSchema() {
+  return DatabaseSchema.fromJson('calendardb', {
+    'typespace': {
+      'types': [
+        {
+          'Sum': {
+            'variants': [
+              _namedEntry('Timed', {'Ref': _spanIndex}),
+              _namedEntry('Window', {'Ref': _spanIndex}),
+            ],
+          },
+        },
+        {
+          'Product': {
+            'elements': [
+              _namedEntry('starts_at', {'U64': []}),
+              _namedEntry('ends_at', {'U64': []}),
+            ],
+          },
+        },
+      ],
+    },
+    'tables': [],
+    'reducers': [],
+    'types': [
+      _namedType('EventTiming', _sumIndex),
+      _namedType('TimedSpan', _spanIndex),
+    ],
+    'views': [],
+  });
+}
+
+DatabaseSchema _primitivePayloadSumSchema() {
+  return DatabaseSchema.fromJson('calendardb', {
+    'typespace': {
+      'types': [
+        {
+          'Sum': {
+            'variants': [
+              _namedEntry('Label', {'String': []}),
+              _namedEntry('Level', {'U8': []}),
+            ],
+          },
+        },
+      ],
+    },
+    'tables': [],
+    'reducers': [],
+    'types': [_namedType('EventTiming', _sumIndex)],
+    'views': [],
+  });
+}
+
 String _generatedFile(List<GeneratedFile> files, String filename) =>
     files.firstWhere((f) => f.filename == filename).content;
+
+Iterable<String> _importLines(String source) =>
+    _importPattern.allMatches(source).map((match) => match.group(0)!);
+
+final _importPattern = RegExp(r"^import '[^']+';$", multiLine: true);
 
 void main() {
   group('sum variant with a named product payload', () {
@@ -117,6 +178,40 @@ void main() {
           '{return EventTimingAllDay(decoder.readString());}',
         ),
       );
+    });
+  });
+
+  group('sum file imports', () {
+    test('a named product payload imports the file of its type', () {
+      final timing = _generatedFile(
+        DartGenerator(_timingSchema()).generateAll(),
+        'event_timing.dart',
+      );
+
+      expect(timing, contains("import 'timed_span.dart';"));
+    });
+
+    test('a payload type shared by two variants is imported once', () {
+      final timing = _generatedFile(
+        DartGenerator(_twoVariantsSharingPayloadSchema()).generateAll(),
+        'event_timing.dart',
+      );
+
+      expect(_importLines(timing), [
+        "import 'package:spacetimedb_sdk/codegen.dart';",
+        "import 'timed_span.dart';",
+      ]);
+    });
+
+    test('a sum of primitive payloads imports only the SDK', () {
+      final timing = _generatedFile(
+        DartGenerator(_primitivePayloadSumSchema()).generateAll(),
+        'event_timing.dart',
+      );
+
+      expect(_importLines(timing), [
+        "import 'package:spacetimedb_sdk/codegen.dart';",
+      ]);
     });
   });
 }
