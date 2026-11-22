@@ -24,9 +24,8 @@ void _writeCargoPackage(String projectPath, {String? targetDirectory}) {
   File(path.join(projectPath, 'src', 'lib.rs')).writeAsStringSync('');
   if (targetDirectory == null) return;
   Directory(path.join(projectPath, '.cargo')).createSync();
-  File(path.join(projectPath, '.cargo', 'config.toml')).writeAsStringSync(
-    '[build]\ntarget-dir = "$targetDirectory"\n',
-  );
+  File(path.join(projectPath, '.cargo', 'config.toml'))
+      .writeAsStringSync('[build]\ntarget-dir = "$targetDirectory"\n');
 }
 
 void main() {
@@ -72,42 +71,36 @@ void main() {
       );
     });
 
-    test(
-      'finds the built wasm in the project target folder when the build '
-      'prints no path',
-      () async {
-        final wasm = _writeWasmIn(
-          path.join(project.path, 'target', ..._wasmReleaseSegments),
-        );
+    test('finds the built wasm in the project target folder when the build '
+        'prints no path', () async {
+      final wasm = _writeWasmIn(
+        path.joinAll([project.path, 'target', ..._wasmReleaseSegments]),
+      );
 
-        expect(
-          await WasmLocator.locate(_buildFinishedOutput, project.path),
-          wasm,
-        );
-      },
-    );
+      expect(
+        await WasmLocator.locate(_buildFinishedOutput, project.path),
+        wasm,
+      );
+    });
 
-    test(
-      'finds the built wasm in a cargo target directory set outside the '
-      'project',
-      () async {
-        final targetRoot = Directory.systemTemp.createTempSync(
-          'wasm_locator_target_',
-        );
-        addTearDown(() => targetRoot.deleteSync(recursive: true));
-        _writeCargoPackage(project.path, targetDirectory: targetRoot.path);
-        final wasm = _writeWasmIn(
-          path.join(targetRoot.path, ..._wasmReleaseSegments),
-        );
+    test('finds the built wasm in a cargo target directory set outside the '
+        'project', () async {
+      final targetRoot = Directory.systemTemp.createTempSync(
+        'wasm_locator_target_',
+      );
+      addTearDown(() => targetRoot.deleteSync(recursive: true));
+      _writeCargoPackage(project.path, targetDirectory: targetRoot.path);
+      final wasm = _writeWasmIn(
+        path.joinAll([targetRoot.path, ..._wasmReleaseSegments]),
+      );
 
-        final located = await WasmLocator.locate(
-          _buildFinishedOutput,
-          project.path,
-        );
+      final located = await WasmLocator.locate(
+        _buildFinishedOutput,
+        project.path,
+      );
 
-        expect(path.canonicalize(located), path.canonicalize(wasm));
-      },
-    );
+      expect(path.canonicalize(located), path.canonicalize(wasm));
+    });
 
     test('throws when neither the output nor a target folder has the wasm', () {
       expect(
