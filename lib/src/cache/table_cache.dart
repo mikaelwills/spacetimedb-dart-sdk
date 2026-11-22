@@ -1,7 +1,11 @@
+putIfAbsent: 3
+continue-remove: 4
+batch: 2
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:spacetimedb_sdk/src/cache/row_decoder.dart';
+import 'package:spacetimedb_sdk/src/cache/row_owners.dart';
 import 'package:spacetimedb_sdk/src/codec/bsatn_decoder.dart';
 import 'package:spacetimedb_sdk/src/messages/shared_types.dart';
 import 'package:spacetimedb_sdk/src/events/event_context.dart';
@@ -19,9 +23,9 @@ class TableCache<T> {
   final Map<dynamic, T> _rowsByPrimaryKey = {};
   final List<_CachedRow<T>> _rows = [];
 
-  Map<dynamic, Set<int>> _rowOwners = {};
+  Map<dynamic, RowOwners> _rowOwners = {};
 
-  final Map<dynamic, Set<int>> _previousOwners = {};
+  final Map<dynamic, RowOwners> _previousOwners = {};
 
   final Map<dynamic, Set<int>> _retainedTags = {};
 
@@ -213,7 +217,7 @@ class TableCache<T> {
     );
 
     for (final pk in changes.serverPresentKeys) {
-      final owners = _rowOwners.putIfAbsent(pk, () => <int>{});
+      final owners = _rowOwners.putIfAbsent(pk, RowOwners.new);
       if (owners.isEmpty) onOwnershipGained?.call(pk);
       owners.add(querySetId);
       _previousOwners.remove(pk);
@@ -250,7 +254,9 @@ class TableCache<T> {
         }
         continue;
       }
-      if (!owners.remove(querySetId) && trackImbalance) {
+      final wasOwner = owners.contains(querySetId);
+      owners.remove(querySetId);
+      if (!wasOwner && trackImbalance) {
         _ownershipImbalanceCount++;
         SdkLogger.w(
           'OWNERSHIP_IMBALANCE[$tableName]: querySetId=$querySetId '
@@ -347,7 +353,7 @@ class TableCache<T> {
     _reconcileEvictionCount += toEvict.length;
 
     for (final pk in snapshotKeys) {
-      _rowOwners.putIfAbsent(pk, () => <int>{}).add(querySetId);
+      _rowOwners.putIfAbsent(pk, RowOwners.new).add(querySetId);
       _previousOwners.remove(pk);
     }
 
@@ -397,7 +403,8 @@ class TableCache<T> {
     for (final entry in _rowOwners.entries.toList()) {
       final pk = entry.key;
       final owners = entry.value;
-      if (!owners.remove(querySetId)) continue;
+      if (!owners.contains(querySetId)) continue;
+      owners.remove(querySetId);
       if (owners.isEmpty) {
         _rowOwners.remove(pk);
         if (protectedKeys == null || !protectedKeys.contains(pk)) {
@@ -408,7 +415,8 @@ class TableCache<T> {
     for (final entry in _previousOwners.entries.toList()) {
       final pk = entry.key;
       final owners = entry.value;
-      if (!owners.remove(querySetId)) continue;
+      if (!owners.contains(querySetId)) continue;
+      owners.remove(querySetId);
       if (owners.isEmpty) {
         _previousOwners.remove(pk);
         if (!_rowOwners.containsKey(pk) &&
@@ -426,7 +434,8 @@ class TableCache<T> {
     for (final entry in _rowOwners.entries.toList()) {
       final pk = entry.key;
       final owners = entry.value;
-      if (!owners.remove(querySetId)) continue;
+      if (!owners.contains(querySetId)) continue;
+      owners.remove(querySetId);
       if (owners.isEmpty) {
         _rowOwners.remove(pk);
         _retainedTags.putIfAbsent(pk, () => <int>{}).addAll(retainTags);
@@ -435,7 +444,8 @@ class TableCache<T> {
     for (final entry in _previousOwners.entries.toList()) {
       final pk = entry.key;
       final owners = entry.value;
-      if (!owners.remove(querySetId)) continue;
+      if (!owners.contains(querySetId)) continue;
+      owners.remove(querySetId);
       if (owners.isEmpty) {
         _previousOwners.remove(pk);
         if (!_rowOwners.containsKey(pk)) {
@@ -450,7 +460,7 @@ class TableCache<T> {
 
   @internal
   Set<dynamic> ownedKeys(dynamic primaryKey) =>
-      _rowOwners[primaryKey] ?? _previousOwners[primaryKey] ?? const {};
+      (_rowOwners[primaryKey] ?? _previousOwners[primaryKey])?.toSet() ?? const {};
 
   @internal
   int get pendingOwnerEntryCount => _previousOwners.length;
@@ -478,15 +488,15 @@ class TableCache<T> {
   }) {
     if (_previousOwners.isEmpty) return 0;
     final evicted = <dynamic>[];
-    final carried = <dynamic, Set<int>>{};
+    final carried = <dynamic, RowOwners>{};
     for (final entry in _previousOwners.entries) {
       final pk = entry.key;
-      if (carryWhere != null && carryWhere(entry.value)) {
+      if (carryWhere != null && carryWhere(entry.value.toSet())) {
         carried[pk] = entry.value;
         continue;
       }
       if (protectedKeys != null && protectedKeys.contains(pk)) continue;
-      if (retainWhere != null && retainWhere(entry.value)) continue;
+      if (retainWhere != null && retainWhere(entry.value.toSet())) continue;
       evicted.add(pk);
     }
     _previousOwners
@@ -679,9 +689,9 @@ class TableCache<T> {
     final effective = <dynamic, Set<int>>{
       for (final entry in _retainedTags.entries) entry.key: {...entry.value},
     };
-    void fold(Map<dynamic, Set<int>> owners) {
+    void fold(Map<dynamic, RowOwners> owners) {
       for (final entry in owners.entries) {
-        for (final querySetId in entry.value) {
+        for (final querySetId in entry.value.ids) {
           final tags = resolveQueryTags(querySetId, tableName);
           if (tags.isEmpty) continue;
           effective.putIfAbsent(entry.key, () => <int>{}).addAll(tags);
@@ -739,7 +749,7 @@ class TableCache<T> {
     final primaryKey = decoder.getPrimaryKey(row);
     insertRow(row);
     if (primaryKey != null) {
-      _rowOwners.putIfAbsent(primaryKey, () => <int>{}).add(querySetId);
+      _rowOwners.putIfAbsent(primaryKey, RowOwners.new).add(querySetId);
     }
   }
 
@@ -841,7 +851,7 @@ class TableCache<T> {
       }
     }
 
-    lastBatch.value = TransactionBatch<T>(context, events);
+    _publishTransientBatch(TransactionBatch<T>(context, events));
   }
 
   @internal
@@ -1015,7 +1025,7 @@ class TableCache<T> {
     }
 
     if (events.isNotEmpty) {
-      lastBatch.value = TransactionBatch<T>(context, events);
+      _publishTransientBatch(TransactionBatch<T>(context, events));
     }
   }
 
@@ -1141,6 +1151,18 @@ class TableCache<T> {
     }
 
     return changes;
+  }
+
+  void _publishTransientBatch(TransactionBatch<T> batch) {
+    lastBatch.value = batch;
+    lastBatch.value = null;
+  }
+
+  @internal
+  @visibleForTesting
+  bool sharesOwnerSet(dynamic primaryKey) {
+    final owners = _rowOwners[primaryKey];
+    return owners != null && owners.hasSharedOwnerSet;
   }
 
   void _evictRow(dynamic primaryKey) {
