@@ -4,29 +4,15 @@ import 'package:path/path.dart' as path;
 import 'package:spacetimedb_sdk/src/codegen/wasm_locator.dart';
 import 'package:test/test.dart';
 
-const _builtWasmName = 'notesdb.wasm';
-const _wasmReleaseSegments = ['wasm32-unknown-unknown', 'release'];
 const _buildFinishedOutput = 'Build finished successfully.';
 const _printedPathOutput = 'Created module at: /out/notesdb.wasm';
-
-String _writeWasmIn(String directory) {
-  Directory(directory).createSync(recursive: true);
-  final file = File(path.join(directory, _builtWasmName))
-    ..writeAsBytesSync([0]);
-  return file.path;
-}
-
-void _writeCargoPackage(String projectPath, {String? targetDirectory}) {
-  File(path.join(projectPath, 'Cargo.toml')).writeAsStringSync(
-    '[package]\nname = "notesdb"\nversion = "0.1.0"\nedition = "2021"\n',
-  );
-  Directory(path.join(projectPath, 'src')).createSync();
-  File(path.join(projectPath, 'src', 'lib.rs')).writeAsStringSync('');
-  if (targetDirectory == null) return;
-  Directory(path.join(projectPath, '.cargo')).createSync();
-  File(path.join(projectPath, '.cargo', 'config.toml'))
-      .writeAsStringSync('[build]\ntarget-dir = "$targetDirectory"\n');
-}
+const _wasmArtifactLine =
+    '{"reason":"compiler-artifact","target":{"name":"notesdb"},'
+    '"filenames":["/t/wasm32-unknown-unknown/release/notesdb.wasm"]}';
+const _rlibArtifactLine =
+    '{"reason":"compiler-artifact","target":{"name":"dep"},'
+    '"filenames":["/t/release/libdep.rlib"]}';
+const _buildFinishedLine = '{"reason":"build-finished","success":true}';
 
 void main() {
   late Directory project;
@@ -63,6 +49,28 @@ void main() {
     });
   });
 
+  group('wasmArtifactFromCargoJson', () {
+    test('returns the wasm artifact among other cargo messages', () {
+      final cargoJson = [
+        'Compiling dep v1.0.0',
+        _rlibArtifactLine,
+        _wasmArtifactLine,
+        _buildFinishedLine,
+      ].join('\n');
+
+      expect(
+        WasmLocator.wasmArtifactFromCargoJson(cargoJson),
+        '/t/wasm32-unknown-unknown/release/notesdb.wasm',
+      );
+    });
+
+    test('returns null when cargo built no wasm artifact', () {
+      final cargoJson = [_rlibArtifactLine, _buildFinishedLine].join('\n');
+
+      expect(WasmLocator.wasmArtifactFromCargoJson(cargoJson), isNull);
+    });
+  });
+
   group('locate', () {
     test('uses the path the build prints', () async {
       expect(
@@ -71,38 +79,7 @@ void main() {
       );
     });
 
-    test('finds the built wasm in the project target folder when the build '
-        'prints no path', () async {
-      final wasm = _writeWasmIn(
-        path.joinAll([project.path, 'target', ..._wasmReleaseSegments]),
-      );
-
-      expect(
-        await WasmLocator.locate(_buildFinishedOutput, project.path),
-        wasm,
-      );
-    });
-
-    test('finds the built wasm in a cargo target directory set outside the '
-        'project', () async {
-      final targetRoot = Directory.systemTemp.createTempSync(
-        'wasm_locator_target_',
-      );
-      addTearDown(() => targetRoot.deleteSync(recursive: true));
-      _writeCargoPackage(project.path, targetDirectory: targetRoot.path);
-      final wasm = _writeWasmIn(
-        path.joinAll([targetRoot.path, ..._wasmReleaseSegments]),
-      );
-
-      final located = await WasmLocator.locate(
-        _buildFinishedOutput,
-        project.path,
-      );
-
-      expect(path.canonicalize(located), path.canonicalize(wasm));
-    });
-
-    test('throws when neither the output nor a target folder has the wasm', () {
+    test('throws when the build prints no path and cargo builds no wasm', () {
       expect(
         WasmLocator.locate(_buildFinishedOutput, project.path),
         throwsA(isA<Exception>()),

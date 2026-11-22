@@ -1,41 +1,31 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:meta/meta.dart';
 import 'package:path/path.dart' as path;
 
 class WasmLocator {
   WasmLocator._();
 
-  static const _wasmExtension = '.wasm';
-  static const _wasmTargetTriple = 'wasm32-unknown-unknown';
-  static const _releaseProfile = 'release';
   static const _cargoExecutable = 'cargo';
-  static const _projectTargetFolder = 'target';
-  static const _targetDirectoryKey = 'target_directory';
-  static const _cargoMetadataArguments = [
-    'metadata',
-    '--no-deps',
-    '--format-version',
-    '1',
+  static const _cargoBuildArguments = [
+    'build',
+    '--release',
+    '--target',
+    'wasm32-unknown-unknown',
+    '--message-format=json',
   ];
+  static const _wasmExtension = '.wasm';
+  static const _compilerArtifactReason = 'compiler-artifact';
+  static const _reasonKey = 'reason';
+  static const _filenamesKey = 'filenames';
   static final _wasmPathPattern = RegExp(r'([^\s]+\.wasm)');
 
   static Future<String> locate(String buildOutput, String projectPath) async {
     final printedPath = wasmPathFromBuildOutput(buildOutput, projectPath);
     if (printedPath != null) return printedPath;
-
-    final releaseDirectory = await _releaseWasmDirectory(projectPath);
-    final builtPath = firstWasmIn(releaseDirectory);
-    if (builtPath != null) return builtPath;
-
-    throw Exception(
-      'Could not find compiled WASM file.\n'
-      'Build output:\n$buildOutput',
-    );
+    return _wasmFromCargoBuild(projectPath);
   }
 
-  @visibleForTesting
   static String? wasmPathFromBuildOutput(
     String buildOutput,
     String projectPath,
@@ -51,38 +41,49 @@ class WasmLocator {
     return null;
   }
 
-  @visibleForTesting
-  static String? firstWasmIn(String directory) {
-    final dir = Directory(directory);
-    if (!dir.existsSync()) return null;
-    for (final entity in dir.listSync()) {
-      if (entity.path.endsWith(_wasmExtension)) return entity.path;
+  static String? wasmArtifactFromCargoJson(String cargoJson) {
+    String? wasmPath;
+    for (final line in cargoJson.split('\n')) {
+      final message = _decodeMessage(line);
+      if (message == null) continue;
+      if (message[_reasonKey] != _compilerArtifactReason) continue;
+      final filenames = message[_filenamesKey];
+      if (filenames is! List) continue;
+      for (final filename in filenames) {
+        if (filename is String && filename.endsWith(_wasmExtension)) {
+          wasmPath = filename;
+        }
+      }
     }
-    return null;
+    return wasmPath;
   }
 
-  static Future<String> _releaseWasmDirectory(String projectPath) async {
-    final targetDirectory = await _cargoTargetDirectory(projectPath);
-    return path.join(targetDirectory, _wasmTargetTriple, _releaseProfile);
-  }
-
-  static Future<String> _cargoTargetDirectory(String projectPath) async {
-    final defaultDirectory = path.join(projectPath, _projectTargetFolder);
+  static Map<dynamic, dynamic>? _decodeMessage(String line) {
     try {
-      final result = await Process.run(
-        _cargoExecutable,
-        _cargoMetadataArguments,
-        workingDirectory: projectPath,
-      );
-      final output = result.stdout;
-      if (result.exitCode != 0 || output is! String) return defaultDirectory;
-      final metadata = jsonDecode(output);
-      final reported = metadata is Map ? metadata[_targetDirectoryKey] : null;
-      return reported is String ? reported : defaultDirectory;
-    } on ProcessException {
-      return defaultDirectory;
+      final decoded = jsonDecode(line);
+      return decoded is Map ? decoded : null;
     } on FormatException {
-      return defaultDirectory;
+      return null;
     }
+  }
+
+  static Future<String> _wasmFromCargoBuild(String projectPath) async {
+    final result = await Process.run(
+      _cargoExecutable,
+      _cargoBuildArguments,
+      workingDirectory: projectPath,
+    );
+    if (result.exitCode != 0) {
+      throw Exception('cargo could not build the module:\n${result.stderr}');
+    }
+    final output = result.stdout;
+    if (output is! String) {
+      throw Exception('cargo printed no build messages for the module');
+    }
+    final wasmPath = wasmArtifactFromCargoJson(output);
+    if (wasmPath == null) {
+      throw Exception('cargo built the module without a .wasm artifact');
+    }
+    return wasmPath;
   }
 }
