@@ -6,6 +6,8 @@ import 'package:spacetimedb_sdk/protocol.dart';
 
 import '../../generated/note.dart';
 import '../../generated/note_status.dart';
+import '../../helpers/value_notifier_helpers.dart';
+import 'package:spacetimedb_sdk/src/events/transaction_batch.dart';
 
 Note createNote(int id, String title, {String content = ''}) => Note(
   id: id,
@@ -51,12 +53,14 @@ void main() {
   group('TableCache delete+insert coalesce', () {
     late ClientCache clientCache;
     late TableCache<Note> cache;
+    late NotifierFireRecorder<TransactionBatch<Note>?> published;
     late EventContext dummyContext;
 
     setUp(() {
       clientCache = ClientCache();
       clientCache.registerDecoder<Note>('note', NoteDecoder());
       cache = clientCache.getTableByTypedName<Note>('note');
+      published = NotifierFireRecorder(cache.lastBatch);
       dummyContext = EventContext.optimistic(requestId: 'dummy');
     });
 
@@ -74,7 +78,7 @@ void main() {
         dummyContext,
       );
 
-      final batch = cache.lastBatch.value;
+      final batch = lastPublishedBatch(published);
       expect(batch, isNotNull, reason: 'lastBatch should have fired once');
       expect(
         batch!.length,
@@ -118,7 +122,7 @@ void main() {
 
       cache.applyTransactionUpdate(deletes, inserts, dummyContext);
 
-      final batch = cache.lastBatch.value;
+      final batch = lastPublishedBatch(published);
       expect(batch, isNotNull);
       expect(
         batch!.length,
@@ -163,7 +167,7 @@ void main() {
           dummyContext,
         );
 
-        final batch = cache.lastBatch.value;
+        final batch = lastPublishedBatch(published);
         expect(batch, isNotNull);
         expect(batch!.length, equals(1));
         expect(batch.deletes.length, equals(1));

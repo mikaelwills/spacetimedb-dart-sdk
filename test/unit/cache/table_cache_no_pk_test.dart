@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
 import 'package:spacetimedb_sdk/protocol.dart';
+import 'package:spacetimedb_sdk/src/events/transaction_batch.dart';
+import '../../helpers/value_notifier_helpers.dart';
 
 class StringRowDecoder extends RowDecoder<String> {
   @override
@@ -48,6 +50,7 @@ BsatnRowList _rowList(List<String> values) {
 void main() {
   group('TableCache no-PK branch', () {
     late TableCache<String> cache;
+    late NotifierFireRecorder<TransactionBatch<String>?> published;
     late EventContext context;
 
     setUp(() {
@@ -55,6 +58,7 @@ void main() {
         tableName: 'tagless',
         decoder: StringRowDecoder(),
       );
+      published = NotifierFireRecorder(cache.lastBatch);
       context = EventContext.optimistic(requestId: 'test');
     });
 
@@ -80,11 +84,9 @@ void main() {
       expect(cache.count(), equals(3));
       expect(cache.iter().toList(), equals(['alpha', 'beta', 'gamma']));
       expect(cache.rows.value, equals(['alpha', 'beta', 'gamma']));
-      expect(cache.lastBatch.value?.events.length, equals(3));
-      expect(
-        cache.lastBatch.value?.events.every((e) => e is TableInsertEvent),
-        isTrue,
-      );
+      final events = lastPublishedBatch(published)?.events;
+      expect(events?.length, equals(3));
+      expect(events?.every((e) => e is TableInsertEvent), isTrue);
     });
 
     test('applyTransactionUpdate deletes a row via content equality', () {
@@ -102,8 +104,9 @@ void main() {
 
       expect(cache.count(), equals(2));
       expect(cache.iter().toList(), equals(['alpha', 'gamma']));
-      expect(cache.lastBatch.value?.events.length, equals(1));
-      expect(cache.lastBatch.value?.events.first, isA<TableDeleteEvent>());
+      final events = lastPublishedBatch(published)?.events;
+      expect(events?.length, equals(1));
+      expect(events?.first, isA<TableDeleteEvent>());
     });
 
     test('clear empties everything', () {

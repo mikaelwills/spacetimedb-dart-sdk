@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
+import 'package:spacetimedb_sdk/src/events/transaction_batch.dart';
 
 Future<T> waitForInsert<T>(
   TableCache<T> table,
@@ -202,3 +203,7 @@ class NotifierFireRecorder<T> {
     listenable.removeListener(_listener);
   }
 }
+
+TransactionBatch<T>? lastPublishedBatch<T>(
+  NotifierFireRecorder<TransactionBatch<T>?> recorder,
+) => recorder.values.whereType<TransactionBatch<T>>().lastOrNull;

@@ -7,6 +7,8 @@ import 'package:spacetimedb_sdk/src/connection/spacetimedb_connection.dart'
     show setSubscribeBatchUnsupported;
 
 import '../../helpers/reconnect_replay.dart';
+import 'package:spacetimedb_sdk/src/events/transaction_batch.dart';
+import '../../helpers/value_notifier_helpers.dart';
 import '../../mocks/mock_connection.dart';
 
 const _timeout = Duration(seconds: 2);
@@ -187,11 +189,13 @@ void _suite(bool batch) {
 
   group('reconnect snapshot reconciles against the cache', () {
     late TableCache<_Item> item;
+    late NotifierFireRecorder<TransactionBatch<_Item>?> published;
 
     setUp(() async {
       connection = _connection(batch);
       manager = SubscriptionManager(connection);
       item = _register(manager, 'item', _ItemDecoder());
+      published = NotifierFireRecorder(item.lastBatch);
       await connection.connect();
       final pending = manager.subscribe(['SELECT * FROM item']);
       connection.simulateIncoming(
@@ -272,7 +276,7 @@ void _suite(bool batch) {
       expect(events.deletes.single.row, (id: 2, name: 'b'));
       expect(events.deletes.single.context.event, isA<SubscribeAppliedEvent>());
       expect(
-        item.lastBatch.value?.events.single,
+        lastPublishedBatch(published)?.events.single,
         isA<TableDeleteEvent<_Item>>(),
       );
     });

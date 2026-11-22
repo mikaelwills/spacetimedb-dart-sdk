@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
 import 'package:spacetimedb_sdk/protocol.dart';
+import '../../helpers/value_notifier_helpers.dart';
 
 class MockDecoder extends RowDecoder<String> {
   @override
@@ -49,9 +50,10 @@ void main() {
           sizeHint: RowSizeHint.fixedSize(encoder.toBytes().length),
           rowsData: encoder.toBytes(),
         );
+        final published = NotifierFireRecorder(table.lastBatch);
         table.applyInitialData(inserts, context);
 
-        final batch = table.lastBatch.value;
+        final batch = lastPublishedBatch(published);
         expect(batch, isNotNull);
         expect(batch!.length, equals(1));
         expect(batch.events.first, isA<TableInsertEvent<String>>());
@@ -176,9 +178,10 @@ void main() {
         sizeHint: RowSizeHint.fixedSize(encoder.toBytes().length),
         rowsData: encoder.toBytes(),
       );
+      final published = NotifierFireRecorder(table.lastBatch);
       table.applyInitialData(inserts, subscribeContext);
 
-      final batch = table.lastBatch.value;
+      final batch = lastPublishedBatch(published);
       expect(batch, isNotNull);
       expect(batch!.events.first, isA<TableInsertEvent<String>>());
       expect(batch.context.event, isA<SubscribeAppliedEvent>());

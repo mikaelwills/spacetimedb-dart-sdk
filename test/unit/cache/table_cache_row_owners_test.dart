@@ -125,10 +125,7 @@ void main() {
     tearDown(() => table.dispose());
 
     test('holds the batch while its listeners run and is empty afterwards', () {
-      TransactionBatch<String>? seenByListener;
-      table.lastBatch.addListener(() {
-        seenByListener = table.lastBatch.value;
-      });
+      final published = NotifierFireRecorder(table.lastBatch);
 
       table.applyTransactionUpdate(
         BsatnRowList.empty(),
@@ -136,7 +133,7 @@ void main() {
         _ctx,
       );
 
-      expect(seenByListener?.inserts.length, equals(1));
+      expect(lastPublishedBatch(published)?.inserts.length, equals(1));
       expect(table.lastBatch.value, isNull);
     });
   });
