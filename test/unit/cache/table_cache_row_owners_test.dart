@@ -6,6 +6,8 @@ import 'package:spacetimedb_sdk/protocol.dart';
 import 'package:spacetimedb_sdk/src/events/table_event.dart';
 import 'package:spacetimedb_sdk/src/events/transaction_batch.dart';
 
+import '../../helpers/value_notifier_helpers.dart';
+
 const _rowKey = 'row';
 const _firstSubscription = 1;
 const _secondSubscription = 2;
