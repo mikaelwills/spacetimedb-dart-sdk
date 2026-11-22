@@ -4,6 +4,7 @@ import 'package:test/test.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
 import 'package:spacetimedb_sdk/protocol.dart';
 import 'package:spacetimedb_sdk/src/events/transaction_batch.dart';
+
 import '../../helpers/value_notifier_helpers.dart';
 
 class StringRowDecoder extends RowDecoder<String> {

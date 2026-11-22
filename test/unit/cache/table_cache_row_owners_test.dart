@@ -84,39 +84,33 @@ void main() {
       expect(table.ownedKeys(_rowKey), equals({_firstSubscription}));
     });
 
-    test(
-      'a second subscription on the same row allocates an owner set and '
-      'keeps the row after the first unsubscribes',
-      () {
-        _applySnapshotFor(table, _firstSubscription);
-        _applySnapshotFor(table, _secondSubscription);
-        expect(table.sharesOwnerSet(_rowKey), isTrue);
+    test('a second subscription on the same row allocates an owner set and '
+        'keeps the row after the first unsubscribes', () {
+      _applySnapshotFor(table, _firstSubscription);
+      _applySnapshotFor(table, _secondSubscription);
+      expect(table.sharesOwnerSet(_rowKey), isTrue);
 
-        table.dropQuerySet(_firstSubscription, deleteContext: _ctx);
+      table.dropQuerySet(_firstSubscription, deleteContext: _ctx);
 
-        expect(table.find(_rowKey), equals(_rowKey));
-        expect(table.ownedKeys(_rowKey), equals({_secondSubscription}));
-        expect(table.sharesOwnerSet(_rowKey), isFalse);
-      },
-    );
+      expect(table.find(_rowKey), equals(_rowKey));
+      expect(table.ownedKeys(_rowKey), equals({_secondSubscription}));
+      expect(table.sharesOwnerSet(_rowKey), isFalse);
+    });
 
-    test(
-      'when both subscriptions unsubscribe the row is removed and a delete '
-      'event fires',
-      () {
-        final deleted = <TableDeleteEvent<String>>[];
-        table.onDelete.listen(deleted.add);
-        _applySnapshotFor(table, _firstSubscription);
-        _applySnapshotFor(table, _secondSubscription);
+    test('when both subscriptions unsubscribe the row is removed and a delete '
+        'event fires', () {
+      final deleted = <TableDeleteEvent<String>>[];
+      table.onDelete.listen(deleted.add);
+      _applySnapshotFor(table, _firstSubscription);
+      _applySnapshotFor(table, _secondSubscription);
 
-        table.dropQuerySet(_firstSubscription, deleteContext: _ctx);
-        table.dropQuerySet(_secondSubscription, deleteContext: _ctx);
+      table.dropQuerySet(_firstSubscription, deleteContext: _ctx);
+      table.dropQuerySet(_secondSubscription, deleteContext: _ctx);
 
-        expect(table.find(_rowKey), isNull);
-        expect(table.count(), equals(0));
-        expect(deleted.map((event) => event.row), equals([_rowKey]));
-      },
-    );
+      expect(table.find(_rowKey), isNull);
+      expect(table.count(), equals(0));
+      expect(deleted.map((event) => event.row), equals([_rowKey]));
+    });
   });
 
   group('lastBatch', () {

@@ -457,7 +457,8 @@ class TableCache<T> {
 
   @internal
   Set<dynamic> ownedKeys(dynamic primaryKey) =>
-      (_rowOwners[primaryKey] ?? _previousOwners[primaryKey])?.toSet() ?? const {};
+      (_rowOwners[primaryKey] ?? _previousOwners[primaryKey])?.toSet() ??
+      const {};
 
   @internal
   int get pendingOwnerEntryCount => _previousOwners.length;

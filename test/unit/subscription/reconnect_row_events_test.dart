@@ -7,7 +7,9 @@ import 'package:spacetimedb_sdk/src/connection/spacetimedb_connection.dart'
     show setSubscribeBatchUnsupported;
 
 import '../../helpers/reconnect_replay.dart';
+
 import 'package:spacetimedb_sdk/src/events/transaction_batch.dart';
+
 import '../../helpers/value_notifier_helpers.dart';
 import '../../mocks/mock_connection.dart';
 
