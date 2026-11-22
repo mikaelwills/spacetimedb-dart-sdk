@@ -134,7 +134,6 @@ void main() {
         BsatnRowList.empty(),
         _rowList([_rowKey]),
         _ctx,
-        querySetId: _firstSubscription,
       );
 
       expect(seenByListener?.inserts.length, equals(1));
