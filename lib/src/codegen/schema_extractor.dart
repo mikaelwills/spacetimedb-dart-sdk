@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:path/path.dart' as path;
 import 'package:spacetimedb_sdk/src/codegen/models.dart';
+import 'package:spacetimedb_sdk/src/codegen/wasm_locator.dart';
 import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 
 /// Extracts database schema from various sources
@@ -72,8 +73,10 @@ class SchemaExtractor {
       throw Exception('Failed to build module:\n${buildResult.stderr}');
     }
 
-    // Extract WASM path from build output
-    final wasmPath = _parseWasmPath(buildResult.stdout.toString(), projectPath);
+    final wasmPath = await WasmLocator.locate(
+      buildResult.stdout.toString(),
+      projectPath,
+    );
     SdkLogger.i('Module built: $wasmPath');
 
     // Extract schema from WASM
@@ -151,52 +154,6 @@ class SchemaExtractor {
     throw Exception(
       'Could not find spacetimedb-standalone binary.\n'
       'Please ensure SpacetimeDB is installed: https://spacetimedb.com/install',
-    );
-  }
-
-  /// Parse WASM path from `spacetime build` output
-  ///
-  /// The build output contains a line like:
-  /// "Created module at: /path/to/module.wasm"
-  static String _parseWasmPath(String buildOutput, String projectPath) {
-    // Look for "Created module at:" or similar patterns
-    final lines = buildOutput.split('\n');
-    for (final line in lines) {
-      if (line.contains('.wasm')) {
-        // Extract path - handles various formats
-        final match = RegExp(r'([^\s]+\.wasm)').firstMatch(line);
-        if (match != null) {
-          final wasmPath = match.group(1)!;
-          // If relative path, resolve from project directory
-          if (!path.isAbsolute(wasmPath)) {
-            return path.join(projectPath, wasmPath);
-          }
-          return wasmPath;
-        }
-      }
-    }
-
-    // Fallback: check common build output locations
-    final targetPath = path.join(
-      projectPath,
-      'target',
-      'wasm32-unknown-unknown',
-      'release',
-    );
-    final dir = Directory(targetPath);
-    if (dir.existsSync()) {
-      final wasmFiles = dir
-          .listSync()
-          .where((f) => f.path.endsWith('.wasm'))
-          .toList();
-      if (wasmFiles.isNotEmpty) {
-        return wasmFiles.first.path;
-      }
-    }
-
-    throw Exception(
-      'Could not find compiled WASM file.\n'
-      'Build output:\n$buildOutput',
     );
   }
 
