@@ -7,6 +7,7 @@ import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
 
 import '../connection/spacetimedb_connection.dart';
 import '../connection/connection_state.dart';
+import '../diagnostics/query_row_claim.dart';
 import '../messages/message_decoder.dart';
 import '../messages/server_messages.dart';
 import '../messages/shared_types.dart';
@@ -187,7 +188,6 @@ class SubscriptionManager {
       _subscriptionsByQuerySetId;
 
   /// All currently-subscribed query strings across every active `QuerySetId`.
-  @visibleForTesting
   Set<String> get activeSubscriptionQueries =>
       _subscriptionsByQuerySetId.values.expand((q) => q).toSet();
 
@@ -422,6 +422,12 @@ class SubscriptionManager {
     final queries = _subscriptionsByQuerySetId[querySetId];
     if (queries == null) return const {};
     return _tagsForQueriesOnTable(queries, tableName);
+  }
+
+  RowClaim? _rowClaimFor(int querySetId, String tableName) {
+    final queries = _subscriptionsByQuerySetId[querySetId];
+    if (queries == null) return null;
+    return tryBuildRowClaim(queries, tableName);
   }
 
   Set<int> _tagsForQueriesOnTable(List<String> queries, String tableName) {
@@ -998,6 +1004,7 @@ class SubscriptionManager {
           protectedKeys: protectedKeys,
           reconnectInFlight: _reconnectInFlight,
           retainTags: _tagsForQuerySetTable(querySetId, tableName),
+          claimsRow: _rowClaimFor(querySetId, tableName),
         );
       } else {
         _optimisticState.clearNonOptimisticRows(tableName);

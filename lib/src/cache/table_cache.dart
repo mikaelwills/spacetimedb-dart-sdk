@@ -49,7 +49,6 @@ class TableCache<T> {
   int _sweepEvictionCount = 0;
 
   @internal
-  @visibleForTesting
   Set<int> retainedTagsFor(dynamic primaryKey) =>
       _retainedTags[primaryKey] ?? const {};
 
@@ -306,6 +305,7 @@ class TableCache<T> {
     Set<dynamic>? protectedKeys,
     bool reconnectInFlight = false,
     Set<int>? retainTags,
+    bool Function(Map<String, dynamic> rowJson)? claimsRow,
   }) {
     final changes = _applyChanges(
       BsatnRowList.empty(),
@@ -347,6 +347,15 @@ class TableCache<T> {
         toEvict.add(pk);
       }
     }
+    if (claimsRow != null) {
+      toEvict.addAll(
+        _untagRetainedRowsTheSnapshotDisowns(
+          snapshotKeys,
+          claimsRow,
+          protectedKeys: protectedKeys,
+        ),
+      );
+    }
     _reconcileEvictionCount += toEvict.length;
 
     for (final pk in snapshotKeys) {
@@ -379,6 +388,28 @@ class TableCache<T> {
       _notifyRowListeners(toEvict);
     }
     return changes.insertedPrimaryKeys;
+  }
+
+  List<dynamic> _untagRetainedRowsTheSnapshotDisowns(
+    Set<dynamic> snapshotKeys,
+    bool Function(Map<String, dynamic> rowJson) claimsRow, {
+    Set<dynamic>? protectedKeys,
+  }) {
+    if (!decoder.supportsJsonSerialization) return const [];
+    final disowned = <dynamic>[];
+    for (final pk in _retainedTags.keys.toList()) {
+      if (snapshotKeys.contains(pk)) continue;
+      if (_rowOwners.containsKey(pk) || _previousOwners.containsKey(pk)) {
+        continue;
+      }
+      if (protectedKeys != null && protectedKeys.contains(pk)) continue;
+      final row = _rowsByPrimaryKey[pk];
+      final rowJson = row == null ? null : decoder.toJson(row);
+      if (rowJson == null || !claimsRow(rowJson)) continue;
+      _retainedTags.remove(pk);
+      disowned.add(pk);
+    }
+    return disowned;
   }
 
   @internal
