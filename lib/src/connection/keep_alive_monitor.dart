@@ -27,12 +27,14 @@ class KeepAliveMonitor {
   // Dependencies
   final void Function() _sendPingCallback;
   final void Function() _onTimeoutCallback;
+  final Future<bool> Function()? _confirmServerAlive;
 
   // Configuration
   final Duration _idleThreshold;
   final Duration _pongTimeout;
 
   static const int maxDeferredPings = 3;
+  static const int maxBusyDeferrals = 6;
 
   // State
   Timer? _idleTimer;
@@ -41,14 +43,17 @@ class KeepAliveMonitor {
   bool _stopped = false;
   bool _workInFlight = false;
   int _deferredPings = 0;
+  int _busyDeferrals = 0;
 
   KeepAliveMonitor({
     required void Function() onSendPing,
     required void Function() onDisconnect,
+    Future<bool> Function()? confirmServerAlive,
     this._idleThreshold = const Duration(seconds: 30),
     this._pongTimeout = const Duration(seconds: 5),
   }) : _sendPingCallback = onSendPing,
-       _onTimeoutCallback = onDisconnect {
+       _onTimeoutCallback = onDisconnect,
+       _confirmServerAlive = confirmServerAlive {
     _armIdleTimer();
   }
 
@@ -71,6 +76,7 @@ class KeepAliveMonitor {
       _timeoutTimer = null;
     }
     _deferredPings = 0;
+    _busyDeferrals = 0;
 
     _armIdleTimer();
   }
@@ -85,6 +91,7 @@ class KeepAliveMonitor {
     _isAwaitingPong = false;
     _workInFlight = false;
     _deferredPings = 0;
+    _busyDeferrals = 0;
   }
 
   void _armIdleTimer() {
@@ -109,8 +116,39 @@ class KeepAliveMonitor {
         return;
       }
 
-      stop();
-      _onTimeoutCallback();
+      _timeoutTimer = null;
+      final confirm = _confirmServerAlive;
+      if (confirm == null || _busyDeferralsUsedUp) {
+        _declareDead();
+        return;
+      }
+      _checkServerBeforeDeclaringDead(confirm);
     });
+  }
+
+  bool get _busyDeferralsUsedUp => _busyDeferrals >= maxBusyDeferrals;
+
+  Future<void> _checkServerBeforeDeclaringDead(
+    Future<bool> Function() confirm,
+  ) async {
+    bool alive;
+    try {
+      alive = await confirm();
+    } catch (_) {
+      alive = false;
+    }
+    if (_stopped || !_isAwaitingPong) return;
+    if (!alive) {
+      _declareDead();
+      return;
+    }
+    _busyDeferrals++;
+    _isAwaitingPong = false;
+    _armIdleTimer();
+  }
+
+  void _declareDead() {
+    stop();
+    _onTimeoutCallback();
   }
 }

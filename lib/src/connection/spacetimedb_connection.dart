@@ -11,6 +11,7 @@ import 'package:spacetimedb_sdk/src/connection/connection_state.dart';
 import 'package:spacetimedb_sdk/src/exceptions.dart';
 import 'package:spacetimedb_sdk/src/connection/connection_quality.dart';
 import 'package:spacetimedb_sdk/src/connection/connection_config.dart';
+import 'package:spacetimedb_sdk/src/connection/http_ping.dart';
 import 'package:spacetimedb_sdk/src/connection/keep_alive_monitor.dart';
 import 'package:spacetimedb_sdk/src/messages/client_messages.dart';
 import 'package:spacetimedb_sdk/src/messages/decompress.dart';
@@ -733,6 +734,10 @@ class SpacetimeDbConnection {
           '(last inbound ${sinceLastRx}ms ago)',
         );
       },
+      confirmServerAlive: () => serverAnswersHttpPing(
+        httpPingUri(host: host, scheme: ssl ? 'https' : 'http'),
+        config.pongTimeout,
+      ),
       idleThreshold: config.pingInterval,
       pongTimeout: config.pongTimeout,
     );
