@@ -7,6 +7,7 @@ import 'package:spacetimedb_sdk/src/connection/keep_alive_monitor.dart';
 const _second = Duration(seconds: 1);
 const _settleMargin = Duration(milliseconds: 100);
 const _pastPongTimeout = Duration(milliseconds: 2100);
+const _latePongCycles = 500;
 
 KeepAliveMonitor _monitor({
   required void Function() onDisconnect,
@@ -36,7 +37,11 @@ void main() {
         expect(disconnects, 0);
 
         async.elapse(_second);
-        expect(pings, 2, reason: 'the monitor pings again after keeping the socket');
+        expect(
+          pings,
+          2,
+          reason: 'the monitor pings again after keeping the socket',
+        );
         monitor.stop();
       });
     });
@@ -87,7 +92,7 @@ void main() {
       });
     });
 
-    test('a server that answers checks but never the ping is dropped in the end', () {
+    test('keeps the socket however many late pongs the server answers for', () {
       fakeAsync((async) {
         var disconnects = 0;
         final monitor = _monitor(
@@ -96,11 +101,8 @@ void main() {
         );
 
         final cycle = _second * 2;
-        async.elapse(cycle * KeepAliveMonitor.maxBusyDeferrals);
+        async.elapse(cycle * _latePongCycles);
         expect(disconnects, 0);
-
-        async.elapse(cycle + _settleMargin);
-        expect(disconnects, 1);
         monitor.stop();
       });
     });

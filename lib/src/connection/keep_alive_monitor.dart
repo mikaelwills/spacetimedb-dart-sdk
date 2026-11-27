@@ -34,7 +34,6 @@ class KeepAliveMonitor {
   final Duration _pongTimeout;
 
   static const int maxDeferredPings = 3;
-  static const int maxBusyDeferrals = 6;
 
   // State
   Timer? _idleTimer;
@@ -43,7 +42,6 @@ class KeepAliveMonitor {
   bool _stopped = false;
   bool _workInFlight = false;
   int _deferredPings = 0;
-  int _busyDeferrals = 0;
 
   KeepAliveMonitor({
     required void Function() onSendPing,
@@ -76,7 +74,6 @@ class KeepAliveMonitor {
       _timeoutTimer = null;
     }
     _deferredPings = 0;
-    _busyDeferrals = 0;
 
     _armIdleTimer();
   }
@@ -91,7 +88,6 @@ class KeepAliveMonitor {
     _isAwaitingPong = false;
     _workInFlight = false;
     _deferredPings = 0;
-    _busyDeferrals = 0;
   }
 
   void _armIdleTimer() {
@@ -118,15 +114,13 @@ class KeepAliveMonitor {
 
       _timeoutTimer = null;
       final confirm = _confirmServerAlive;
-      if (confirm == null || _busyDeferralsUsedUp) {
+      if (confirm == null) {
         _declareDead();
         return;
       }
       _checkServerBeforeDeclaringDead(confirm);
     });
   }
-
-  bool get _busyDeferralsUsedUp => _busyDeferrals >= maxBusyDeferrals;
 
   Future<void> _checkServerBeforeDeclaringDead(
     Future<bool> Function() confirm,
@@ -142,7 +136,6 @@ class KeepAliveMonitor {
       _declareDead();
       return;
     }
-    _busyDeferrals++;
     _isAwaitingPong = false;
     _armIdleTimer();
   }

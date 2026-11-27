@@ -3,8 +3,10 @@ import 'dart:typed_data';
 
 import 'package:fake_async/fake_async.dart';
 import 'package:spacetimedb_sdk/codegen.dart';
+import 'package:spacetimedb_sdk/src/connection/reconnect_delay.dart'
+    show reconnectDelay;
 import 'package:spacetimedb_sdk/src/connection/spacetimedb_connection.dart'
-    show closeForReconnect, reconnectDelay, setReconnectRandom;
+    show closeForReconnect, setReconnectRandom;
 import 'package:test/test.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -317,8 +319,8 @@ void main() {
         final reconnecting = harness.states.whereType<Reconnecting>().toList();
         expect(reconnecting, hasLength(1));
         expect(reconnecting.single.attempt, 0);
-        expect(reconnecting.single.nextDelay, greaterThanOrEqualTo(base));
-        expect(reconnecting.single.nextDelay, lessThanOrEqualTo(base * 1.5));
+        expect(reconnecting.single.nextDelay, greaterThanOrEqualTo(floor));
+        expect(reconnecting.single.nextDelay, lessThanOrEqualTo(base));
 
         async.elapse(reconnecting.single.nextDelay!);
         async.flushMicrotasks();

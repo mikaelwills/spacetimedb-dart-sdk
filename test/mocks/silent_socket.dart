@@ -68,4 +68,8 @@ class SilentWebSocketChannel extends StreamChannelMixin<dynamic>
   void deliver(Uint8List data) {
     if (!_inbound.isClosed) _inbound.add(data);
   }
+
+  void fail(Object error) {
+    if (!_inbound.isClosed) _inbound.addError(error);
+  }
 }

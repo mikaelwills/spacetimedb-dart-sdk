@@ -13,6 +13,7 @@ import 'package:spacetimedb_sdk/src/connection/connection_quality.dart';
 import 'package:spacetimedb_sdk/src/connection/connection_config.dart';
 import 'package:spacetimedb_sdk/src/connection/http_ping.dart';
 import 'package:spacetimedb_sdk/src/connection/keep_alive_monitor.dart';
+import 'package:spacetimedb_sdk/src/connection/reconnect_delay.dart';
 import 'package:spacetimedb_sdk/src/messages/client_messages.dart';
 import 'package:spacetimedb_sdk/src/messages/decompress.dart';
 import 'package:spacetimedb_sdk/src/utils/sdk_logger.dart';
@@ -123,21 +124,6 @@ void setReconnectRandom(
   double Function() random,
 ) {
   _reconnectRandoms[connection] = random;
-}
-
-@visibleForTesting
-Duration reconnectDelay(
-  int attempt,
-  double random, {
-  required Duration base,
-  required Duration max,
-}) {
-  final baseMs = base.inMilliseconds;
-  final maxMs = max.inMilliseconds;
-  final exponent = (attempt - 1).clamp(0, 30);
-  final cappedMs = math.min(baseMs * math.pow(2, exponent), maxMs);
-  final jitteredMs = cappedMs * (0.5 + random);
-  return Duration(milliseconds: jitteredMs.toInt().clamp(baseMs, maxMs));
 }
 
 String _newSessionId() {
@@ -420,6 +406,7 @@ class SpacetimeDbConnection {
           headers.containsKey('Authorization') ||
           queryParams.containsKey('token');
 
+      await _closeOldChannel();
       _channel = _socketFactory(
         uri,
         kPreferredWsProtocols,
@@ -571,8 +558,23 @@ class SpacetimeDbConnection {
     _qualityController.add(quality);
   }
 
+  bool _isStaleChannel(WebSocketChannel channel) =>
+      !identical(_channel, channel);
+
+  Future<void> _closeOldChannel() async {
+    final old = _channel;
+    _channel = null;
+    if (old == null) return;
+    try {
+      await old.sink.close().timeout(config.connectTimeout);
+    } catch (e) {
+      SdkLogger.w('Old socket did not close cleanly: $e');
+    }
+  }
+
   void _setupMessageListener() {
-    _channel!.stream.listen(
+    final channel = _channel!;
+    channel.stream.listen(
       (dynamic data) {
         if (!_socketReceivedFrame) {
           _socketReceivedFrame = true;
@@ -602,10 +604,11 @@ class SpacetimeDbConnection {
         _updateState(const Disconnected());
       },
       onDone: () {
+        if (_isStaleChannel(channel)) return;
         noteSocketClosed(
           this,
-          closeCode: _channel?.closeCode,
-          closeReason: _channel?.closeReason,
+          closeCode: channel.closeCode,
+          closeReason: channel.closeReason,
         );
         SdkLogger.i('WebSocket closed');
         _keepAlive?.stop();
